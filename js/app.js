@@ -7,30 +7,43 @@
       S.init();
 
       // Register routes
+      // Register routes with safe fallback handling
       const R = POS.Router;
-      R.register('/dashboard',       () => POS.Dashboard.render());
-      R.register('/new-order',       () => POS.NewOrder.render());
-      R.register('/edit-order/:id',  (p) => POS.EditOrder.render(p.id));
-      R.register('/sales-list',      () => POS.SalesList.render());
-      R.register('/sales-return',    () => POS.SalesReturn.render());
-      R.register('/return-list',     () => POS.ReturnList.render());
-      R.register('/reports/:type',   (p) => POS.Reports.render(p.type));
-      R.register('/products',        () => POS.Products.render());
-      R.register('/inventory-details', () => POS.InventoryDetails.render());
-      R.register('/gallery',         () => POS.Gallery.render());
-      R.register('/customers',       () => POS.Customers.render());
-      R.register('/expenses',        () => POS.Expenses.render());
-      R.register('/coupons',         () => {
+      const safeRender = (modName, param) => {
+        const mod = POS[modName] || window[modName];
+        if (mod && typeof mod.render === 'function') {
+          return mod.render(param);
+        }
+        if (mod && typeof mod.reader === 'function') {
+          return mod.reader(param);
+        }
+        console.error(`POS.${modName} module is not available on window.POS. Ensure js/${modName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}.js is loaded.`);
+        POS.Helpers.showToast(`${modName} module not loaded. Please hard refresh your browser (Ctrl + F5).`, 'error');
+      };
+
+      R.register('/dashboard',         () => safeRender('Dashboard'));
+      R.register('/new-order',         () => safeRender('NewOrder'));
+      R.register('/edit-order/:id',    (p) => safeRender('EditOrder', p.id));
+      R.register('/sales-list',        () => safeRender('SalesList'));
+      R.register('/sales-return',      () => safeRender('SalesReturn'));
+      R.register('/return-list',       () => safeRender('ReturnList'));
+      R.register('/reports/:type',     (p) => safeRender('Reports', p.type));
+      R.register('/products',          () => safeRender('Products'));
+      R.register('/inventory-details', () => safeRender('InventoryDetails'));
+      R.register('/gallery',           () => safeRender('Gallery'));
+      R.register('/customers',         () => safeRender('Customers'));
+      R.register('/expenses',          () => safeRender('Expenses'));
+      R.register('/coupons',           () => {
         const u = S.getCurrentUser();
         if (u && u.role === 'admin') {
-          POS.Coupons.render();
+          safeRender('Coupons');
         } else {
           POS.Helpers.showToast('Access denied: Admin only', 'error');
           R.navigate('/dashboard');
         }
       });
-      R.register('/users',           () => POS.Users.render());
-      R.register('/label-printer',    () => POS.LabelPrinter.render());
+      R.register('/users',             () => safeRender('Users'));
+      R.register('/label-printer',      () => safeRender('LabelPrinter'));
 
       R.init();
       this._setupSidebar();
