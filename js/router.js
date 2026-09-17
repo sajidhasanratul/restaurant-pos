@@ -117,8 +117,13 @@
           this._updateNav(path);
           this._updateBreadcrumb(path);
         } catch (err) {
-          console.error('Routing execution error:', err);
-          H.showToast(`Routing error: ${err.message}`, 'error');
+          console.error('Routing execution error on ' + path + ':', err);
+          const msg = err && err.message ? err.message : String(err);
+          if (msg.includes('render') || msg.includes('reader') || msg.includes('undefined')) {
+            H.showToast('Page component not loaded yet. Please press Ctrl + F5 to hard refresh.', 'error');
+          } else {
+            H.showToast(`Routing error: ${msg}`, 'error');
+          }
         }
       }
     },
