@@ -374,6 +374,9 @@
     }
   };
 
+  // Attach both to window.POS and global window, plus reader alias to prevent typo/caching crashes
   window.POS = window.POS || {};
+  InventoryDetails.reader = InventoryDetails.render;
   window.POS.InventoryDetails = InventoryDetails;
+  window.InventoryDetails = InventoryDetails;
 })();
