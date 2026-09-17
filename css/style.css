@@ -154,7 +154,19 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   border-left-color: var(--sidebar-active);
 }
 
-.nav-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+.nav-icon { 
+  width: 22px; 
+  height: 22px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  flex-shrink: 0; 
+}
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
 
 .nav-text { white-space: nowrap; }
 
@@ -1265,3 +1277,50 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   .main-content { padding: 10px !important; height: auto !important; overflow: visible !important; }
   .card { box-shadow: none !important; border: 1px solid #ddd !important; }
 }
+
+/* ══════════════════════════════════════════════════
+   COLUMN FILTERS & FLOATING BAR
+   ══════════════════════════════════════════════════ */
+.btn-col-filter {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.btn-col-filter:hover {
+  background: #f1f5f9;
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.btn-col-filter.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.col-filter-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1050;
+  margin-top: 4px;
+}
+
+#sales-clear-filter-popup {
+  animation: fadeIn 0.2s ease-out;
+}
+
+#btn-clear-floating-filters:hover {
+  background: #dc2626 !important;
+}
+
