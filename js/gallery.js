@@ -12,7 +12,7 @@
       mc.innerHTML = `
         <div class="page-header fade-in">
           <div>
-            <h2 class="page-title">🖼️ Product Image Gallery</h2>
+            <h2 class="page-title">Product Image Gallery</h2>
             <p class="page-subtitle">Browse all uploaded product images and manage catalog photos from a single location.</p>
           </div>
         </div>
@@ -52,7 +52,9 @@
         if (galleryItems.length === 0) {
           container.innerHTML = `
             <div style="grid-column: 1/-1; text-align:center; padding:60px 20px; color:#94a3b8;">
-              <span style="font-size:48px; display:block; margin-bottom:12px;">🖼️</span>
+              <div style="margin-bottom:12px; display:flex; justify-content:center;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+              </div>
               <div style="font-size:16px; font-weight:600; color:#64748b;">Gallery is Empty</div>
               <p style="font-size:13px; color:#94a3b8; margin:6px 0 0 0;">Upload images by editing products inside the Products Catalog to see them here.</p>
             </div>
@@ -73,7 +75,8 @@
                 </div>
                 ${canDelete ? `
                   <button class="btn btn-secondary btn-sm btn-delete-gallery-image" data-id="${p.id}" style="width:100%; border-color:#fee2e2; color:#ef4444; background:#fff5f5; display:flex; align-items:center; justify-content:center; gap:6px; font-weight:600; font-size:12px; padding:6px;">
-                    🗑️ Remove Photo
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Remove Photo
                   </button>
                 ` : ''}
               </div>
@@ -105,13 +108,13 @@
                   } else {
                     H.showToast(delData.error || 'Failed to remove image', 'error');
                     btn.disabled = false;
-                    btn.innerHTML = '🗑️ Remove Photo';
+                    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Remove Photo';
                   }
                 } catch (err) {
                   console.error(err);
                   H.showToast('Network error removing image', 'error');
                   btn.disabled = false;
-                  btn.innerHTML = '🗑️ Remove Photo';
+                  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Remove Photo';
                 }
               }
             };
@@ -121,7 +124,7 @@
         console.error(err);
         container.innerHTML = `
           <div style="grid-column: 1/-1; text-align:center; padding:40px; color:#ef4444; font-weight:600;">
-            ⚠️ Network error loading product images.
+            Network error loading product images.
           </div>
         `;
       }
