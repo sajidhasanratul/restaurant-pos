@@ -68,18 +68,18 @@
 
         <div class="page-header fade-in">
           <div>
-            <h2 class="page-title">📦 Product Catalog</h2>
+            <h2 class="page-title">Products</h2>
             <p class="page-subtitle">Add variations (colors, sizes), track individual costs, barcode identifiers, and adjust inventory.</p>
           </div>
           <div class="page-actions" style="display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-secondary btn-sm" id="btn-export-csv">📥 Export CSV</button>
+            <button class="btn btn-secondary btn-sm" id="btn-export-csv">Export CSV</button>
             <label class="btn btn-secondary btn-sm" style="cursor:pointer; margin-bottom:0; display:inline-flex; align-items:center; height:34px; padding:0 12px; font-weight:600; font-size:12px; border-radius:var(--radius-sm);">
-              📤 Import CSV / Excel
+              Import CSV / Excel
               <input type="file" id="file-import-csv" accept=".csv,.xlsx,.xls" style="display:none;">
             </label>
-            <button class="btn btn-secondary btn-sm" id="btn-manage-categories">📁 Categories</button>
+            <button class="btn btn-secondary btn-sm" id="btn-manage-categories">Categories</button>
             ${(S.getCurrentUser().role === 'admin' || S.getCurrentUser().role === 'manager') ? `
-              <button class="btn btn-secondary btn-sm" id="btn-bulk-scan-stock" style="background: #f0fdf4; border-color: #bbf7d0; color: #16a34a; font-weight: 700;">⚡ Bulk Scan Stock</button>
+              <button class="btn btn-secondary btn-sm" id="btn-bulk-scan-stock" style="background: #f0fdf4; border-color: #bbf7d0; color: #16a34a; font-weight: 700;">Bulk Scan Stock</button>
             ` : ''}
             <button class="btn btn-primary btn-sm" id="btn-add-product">+ Add Product</button>
           </div>
@@ -96,7 +96,7 @@
             Draft <span class="tab-count" id="count-draft">0</span>
           </button>
           <button class="tab-btn" id="tab-trash" data-tab="Trash" style="color: #ef4444;">
-            🗑️ Trash <span class="tab-count" id="count-trash" style="background:#fee2e2; color:#b91c1c;">0</span>
+            Trash <span class="tab-count" id="count-trash" style="background:#fee2e2; color:#b91c1c;">0</span>
           </button>
         </div>
 
@@ -393,7 +393,7 @@
 
         let confirmMsg = `Are you sure you want to run this bulk action on ${this.selectedProductIds.length} items?`;
         if (action === 'delete_perm') {
-          confirmMsg = `⚠️ WARNING: This will permanently delete ${this.selectedProductIds.length} items. This cannot be undone!`;
+          confirmMsg = `WARNING: This will permanently delete ${this.selectedProductIds.length} items. This cannot be undone!`;
         }
 
         if (await H.confirm(confirmMsg)) {
@@ -468,18 +468,19 @@
 
       modalOverlay.innerHTML = `
         <div class="modal animate" style="max-width:850px; width:90%; height:85vh; display:flex; flex-direction:column; padding:0;">
-          <div class="modal-header" style="padding:16px 20px; border-bottom:1px solid var(--border-light);">
-            <h3>⚡ Bulk Scan Stock Update</h3>
+          <div class="modal-header" style="padding:16px 20px; border-bottom:1px solid var(--border-light); display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0;">Bulk Scan Stock Update</h3>
             <button class="modal-close" id="modal-close-bulk-scan">&times;</button>
           </div>
           <div class="modal-body" style="flex:1; display:flex; flex-direction:column; padding:20px; gap:16px; overflow:hidden;">
             
-            <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:var(--radius-sm); padding:12px; font-size:12px; color:#1e40af; line-height:1.4; display:flex; gap:10px; align-items:center;">
-              <span style="font-size:20px;">💡</span>
-              <div>
-                <strong>Instructions:</strong> Scan a product's barcode or type the SKU/Barcode manually in the input below and press Enter. 
-                Each scan increments the addition count by 1. You can also adjust counts manually in the list below. 
-                Click <strong>Confirm & Add to Stock</strong> when finished.
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="display:inline-flex; background:#f1f5f9; padding:4px; border-radius:6px; gap:4px;">
+                <button type="button" class="btn btn-sm" id="btn-mode-add" style="background:#16a34a; color:#fff; font-weight:700; border:none; padding:6px 14px; border-radius:4px; cursor:pointer;">+ Add Stock</button>
+                <button type="button" class="btn btn-sm" id="btn-mode-remove" style="background:transparent; color:#64748b; font-weight:600; border:none; padding:6px 14px; border-radius:4px; cursor:pointer;">- Remove Stock</button>
+              </div>
+              <div id="bulk-scan-mode-desc" style="font-size:12px; color:#475569; font-weight:500;">
+                Mode: <strong>Adding Stock</strong>. Scans will increment inventory.
               </div>
             </div>
 
@@ -488,7 +489,7 @@
                 <label class="form-label" style="font-weight:700;">Scan Barcode / Enter SKU</label>
                 <div style="display:flex; gap:8px;">
                   <input type="text" class="form-input" id="bulk-scan-input" placeholder="Scan barcode or type SKU / Barcode and press Enter..." autocomplete="off" style="font-size:14px; padding:10px 14px;">
-                  <button class="btn btn-primary" id="btn-bulk-scan-trigger" style="white-space:nowrap; padding:0 20px;">🔍 Search</button>
+                  <button class="btn btn-primary" id="btn-bulk-scan-trigger" style="white-space:nowrap; padding:0 20px;">Search</button>
                 </div>
               </div>
             </div>
@@ -498,17 +499,17 @@
               <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
                 <thead>
                   <tr style="background:#f8fafc; border-bottom:1px solid #edf2f7;">
-                    <th style="padding:12px; font-weight:700; color:#475569; width:50%;">Product / Variation</th>
+                    <th style="padding:12px; font-weight:700; color:#475569; width:45%;">Product / Variation</th>
                     <th style="padding:12px; font-weight:700; color:#475569; width:20%;">SKU / Barcode</th>
                     <th style="padding:12px; font-weight:700; color:#475569; width:15%; text-align:center;">Current Stock</th>
-                    <th style="padding:12px; font-weight:700; color:#475569; width:15%; text-align:center;">Scanned Qty (To Add)</th>
+                    <th id="th-bulk-qty-label" style="padding:12px; font-weight:700; color:#475569; width:15%; text-align:center;">Qty to Add</th>
                     <th style="padding:12px; font-weight:700; color:#475569; width:80px; text-align:center;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="bulk-scan-tbody">
                   <tr>
                     <td colspan="5" style="padding:40px; text-align:center; color:#94a3b8; font-style:italic;">
-                      No items scanned yet. Start scanning to add stock!
+                      No items scanned yet. Start scanning to update stock!
                     </td>
                   </tr>
                 </tbody>
@@ -528,6 +529,7 @@
 
       modalOverlay.classList.add('active');
 
+      let scanMode = 'add'; // 'add' or 'remove'
       const scannedItems = [];
 
       const input = modalOverlay.querySelector('#bulk-scan-input');
@@ -535,6 +537,50 @@
       const confirmBtn = modalOverlay.querySelector('#btn-bulk-scan-confirm');
       const summaryText = modalOverlay.querySelector('#bulk-scan-summary');
       const searchBtn = modalOverlay.querySelector('#btn-bulk-scan-trigger');
+      const btnModeAdd = modalOverlay.querySelector('#btn-mode-add');
+      const btnModeRemove = modalOverlay.querySelector('#btn-mode-remove');
+      const modeDesc = modalOverlay.querySelector('#bulk-scan-mode-desc');
+      const thQtyLabel = modalOverlay.querySelector('#th-bulk-qty-label');
+
+      const updateModeUI = () => {
+        if (scanMode === 'add') {
+          btnModeAdd.style.background = '#16a34a';
+          btnModeAdd.style.color = '#fff';
+          btnModeAdd.style.fontWeight = '700';
+          btnModeRemove.style.background = 'transparent';
+          btnModeRemove.style.color = '#64748b';
+          btnModeRemove.style.fontWeight = '600';
+          modeDesc.innerHTML = 'Mode: <strong>Adding Stock</strong>. Scans will increment inventory.';
+          thQtyLabel.textContent = 'Qty to Add';
+          confirmBtn.style.background = '#16a34a';
+          confirmBtn.style.borderColor = '#16a34a';
+          confirmBtn.textContent = 'Confirm & Add to Stock';
+        } else {
+          btnModeRemove.style.background = '#dc2626';
+          btnModeRemove.style.color = '#fff';
+          btnModeRemove.style.fontWeight = '700';
+          btnModeAdd.style.background = 'transparent';
+          btnModeAdd.style.color = '#64748b';
+          btnModeAdd.style.fontWeight = '600';
+          modeDesc.innerHTML = 'Mode: <strong>Deducting Stock</strong>. Scans will reduce inventory.';
+          thQtyLabel.textContent = 'Qty to Deduct';
+          confirmBtn.style.background = '#dc2626';
+          confirmBtn.style.borderColor = '#dc2626';
+          confirmBtn.textContent = 'Confirm & Deduct Stock';
+        }
+      };
+
+      btnModeAdd.onclick = () => {
+        scanMode = 'add';
+        updateModeUI();
+        input.focus();
+      };
+
+      btnModeRemove.onclick = () => {
+        scanMode = 'remove';
+        updateModeUI();
+        input.focus();
+      };
 
       setTimeout(() => input.focus(), 100);
 
@@ -549,7 +595,7 @@
           tbody.innerHTML = `
             <tr>
               <td colspan="5" style="padding:40px; text-align:center; color:#94a3b8; font-style:italic;">
-                No items scanned yet. Start scanning to add stock!
+                No items scanned yet. Start scanning to update stock!
               </td>
             </tr>
           `;
@@ -572,7 +618,7 @@
                 </div>
               </td>
               <td style="padding: 12px; text-align: center;">
-                <button class="btn-remove-scan" data-idx="${idx}" style="background:none; border:none; color:#ef4444; font-size:16px; cursor:pointer; padding:4px;">🗑️</button>
+                <button class="btn-remove-scan" data-idx="${idx}" style="background:none; border:none; color:#ef4444; font-size:16px; cursor:pointer; padding:4px;" title="Remove">&times;</button>
               </td>
             </tr>
           `;
@@ -642,36 +688,15 @@
               });
             }
             renderScannedList();
-            try {
-              const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-              const oscillator = audioCtx.createOscillator();
-              const gainNode = audioCtx.createGain();
-              oscillator.connect(gainNode);
-              gainNode.connect(audioCtx.destination);
-              oscillator.type = 'sine';
-              oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-              gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-              oscillator.start();
-              oscillator.stop(audioCtx.currentTime + 0.08);
-            } catch (e) {}
+            this.playBeepSound(true);
           } else {
-            H.showToast(`Not Found: "${query}" matches no products or SKU codes`, 'error');
-            try {
-              const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-              const oscillator = audioCtx.createOscillator();
-              const gainNode = audioCtx.createGain();
-              oscillator.connect(gainNode);
-              gainNode.connect(audioCtx.destination);
-              oscillator.type = 'sawtooth';
-              oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
-              gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-              oscillator.start();
-              oscillator.stop(audioCtx.currentTime + 0.25);
-            } catch (e) {}
+            H.showToast(data.error || 'Product not found', 'warning');
+            this.playBeepSound(false);
           }
         } catch (err) {
           console.error(err);
-          H.showToast(`Network error: ${err.message}`, 'error');
+          H.showToast('Network error scanning code', 'error');
+          this.playBeepSound(false);
         } finally {
           input.disabled = false;
           input.focus();
@@ -685,7 +710,10 @@
         }
       };
 
-      searchBtn.onclick = handleScanQuery;
+      searchBtn.onclick = (e) => {
+        e.preventDefault();
+        handleScanQuery();
+      };
 
       const close = () => modalOverlay.classList.remove('active');
       modalOverlay.querySelector('#modal-close-bulk-scan').onclick = close;
@@ -694,7 +722,6 @@
       modalOverlay.querySelector('#btn-bulk-scan-confirm').onclick = async () => {
         if (scannedItems.length === 0) return;
 
-        const confirmBtn = modalOverlay.querySelector('#btn-bulk-scan-confirm');
         confirmBtn.disabled = true;
         confirmBtn.innerText = 'Updating Stock...';
 
@@ -702,7 +729,8 @@
           const updates = scannedItems.map(i => ({
             type: i.type,
             id: i.id,
-            qty: i.qty
+            qty: i.qty,
+            action: scanMode
           }));
 
           const res = await fetch(`${window.location.origin}/api/products/bulk-stock-update`, {
@@ -713,19 +741,21 @@
 
           const data = await res.json();
           if (data.success) {
-            H.showToast(`Successfully added stock for ${scannedItems.length} items!`);
+            H.showToast(scanMode === 'add' 
+              ? `Successfully added stock for ${scannedItems.length} items!` 
+              : `Successfully deducted stock for ${scannedItems.length} items!`);
             close();
             await this.updateList();
           } else {
             H.showToast(data.error || 'Failed to update stock', 'error');
             confirmBtn.disabled = false;
-            confirmBtn.innerText = 'Confirm & Add to Stock';
+            updateModeUI();
           }
         } catch (err) {
           console.error(err);
           H.showToast('Network error updating stock', 'error');
           confirmBtn.disabled = false;
-          confirmBtn.innerText = 'Confirm & Add to Stock';
+          updateModeUI();
         }
       };
     },
@@ -784,6 +814,22 @@
         });
       }
 
+      // Ensure recently added products appear on top
+      filtered.sort((a, b) => {
+        const priorityA = parseInt(a.priority) || 0;
+        const priorityB = parseInt(b.priority) || 0;
+        if (priorityA !== priorityB) return priorityB - priorityA;
+        if (a.createdAt && b.createdAt) {
+          const diff = new Date(b.createdAt) - new Date(a.createdAt);
+          if (diff !== 0) return diff;
+        } else if (b.createdAt && !a.createdAt) {
+          return 1;
+        } else if (a.createdAt && !b.createdAt) {
+          return -1;
+        }
+        return (b.id || '').localeCompare(a.id || '');
+      });
+
       const totalItems = filtered.length;
       const totalPages = Math.ceil(totalItems / this.perPage) || 1;
 
@@ -800,7 +846,7 @@
         tableBody.innerHTML = `
           <tr>
             <td colspan="8" class="text-muted text-center" style="padding: 30px;">
-              ⚠️ No products found in this category or search selection.
+              No products found in this category or search selection.
             </td>
           </tr>
         `;
@@ -815,9 +861,9 @@
 
         const statusClass = p.status === 'Publish' ? 'publish' : 'draft';
         const statusBadge = `<span class="badge-status ${statusClass}">${p.status || 'Publish'}</span>`;
-        const priorityBadge = p.priority > 0 ? `<span class="badge-priority">⭐ Priority: ${p.priority}</span>` : '';
+        const priorityBadge = p.priority > 0 ? `<span class="badge-priority">Priority: ${p.priority}</span>` : '';
 
-        let imgHtml = `<span style="font-size: 24px;">📦</span>`;
+        let imgHtml = `<div style="width: 45px; height: 45px; border-radius: 6px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#64748b;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg></div>`;
         if (p.image) {
           imgHtml = `<img src="${p.image}" style="width: 45px; height: 45px; object-fit: cover; border-radius: 6px; border: 1px solid #edf2f7;">`;
         }
@@ -915,12 +961,12 @@
                 <button class="action-btn-trigger">⋮</button>
                 <div class="action-popup">
                   ${(!p.deletedAt || p.deletedAt === '0000-00-00 00:00:00') ? `
-                    <button class="action-popup-item btn-edit-opt" data-id="${p.id}">✏️ Edit Details</button>
-                    <button class="action-popup-item btn-label-opt" data-id="${p.id}">🏷️ Print Label</button>
-                    <button class="action-popup-item danger btn-delete-opt" data-id="${p.id}">🗑️ Move to Trash</button>
+                    <button class="action-popup-item btn-edit-opt" data-id="${p.id}">Edit Details</button>
+                    <button class="action-popup-item btn-label-opt" data-id="${p.id}">Print Label</button>
+                    <button class="action-popup-item danger btn-delete-opt" data-id="${p.id}">Move to Trash</button>
                   ` : `
-                    <button class="action-popup-item btn-restore-opt" data-id="${p.id}">↩️ Restore Product</button>
-                    <button class="action-popup-item danger btn-delete-perm-opt" data-id="${p.id}">❌ Delete Permanently</button>
+                    <button class="action-popup-item btn-restore-opt" data-id="${p.id}">Restore Product</button>
+                    <button class="action-popup-item danger btn-delete-perm-opt" data-id="${p.id}">Delete Permanently</button>
                   `}
                 </div>
               </div>
@@ -928,6 +974,41 @@
           </tr>
         `;
       });
+
+      // Update Export button text dynamically
+      const updateExportBtnLabel = () => {
+        const btn = document.getElementById('btn-export-csv');
+        if (!btn) return;
+        if (this.selectedProductIds && this.selectedProductIds.length > 0) {
+          btn.textContent = `Export Selected (${this.selectedProductIds.length})`;
+          btn.classList.add('btn-primary');
+          btn.classList.remove('btn-secondary');
+        } else {
+          btn.textContent = 'Export CSV';
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-secondary');
+        }
+      };
+
+      // Select all checkbox
+      const selectAllChk = document.getElementById('chk-select-all');
+      if (selectAllChk) {
+        selectAllChk.checked = pageItems.length > 0 && pageItems.every(p => this.selectedProductIds.includes(p.id));
+        selectAllChk.onclick = () => {
+          const checked = selectAllChk.checked;
+          pageItems.forEach(p => {
+            if (checked) {
+              if (!this.selectedProductIds.includes(p.id)) this.selectedProductIds.push(p.id);
+            } else {
+              this.selectedProductIds = this.selectedProductIds.filter(id => id !== p.id);
+            }
+          });
+          document.querySelectorAll('.chk-prod-item').forEach(chk => {
+            chk.checked = checked;
+          });
+          updateExportBtnLabel();
+        };
+      }
 
       // Bind triggers
       document.querySelectorAll('.action-btn-trigger').forEach(btn => {
@@ -948,8 +1029,14 @@
           } else {
             this.selectedProductIds = this.selectedProductIds.filter(id => id !== pid);
           }
+          if (selectAllChk) {
+            selectAllChk.checked = pageItems.length > 0 && pageItems.every(p => this.selectedProductIds.includes(p.id));
+          }
+          updateExportBtnLabel();
         };
       });
+
+      updateExportBtnLabel();
 
       document.querySelectorAll('.prod-meta-name').forEach(link => {
         link.onclick = () => {
@@ -1003,7 +1090,7 @@
       document.querySelectorAll('.btn-delete-perm-opt').forEach(btn => {
         btn.onclick = async () => {
           const p = allProducts.find(prod => prod.id === btn.dataset.id);
-          if (await H.confirm(`⚠️ WARNING: Are you sure you want to permanently delete "${p.name}"? This action CANNOT be undone.`)) {
+          if (await H.confirm(`WARNING: Are you sure you want to permanently delete "${p.name}"? This action CANNOT be undone.`)) {
             await fetch(`${window.location.origin}/api/products/${p.id}?permanent=true`, {
               method: 'DELETE',
               headers: S.getHeaders()
@@ -1132,7 +1219,7 @@
                 <label class="form-label">Product Image Reference</label>
                 <div style="display:flex; gap:16px; align-items:center; background:#f8fafc; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm);">
                   <div id="p-img-preview" style="width:75px; height:75px; border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; overflow:hidden; font-size:26px; background:#fff;">
-                    ${isEdit && p.image ? `<img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">` : '📦'}
+                    ${isEdit && p.image ? `<img src="${p.image}" style="width:100%; height:100%; object-fit:cover;">` : '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'}
                   </div>
                   <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
                     <div style="display:flex; align-items:center; gap:8px;">
@@ -1179,7 +1266,7 @@
 
             <!-- Single Product Fields -->
             <div id="single-product-fields" style="border: 1px solid var(--border); padding:16px; border-radius:var(--radius-sm); margin-bottom:16px; background:#F8FAFC;">
-              <h4 style="margin-bottom:12px;">💲 Pricing & Inventory (No Variations)</h4>
+              <h4 style="margin-bottom:12px; color:#1e293b;">Pricing & Inventory (No Variations)</h4>
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label">Cost Price (৳)</label>
@@ -1201,11 +1288,38 @@
             </div>
 
             <!-- Variations Fields -->
-            <div style="border: 1px solid var(--border); padding:16px; border-radius:var(--radius-sm); margin-bottom:16px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h4>🎨 Product Variations (e.g. Size, Color)</h4>
-                <button class="btn btn-secondary btn-sm" id="btn-add-var-row" type="button">+ Add Variation</button>
+            <div style="border: 1px solid var(--border); padding:16px; border-radius:var(--radius-sm); margin-bottom:16px; background:#fff;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <h4 style="margin:0; color:#1e293b;">Product Variations (e.g. Size, Color)</h4>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button class="btn btn-secondary btn-sm" id="btn-add-var-row" type="button">+ Add Variation</button>
+                </div>
               </div>
+
+              <!-- Bulk Toolbar for Multiple Variations -->
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 12px; margin-bottom:14px;">
+                <div style="font-size:12px; font-weight:700; color:#475569; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                  <span>Bulk Apply Details to Variations</span>
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <span style="font-size:11px; color:#64748b; font-weight:500;">Add rows:</span>
+                    <input type="number" id="bulk-var-count" min="1" max="50" value="3" style="width:50px; height:26px; padding:2px 6px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; text-align:center;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-add-multiple-vars" style="padding:2px 8px; font-size:11px; height:26px;">+ Add Rows</button>
+                  </div>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:90px;">
+                    <input type="number" class="form-input" id="bulk-var-cost" placeholder="Cost Price (৳)" style="height:32px; font-size:12px; padding:4px 8px;">
+                  </div>
+                  <div style="flex:1; min-width:90px;">
+                    <input type="number" class="form-input" id="bulk-var-price" placeholder="Selling Price (৳)" style="height:32px; font-size:12px; padding:4px 8px;">
+                  </div>
+                  <div style="flex:1; min-width:80px;">
+                    <input type="number" class="form-input" id="bulk-var-stock" placeholder="Stock Qty" style="height:32px; font-size:12px; padding:4px 8px;">
+                  </div>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-apply-bulk-vars" style="height:32px; font-size:12px; white-space:nowrap; padding:0 12px;">Apply to All Rows</button>
+                </div>
+              </div>
+
               <div id="variation-rows-container"></div>
             </div>
           </div>
@@ -1226,6 +1340,8 @@
       const preview = overlay.querySelector('#p-img-preview');
       const urlInput = overlay.querySelector('#p-image-url');
 
+      const defaultPlaceholderSvg = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+
       fileInput.onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -1245,7 +1361,7 @@
           preview.innerHTML = `<img src="${url}" style="width:100%; height:100%; object-fit:cover;">`;
           activeImage = url;
         } else {
-          preview.innerHTML = '📦';
+          preview.innerHTML = defaultPlaceholderSvg;
           activeImage = '';
         }
       };
@@ -1271,12 +1387,25 @@
         const container = overlay.querySelector('#variation-rows-container');
         container.innerHTML = '';
         if (currentVariations.length === 0) {
-          container.innerHTML = `<p class="text-muted text-sm text-center py-2">No variations defined.</p>`;
+          container.innerHTML = `<p class="text-muted text-sm text-center py-2" style="color:#94a3b8; font-style:italic;">No variations defined. Single product pricing will be used.</p>`;
           overlay.querySelector('#single-product-fields').style.display = 'block';
           return;
         }
 
         overlay.querySelector('#single-product-fields').style.display = 'none';
+
+        let tableHeader = `
+          <div style="display:flex; gap:8px; padding:0 0 6px 0; font-size:11px; font-weight:700; color:#64748b; border-bottom:1px solid #edf2f7; margin-bottom:8px;">
+            <div style="flex:2;">Variation Name (e.g. Size: M)</div>
+            <div style="flex:2;">Variation SKU</div>
+            <div style="flex:1;">Cost (৳)</div>
+            <div style="flex:1;">Price (৳)</div>
+            <div style="flex:1;">Stock</div>
+            <div style="width:38px; text-align:center;">Del</div>
+          </div>
+        `;
+
+        container.innerHTML = tableHeader;
 
         currentVariations.forEach((v, index) => {
           container.innerHTML += `
@@ -1286,7 +1415,7 @@
               <input type="number" class="form-input var-cost-input" placeholder="Cost" value="${v.costPrice}" style="flex:1;">
               <input type="number" class="form-input var-price-input" placeholder="Price" value="${v.price}" style="flex:1;">
               <input type="number" class="form-input var-stock-input" placeholder="Stock" value="${v.stock}" style="flex:1;">
-              <button type="button" class="btn btn-secondary btn-sm btn-remove-var" data-index="${index}" style="color:var(--danger); padding:0 8px; height:38px;">&times;</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-remove-var" data-index="${index}" style="color:var(--danger); padding:0 8px; height:38px; width:38px; display:flex; align-items:center; justify-content:center;">&times;</button>
             </div>
           `;
         });
@@ -1316,15 +1445,65 @@
 
       overlay.querySelector('#btn-add-var-row').onclick = () => {
         saveCurrentVariationInputs();
+        const bulkCost = overlay.querySelector('#bulk-var-cost').value !== '' ? parseFloat(overlay.querySelector('#bulk-var-cost').value) : (parseFloat(overlay.querySelector('#p-cost').value) || 0);
+        const bulkPrice = overlay.querySelector('#bulk-var-price').value !== '' ? parseFloat(overlay.querySelector('#bulk-var-price').value) : (parseFloat(overlay.querySelector('#p-price').value) || 0);
+        const bulkStock = overlay.querySelector('#bulk-var-stock').value !== '' ? parseInt(overlay.querySelector('#bulk-var-stock').value) : 0;
+
         currentVariations.push({
           id: 'var_' + Math.random().toString(36).substr(2, 9),
           name: '',
           sku: '',
-          costPrice: parseFloat(overlay.querySelector('#p-cost').value) || 0,
-          price: parseFloat(overlay.querySelector('#p-price').value) || 0,
-          stock: 0
+          costPrice: bulkCost,
+          price: bulkPrice,
+          stock: bulkStock
         });
         renderVariations();
+      };
+
+      overlay.querySelector('#btn-add-multiple-vars').onclick = () => {
+        saveCurrentVariationInputs();
+        const count = parseInt(overlay.querySelector('#bulk-var-count').value) || 1;
+        const bulkCost = overlay.querySelector('#bulk-var-cost').value !== '' ? parseFloat(overlay.querySelector('#bulk-var-cost').value) : (parseFloat(overlay.querySelector('#p-cost').value) || 0);
+        const bulkPrice = overlay.querySelector('#bulk-var-price').value !== '' ? parseFloat(overlay.querySelector('#bulk-var-price').value) : (parseFloat(overlay.querySelector('#p-price').value) || 0);
+        const bulkStock = overlay.querySelector('#bulk-var-stock').value !== '' ? parseInt(overlay.querySelector('#bulk-var-stock').value) : 0;
+
+        for (let i = 0; i < count; i++) {
+          currentVariations.push({
+            id: 'var_' + Math.random().toString(36).substr(2, 9),
+            name: '',
+            sku: '',
+            costPrice: bulkCost,
+            price: bulkPrice,
+            stock: bulkStock
+          });
+        }
+        renderVariations();
+        H.showToast(`Added ${count} variation row(s).`);
+      };
+
+      overlay.querySelector('#btn-apply-bulk-vars').onclick = () => {
+        saveCurrentVariationInputs();
+        if (currentVariations.length === 0) {
+          H.showToast('Please add variation rows first.', 'warning');
+          return;
+        }
+        const bulkCostVal = overlay.querySelector('#bulk-var-cost').value;
+        const bulkPriceVal = overlay.querySelector('#bulk-var-price').value;
+        const bulkStockVal = overlay.querySelector('#bulk-var-stock').value;
+
+        if (bulkCostVal === '' && bulkPriceVal === '' && bulkStockVal === '') {
+          H.showToast('Enter at least Cost, Price, or Stock to apply.', 'warning');
+          return;
+        }
+
+        currentVariations.forEach(v => {
+          if (bulkCostVal !== '') v.costPrice = parseFloat(bulkCostVal) || 0;
+          if (bulkPriceVal !== '') v.price = parseFloat(bulkPriceVal) || 0;
+          if (bulkStockVal !== '') v.stock = parseInt(bulkStockVal) || 0;
+        });
+
+        renderVariations();
+        H.showToast(`Applied details to all ${currentVariations.length} variations.`);
       };
 
       overlay.querySelector('#btn-prod-save').onclick = async () => {
@@ -1445,7 +1624,7 @@
       overlay.innerHTML = `
         <div class="modal animate" style="max-width:450px;">
           <div class="modal-header">
-            <h3>📁 Manage Categories</h3>
+            <h3>Manage Categories</h3>
             <button class="modal-close" id="modal-close-cat-mgmt">&times;</button>
           </div>
           <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
