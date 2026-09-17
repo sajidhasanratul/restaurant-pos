@@ -18,8 +18,8 @@
       mc.innerHTML = `
         <div class="page-header fade-in">
           <div>
-            <h2 class="page-title">🛒 New Sale</h2>
-            <p class="page-subtitle">Add customer details, scan or search products, and process payment.</p>
+            <h2 class="page-title">New Sale</h2>
+            <p class="page-subtitle">Add customer details, search or enter custom products, and process payment.</p>
           </div>
           <div class="page-actions">
             <a href="/sales-list" class="btn btn-secondary btn-sm">Back to Sales List</a>
@@ -33,27 +33,27 @@
             <div class="card">
               <div class="card-body form-row">
                 <div class="form-group" style="position:relative;">
-                  <label class="form-label">Customer Phone / Name</label>
-                  <input type="text" class="form-input" id="search-customer" placeholder="Search phone or name...">
+                  <label class="form-label" style="font-weight:700;">Customer Phone / Name</label>
+                  <input type="text" class="form-input" id="search-customer" placeholder="Search phone or name..." style="border: 2px solid #64748b; font-weight:500;">
                   <div class="product-results" id="customer-results"></div>
                   <div id="customer-details" class="mt-1" style="display:none;"></div>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Sales Date</label>
+                  <label class="form-label" style="font-weight:700;">Sales Date</label>
                   <input type="date" class="form-input" id="sales-date" value="${H.today()}">
                 </div>
               </div>
             </div>
 
-            <!-- Product Search / Scan -->
+            <!-- Product Search / Custom Product -->
             <div class="card">
               <div class="card-body">
                 <div class="product-search-wrap">
                   <div style="display: flex; gap: 8px;">
                     <div class="search-box" style="flex: 1;">
-                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode...">
+                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode..." style="border: 2px solid #64748b; font-weight:500;">
                     </div>
-                    <button class="btn btn-secondary" id="btn-scan" title="Simulate Barcode Scan">📷 Scan</button>
+                    <button class="btn btn-secondary" id="btn-add-custom-prod" title="Add Custom Product" style="white-space:nowrap; font-weight:600; padding:0 14px;">+ Custom Product</button>
                   </div>
                   <div class="product-results" id="product-results"></div>
                 </div>
@@ -81,7 +81,7 @@
 
             <!-- Discount & Tax -->
             <div class="card">
-              <div class="card-header">💸 Discount & Tax Settings</div>
+              <div class="card-header">Discount & Tax Settings</div>
               <div class="card-body form-row" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="form-group">
                   <label class="form-label">Discount Type</label>
@@ -112,7 +112,7 @@
             <!-- Multi Payment Options -->
             <div class="card">
               <div class="card-header flex justify-between items-center">
-                <span>💳 Payment Information</span>
+                <span>Payment Information</span>
                 <button class="btn btn-secondary btn-sm" id="btn-add-payment">+ Add Split Payment</button>
               </div>
               <div class="card-body">
@@ -123,7 +123,7 @@
 
           <!-- Right Panel: Order Summary & Place Order -->
           <div class="order-summary flex flex-col gap-2">
-            <div class="summary-header">📋 Order Summary</div>
+            <div class="summary-header">Order Summary</div>
             <div class="summary-body">
               <div class="summary-row">
                 <span>Sub Total:</span>
@@ -142,8 +142,8 @@
                 <span class="summary-val" id="summary-total">৳0.00</span>
               </div>
 
-              <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:16px;">
-                🎉 PLACE ORDER
+              <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:16px; font-weight:700; letter-spacing:0.5px;">
+                PLACE ORDER
               </button>
             </div>
           </div>
@@ -280,7 +280,7 @@
           matches.forEach(m => {
             const imgHtml = m.image 
               ? `<img src="${m.image}" style="width:36px; height:36px; object-fit:cover; border-radius:var(--radius-sm); margin-right:10px;">`
-              : `<div style="width:36px; height:36px; border-radius:var(--radius-sm); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; font-size:16px;">📦</div>`;
+              : `<div style="width:36px; height:36px; border-radius:var(--radius-sm); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; color:#64748b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg></div>`;
 
             prodResults.innerHTML += `
               <div class="product-result-item" data-id="${m.id}" data-var="${H.esc(m.variationName)}" data-sku="${H.esc(m.sku)}" data-price="${m.price}" data-stock="${m.stock}" data-name="${H.esc(m.name)}" data-image="${m.image || ''}" style="display:flex; align-items:center;">
@@ -371,25 +371,10 @@
         }
       };
 
-      document.getElementById('btn-scan').onclick = () => {
-        searchProd.value = '';
-        searchProd.focus();
-        
-        searchProd.placeholder = "📷 Scanning... scan barcode now!";
-        searchProd.style.borderColor = "var(--primary-color, #3b82f6)";
-        searchProd.style.boxShadow = "0 0 0 3px rgba(59, 130, 246, 0.25)";
-        
-        H.showToast('Scanner ready. Scan the product barcode now.');
-
-        const resetStyle = () => {
-          searchProd.placeholder = "Type product name, SKU or scan barcode...";
-          searchProd.style.borderColor = "";
-          searchProd.style.boxShadow = "";
-        };
-
-        searchProd.onblur = resetStyle;
-        searchProd.oninput = resetStyle;
-      };
+      const btnCustom = document.getElementById('btn-add-custom-prod');
+      if (btnCustom) {
+        btnCustom.onclick = () => this.showAddCustomProductModal();
+      }
 
       // ── Discount & Tax Changes ───────────────────────
       const discType = document.getElementById('discount-type');
@@ -438,6 +423,81 @@
       document.getElementById('btn-place-order').onclick = () => this.placeOrder();
     },
 
+    showAddCustomProductModal() {
+      const H = POS.Helpers;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay active';
+      overlay.innerHTML = `
+        <div class="modal animate" style="max-width:440px;">
+          <div class="modal-header">
+            <h3>Add Custom Product</h3>
+            <button class="modal-close" id="modal-close-custom">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" style="font-weight:700;">Product Name</label>
+              <input type="text" class="form-input" id="custom-prod-name" placeholder="Enter product name..." value="" style="border: 2px solid #64748b;">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" style="font-weight:700;">Unit Price (৳)</label>
+                <input type="number" class="form-input" id="custom-prod-price" placeholder="0.00" value="" min="0" step="0.01" style="border: 2px solid #64748b;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-weight:700;">Quantity</label>
+                <input type="number" class="form-input" id="custom-prod-qty" value="1" min="1" style="border: 2px solid #64748b;">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="custom-prod-cancel">Cancel</button>
+            <button class="btn btn-primary" id="custom-prod-add">Add to Cart</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const nameInput = overlay.querySelector('#custom-prod-name');
+      const priceInput = overlay.querySelector('#custom-prod-price');
+      const qtyInput = overlay.querySelector('#custom-prod-qty');
+      setTimeout(() => nameInput.focus(), 80);
+
+      const close = () => overlay.remove();
+      overlay.querySelector('#modal-close-custom').onclick = close;
+      overlay.querySelector('#custom-prod-cancel').onclick = close;
+
+      const submitCustom = () => {
+        const pName = nameInput.value.trim();
+        if (!pName) {
+          H.showToast('Please enter a product name', 'warning');
+          nameInput.focus();
+          return;
+        }
+        const pPrice = parseFloat(priceInput.value) || 0;
+        const pQty = parseInt(qtyInput.value) || 1;
+
+        this.addToCart({
+          productId: 'custom_' + Date.now().toString(36),
+          productName: pName,
+          variationName: '',
+          unitPrice: pPrice,
+          qty: pQty,
+          image: '',
+          stock: 999999,
+          isCustom: true
+        });
+        close();
+      };
+
+      overlay.querySelector('#custom-prod-add').onclick = submitCustom;
+      priceInput.onkeydown = (e) => {
+        if (e.key === 'Enter') submitCustom();
+      };
+      nameInput.onkeydown = (e) => {
+        if (e.key === 'Enter') priceInput.focus();
+      };
+    },
+
     selectCustomer(c) {
       const H = POS.Helpers;
       this.selectedCustomer = c;
@@ -449,7 +509,7 @@
         const labelStyle = c.label ? `background:${H.labelColors[c.label] || '#64748b'};` : '';
         det.innerHTML = `
           <div style="display:flex; align-items:center; gap:8px; background:var(--bg); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--border)">
-            <span>👤 ${H.esc(c.name)} | Label: <span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px;">${c.label}</span></span>
+            <span>${H.esc(c.name)} | Label: <span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px;">${c.label}</span></span>
             ${c.customDiscount > 0 ? `<span class="text-success" style="font-weight:700;">(Auto Discount: ${c.customDiscount}%)</span>` : ''}
             <button class="btn btn-secondary btn-sm" id="btn-clear-customer" style="padding:2px 8px; margin-left:auto;">Clear</button>
           </div>
@@ -487,7 +547,7 @@
       overlay.innerHTML = `
         <div class="modal" style="max-width:450px;">
           <div class="modal-header">
-            <h3>👤 Add New Customer</h3>
+            <h3>Add New Customer</h3>
             <button class="modal-close" id="modal-close">&times;</button>
           </div>
           <div class="modal-body">
@@ -572,23 +632,31 @@
       this.cart.forEach((item, index) => {
         const thumbHtml = item.image 
           ? `<img src="${item.image}" style="width:30px; height:30px; object-fit:cover; border-radius:var(--radius-xs); margin-right:8px;">`
-          : `<div style="width:30px; height:30px; border-radius:var(--radius-xs); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:8px; font-size:12px;">📦</div>`;
+          : `<div style="width:30px; height:30px; border-radius:var(--radius-xs); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:8px; font-size:11px; font-weight:700; color:#64748b;">${item.isCustom ? 'C' : 'P'}</div>`;
+
+        const nameDisplayHtml = item.isCustom
+          ? `<input type="text" class="form-input input-custom-name" value="${H.esc(item.productName)}" placeholder="Custom product name..." style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">`
+          : `
+            <div>
+              <div class="cart-item-name">${H.esc(item.productName)}</div>
+              ${item.variationName ? `<div class="cart-item-variant">${H.esc(item.variationName)}</div>` : ''}
+            </div>
+          `;
 
         tbody.innerHTML += `
           <tr class="cart-item-row" data-index="${index}">
             <td>
               <div style="display:flex; align-items:center;">
                 ${thumbHtml}
-                <div>
-                  <div class="cart-item-name">${H.esc(item.productName)}</div>
-                  ${item.variationName ? `<div class="cart-item-variant">${H.esc(item.variationName)}</div>` : ''}
+                <div style="flex:1;">
+                  ${nameDisplayHtml}
                 </div>
               </div>
             </td>
             <td>
               <div style="display:flex; align-items:center; gap:4px; max-width:110px;">
                 <span>৳</span>
-                <input type="number" class="input-price form-input" value="${item.unitPrice}" min="0.01" step="0.01" style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">
+                <input type="number" class="input-price form-input" value="${item.unitPrice || ''}" placeholder="0.00" min="0" step="0.01" style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">
               </div>
             </td>
             <td>
@@ -600,7 +668,7 @@
             </td>
             <td style="font-weight:700;">${H.formatCurrency(item.unitPrice * item.qty)}</td>
             <td>
-              <button class="btn btn-danger btn-sm btn-qty-remove" style="padding:4px 8px;">🗑️</button>
+              <button class="btn btn-secondary btn-sm btn-qty-remove" style="padding:2px 8px; color:var(--danger); border-color:#fee2e2; background:#fef2f2; font-weight:700;" title="Remove Item">&times;</button>
             </td>
           </tr>
         `;
@@ -610,6 +678,13 @@
       tbody.querySelectorAll('.cart-item-row').forEach(row => {
         const index = parseInt(row.dataset.index);
         const item = this.cart[index];
+
+        const customNameInput = row.querySelector('.input-custom-name');
+        if (customNameInput) {
+          customNameInput.onchange = (e) => {
+            item.productName = e.target.value.trim() || 'Custom Item';
+          };
+        }
 
         row.querySelector('.btn-qty-dec').onclick = () => {
           if (item.qty > 1) {
