@@ -89,6 +89,11 @@ const initDB = async () => {
       await dbQuery(`ALTER TABLE products ADD COLUMN tag VARCHAR(255) DEFAULT NULL`);
       console.log('Database Migration: Added "tag" column to products table.');
     }
+    const createdCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'createdAt'`);
+    if (createdCols.length === 0) {
+      await dbQuery(`ALTER TABLE products ADD COLUMN createdAt DATETIME DEFAULT CURRENT_TIMESTAMP`);
+      console.log('Database Migration: Added "createdAt" column to products table.');
+    }
   } catch (migErr) {
     console.warn('Warning during database column migration check:', migErr.message);
   }
@@ -939,16 +944,23 @@ app.get('/api/products', async (req, res) => {
       }
     }
 
-    // 2. Perform sorting dynamically in Node.js (with prioritisation fallbacks)
+    // 2. Perform sorting dynamically in Node.js (priority first, then recently added on top)
     result.sort((a, b) => {
       const priorityA = parseInt(a.priority) || 0;
       const priorityB = parseInt(b.priority) || 0;
       if (priorityA !== priorityB) {
         return priorityB - priorityA; // Descending priority
       }
-      const nameA = (a.name || '').toLowerCase();
-      const nameB = (b.name || '').toLowerCase();
-      return nameA.localeCompare(nameB); // Ascending name
+      // Recently added product on top (newest first)
+      if (a.createdAt && b.createdAt) {
+        const diff = new Date(b.createdAt) - new Date(a.createdAt);
+        if (diff !== 0) return diff;
+      } else if (b.createdAt && !a.createdAt) {
+        return 1;
+      } else if (a.createdAt && !b.createdAt) {
+        return -1;
+      }
+      return (b.id || '').localeCompare(a.id || '');
     });
 
     res.json(result);
@@ -1214,14 +1226,17 @@ app.post('/api/products/bulk-stock-update', verifyRole(['admin', 'manager']), as
     const parentProductIdsToRecalculate = new Set();
 
     for (const update of updates) {
-      const { type, id, qty } = update;
-      const amount = parseInt(qty) || 0;
+      const { type, id, qty, action } = update;
+      let amount = parseInt(qty) || 0;
       if (amount === 0) continue;
+      if (action === 'remove' || action === 'deduct') {
+        amount = -Math.abs(amount);
+      }
 
       if (type === 'product') {
-        await dbQuery(`UPDATE products SET stock = stock + ? WHERE id = ?`, [amount, id]);
+        await dbQuery(`UPDATE products SET stock = GREATEST(0, stock + ?) WHERE id = ?`, [amount, id]);
       } else if (type === 'variation') {
-        await dbQuery(`UPDATE variations SET stock = stock + ? WHERE id = ?`, [amount, id]);
+        await dbQuery(`UPDATE variations SET stock = GREATEST(0, stock + ?) WHERE id = ?`, [amount, id]);
         const varRows = await dbQuery(`SELECT productId FROM variations WHERE id = ?`, [id]);
         if (varRows.length > 0) {
           parentProductIdsToRecalculate.add(varRows[0].productId);
@@ -1328,11 +1343,13 @@ app.delete('/api/orders/:id', verifyRole(['admin']), async (req, res) => {
     const orderItems = items[0] || [];
 
     for (const item of orderItems) {
-      if (item.variationName) {
-        await connection.execute(`UPDATE variations SET stock = stock + ? WHERE productId = ? AND name = ?`,
-          [item.qty, item.productId, item.variationName]);
+      if (item.productId && !item.productId.startsWith('custom_')) {
+        if (item.variationName) {
+          await connection.execute(`UPDATE variations SET stock = stock + ? WHERE productId = ? AND name = ?`,
+            [item.qty, item.productId, item.variationName]);
+        }
+        await connection.execute(`UPDATE products SET stock = stock + ? WHERE id = ?`, [item.qty, item.productId]);
       }
-      await connection.execute(`UPDATE products SET stock = stock + ? WHERE id = ?`, [item.qty, item.productId]);
     }
 
     // 2. Delete payments, orderItems, and the order itself
@@ -1373,11 +1390,13 @@ app.post('/api/orders', async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [item.id, order.id, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total]);
 
-      if (item.variationName) {
-        await connection.execute(`UPDATE variations SET stock = stock - ? WHERE productId = ? AND name = ?`,
-          [item.qty, item.productId, item.variationName]);
+      if (item.productId && !item.productId.startsWith('custom_')) {
+        if (item.variationName) {
+          await connection.execute(`UPDATE variations SET stock = stock - ? WHERE productId = ? AND name = ?`,
+            [item.qty, item.productId, item.variationName]);
+        }
+        await connection.execute(`UPDATE products SET stock = stock - ? WHERE id = ?`, [item.qty, item.productId]);
       }
-      await connection.execute(`UPDATE products SET stock = stock - ? WHERE id = ?`, [item.qty, item.productId]);
     }
 
     for (const p of payments) {
