@@ -27,6 +27,7 @@
       R.register('/sales-list',        () => safeRender('SalesList'));
       R.register('/sales-return',      () => safeRender('SalesReturn'));
       R.register('/return-list',       () => safeRender('ReturnList'));
+      R.register('/custom-item-price', () => safeRender('CustomItemPrice'));
       R.register('/reports/:type',     (p) => safeRender('Reports', p.type));
       R.register('/products',          () => safeRender('Products'));
       R.register('/inventory-details', () => safeRender('InventoryDetails'));
