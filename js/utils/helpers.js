@@ -702,6 +702,96 @@
     /* ── Payment methods ──────────────────────────── */
     paymentMethods: ['Cash', 'Card', 'bKash', 'Nagad', 'Rocket', 'Bank Transfer', 'Other'],
 
+    getPaymentMethodColor(method) {
+      const m = String(method || '').toLowerCase().trim();
+      switch (m) {
+        case 'cash': return '#10B981';
+        case 'card': return '#3B82F6';
+        case 'bkash': return '#E2136E';
+        case 'nagad': return '#F7941D';
+        case 'rocket': return '#8C3494';
+        case 'bank transfer':
+        case 'bank': return '#1E40AF';
+        default: return '#64748B';
+      }
+    },
+
+    getPaymentMethodIcon(method, size = 28) {
+      const m = String(method || '').toLowerCase().trim();
+      switch (m) {
+        case 'bkash':
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#E2136E"/>
+            <path d="M12 18L24 10L19 25Z" fill="#FFFFFF"/>
+            <path d="M24 10L38 15L27 24Z" fill="#FCE4EC"/>
+            <path d="M19 25L24 10L24 37Z" fill="#F8BBD0"/>
+            <path d="M27 24L24 10L24 37Z" fill="#FFFFFF"/>
+            <path d="M12 18L19 25L15 29Z" fill="#F48FB1"/>
+            <path d="M38 15L27 24L32 29Z" fill="#FFFFFF"/>
+            <path d="M24 37L19 25L24 29Z" fill="#F06292"/>
+            <path d="M24 37L27 24L24 29Z" fill="#F8BBD0"/>
+          </svg>`;
+
+        case 'nagad':
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#FFF7ED"/>
+            <defs>
+              <linearGradient id="nagadGrad_${size}_${Math.floor(Math.random()*1000)}" x1="10" y1="38" x2="38" y2="10" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#ED1C24"/>
+                <stop offset="0.5" stop-color="#F7941D"/>
+                <stop offset="1" stop-color="#FBB040"/>
+              </linearGradient>
+            </defs>
+            <path d="M14 34C11 28 12 18 22 12C26 9 31 8 28 14C25 20 20 22 20 26C20 31 23 34 27 34C33 34 36 28 36 21C36 17 38 15 40 18C43 23 42 32 35 37C30 41 19 42 14 34Z" fill="url(#nagadGrad_${size}_${Math.floor(Math.random()*1000)})"/>
+            <path d="M22 26C22 23 24 19 27 16C28 15 29 17 28 19C26 22 25 24 26 26C27 28 29 29 31 28C32 29 30 31 28 31C25 31 22 29 22 26Z" fill="#ED1C24"/>
+          </svg>`;
+
+        case 'bank transfer':
+        case 'bank':
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#EFF6FF"/>
+            <path d="M12 36H36M12 21H36M14 17L24 11L34 17H14ZM16 21V33M21 21V33M27 21V33M32 21V33" stroke="#1E40AF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="35" cy="33" r="6" fill="#2563EB"/>
+            <path d="M33 33H37M35 31L37 33L35 35" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>`;
+
+        case 'rocket':
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#FDF2F8"/>
+            <path d="M16 32C14.5 30.5 14 27 15 25L23 17C26 14 30 13 33 13C33 16 32 20 29 23L21 31C19 32 17.5 33.5 16 32Z" fill="#8C3494"/>
+            <path d="M15 25L12 27L14 30L16 32L19 34L21 31" fill="#701A75"/>
+            <path d="M13 33L10 38L15 35" fill="#EF4444"/>
+            <circle cx="27" cy="19" r="2" fill="#FFFFFF"/>
+          </svg>`;
+
+        case 'cash':
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#ECFDF5"/>
+            <rect x="11" y="16" width="26" height="16" rx="3" stroke="#059669" stroke-width="2.5" fill="#D1FAE5"/>
+            <circle cx="24" cy="24" r="4" stroke="#059669" stroke-width="2"/>
+            <path d="M15 20V20.01M33 28V28.01" stroke="#059669" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>`;
+
+        case 'card':
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#EEF2FF"/>
+            <rect x="10" y="15" width="28" height="18" rx="3" fill="#4338CA"/>
+            <rect x="10" y="20" width="28" height="4" fill="#312E81"/>
+            <rect x="14" y="27" width="5" height="3" rx="1" fill="#FBBF24"/>
+            <line x1="22" y1="28" x2="33" y2="28" stroke="#A5B4FC" stroke-width="2" stroke-linecap="round"/>
+          </svg>`;
+
+        default:
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+            <rect width="48" height="48" rx="8" fill="#F1F5F9"/>
+            <rect x="11" y="14" width="26" height="20" rx="4" stroke="#475569" stroke-width="2.5" fill="#FFFFFF"/>
+            <path d="M28 24H35V28H28C26.8954 24 26.8954 28 28 24Z" fill="#CBD5E1" stroke="#475569" stroke-width="2"/>
+            <circle cx="30.5" cy="26" r="1.5" fill="#0F172A"/>
+            <path d="M11 19H37" stroke="#475569" stroke-width="2"/>
+          </svg>`;
+      }
+    },
+
     /* ── Customer labels ──────────────────────────── */
     customerLabels: ['Regular', 'VIP', 'Elite', 'Wholesale', 'Premium', 'New'],
 
