@@ -147,7 +147,8 @@ const initDB = async () => {
     variationName VARCHAR(100),
     qty INT NOT NULL,
     unitPrice DECIMAL(10,2) NOT NULL,
-    total DECIMAL(12,2) NOT NULL
+    total DECIMAL(12,2) NOT NULL,
+    costPrice DECIMAL(10,2) DEFAULT 0.00
   )`);
 
   await dbQuery(`CREATE TABLE IF NOT EXISTS returns (
@@ -225,6 +226,17 @@ const initDB = async () => {
     }
   } catch (migErr) {
     console.warn('Warning during database column migration check:', migErr.message);
+  }
+
+  // Auto-migration check: If orderItems lacks costPrice column, add it.
+  try {
+    const columnsOI = await dbQuery(`SHOW COLUMNS FROM orderItems LIKE 'costPrice'`);
+    if (columnsOI.length === 0) {
+      await dbQuery(`ALTER TABLE orderItems ADD COLUMN costPrice DECIMAL(10,2) DEFAULT 0.00`);
+      console.log('Database Migration: Added "costPrice" column to orderItems table.');
+    }
+  } catch (migErr) {
+    console.warn('Warning during orderItems costPrice migration check:', migErr.message);
   }
 
   // Seeding Counters
@@ -1321,6 +1333,73 @@ app.get('/api/orderItems', async (req, res) => {
   }
 });
 
+// Get all custom order items with order details
+app.get('/api/custom-order-items', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const rows = await dbQuery(`
+      SELECT 
+        oi.id,
+        oi.orderId,
+        oi.productId,
+        oi.productName,
+        oi.variationName,
+        oi.qty,
+        oi.unitPrice,
+        oi.total,
+        COALESCE(oi.costPrice, 0.00) AS costPrice,
+        o.invoiceId,
+        o.date AS orderDate,
+        o.customerName,
+        o.customerPhone
+      FROM orderItems oi
+      LEFT JOIN orders o ON oi.orderId = o.id
+      WHERE oi.productId LIKE 'custom_%'
+      ORDER BY o.date DESC, oi.id DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update cost price for a specific order item
+app.put('/api/order-items/:id/cost-price', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
+  try {
+    const { costPrice } = req.body;
+    const numCost = parseFloat(costPrice) || 0;
+    await dbQuery(`UPDATE orderItems SET costPrice = ? WHERE id = ?`, [numCost, req.params.id]);
+    res.json({ success: true, id: req.params.id, costPrice: numCost });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk update cost prices for order items
+app.post('/api/order-items/bulk-cost-price', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      throw new Error('Invalid payload: items array required');
+    }
+    for (const itm of items) {
+      if (itm && itm.id) {
+        const numCost = parseFloat(itm.costPrice) || 0;
+        await connection.execute(`UPDATE orderItems SET costPrice = ? WHERE id = ?`, [numCost, itm.id]);
+      }
+    }
+    await connection.commit();
+    res.json({ success: true, updatedCount: items.length });
+  } catch (err) {
+    await connection.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
 app.get('/api/payments', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -1386,9 +1465,9 @@ app.post('/api/orders', async (req, res) => {
       order.paidAmount, order.dueAmount, order.returnedAmount, order.status]);
 
     for (const item of items) {
-      await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [item.id, order.id, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total]);
+      await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [item.id, order.id, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total, parseFloat(item.costPrice) || 0.00]);
 
       if (item.productId && !item.productId.startsWith('custom_')) {
         if (item.variationName) {
@@ -1451,9 +1530,9 @@ app.put('/api/orders/:id', verifyRole(['admin', 'manager']), async (req, res) =>
       order.paidAmount, order.dueAmount, order.returnedAmount, order.status]);
 
     for (const item of items) {
-      await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [item.id, oid, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total]);
+      await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [item.id, oid, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total, parseFloat(item.costPrice) || 0.00]);
 
       if (item.variationName) {
         await connection.execute(`UPDATE variations SET stock = stock - ? WHERE productId = ? AND name = ?`,
@@ -1607,8 +1686,8 @@ app.post('/api/backup/import', verifyRole(['admin']), async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [o.id, o.invoiceId, o.customerId, o.customerName, o.customerPhone, formattedDate, o.subtotal, o.discountType, o.discountValue, o.discountAmount, o.taxPercent, o.taxAmount, o.grandTotal, o.paidAmount, o.dueAmount, o.returnedAmount, o.status]);
     }
     for (const i of orderItems || []) {
-      await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [i.id, i.orderId, i.productId, i.productName, i.variationName, i.qty, i.unitPrice, i.total]);
+      await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [i.id, i.orderId, i.productId, i.productName, i.variationName, i.qty, i.unitPrice, i.total, parseFloat(i.costPrice) || 0.00]);
     }
     for (const r of returns || []) {
       const formattedDate = new Date(r.date).toISOString().slice(0, 19).replace('T', ' ');
