@@ -30,6 +30,7 @@
       R.register('/reports/:type',     (p) => safeRender('Reports', p.type));
       R.register('/products',          () => safeRender('Products'));
       R.register('/inventory-details', () => safeRender('InventoryDetails'));
+      R.register('/bulk-scan',         () => safeRender('BulkScan'));
       R.register('/gallery',           () => safeRender('Gallery'));
       R.register('/customers',         () => safeRender('Customers'));
       R.register('/expenses',          () => safeRender('Expenses'));
@@ -112,7 +113,7 @@
         // Hide specific elements based on role
         const menuItems = [
           'nav-grp-dashboard', 'nav-grp-new-order', 'nav-grp-sales', 'nav-grp-products',
-          'nav-grp-inventory', 'nav-grp-expenses', 'nav-grp-reports', 'nav-grp-coupons',
+          'nav-grp-inventory', 'nav-grp-bulk-scan', 'nav-grp-expenses', 'nav-grp-reports', 'nav-grp-coupons',
           'nav-grp-customers', 'nav-grp-gallery', 'nav-grp-label-printer', 'nav-grp-settings',
           'nav-grp-users'
         ];
@@ -124,7 +125,7 @@
 
         if (role === 'cashier') {
           menuItems.forEach(item => {
-            const show = ['nav-grp-new-order', 'nav-grp-sales', 'nav-grp-inventory', 'nav-grp-customers'].includes(item);
+            const show = ['nav-grp-new-order', 'nav-grp-sales', 'nav-grp-inventory', 'nav-grp-bulk-scan', 'nav-grp-customers'].includes(item);
             setMenuDisplay(item, show);
           });
         } else if (role === 'manager') {
