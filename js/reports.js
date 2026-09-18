@@ -185,7 +185,7 @@
 
       items.forEach(item => {
         const prod = products.find(p => p.id === item.productId);
-        let costPrice = 0;
+        let costPrice = parseFloat(item.costPrice) || 0;
         if (prod) {
           if (prod.variations && prod.variations.length > 0) {
             const v = prod.variations.find(v => v.name === item.variationName || (prod.name + ' ' + v.name) === item.productName);
@@ -554,7 +554,7 @@
         const items = orderItems.filter(i => i.orderId === order.id);
         items.forEach(item => {
           const product = products.find(p => p.id === item.productId);
-          let cost = 0;
+          let cost = parseFloat(item.costPrice) || 0;
           if (product) {
             if (product.variations && product.variations.length > 0) {
               const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
@@ -701,7 +701,7 @@
         const profitByProduct = {};
         items.forEach(item => {
           const product = products.find(p => p.id === item.productId);
-          let cost = 0;
+          let cost = parseFloat(item.costPrice) || 0;
           if (product) {
             if (product.variations && product.variations.length > 0) {
               const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
@@ -802,7 +802,7 @@
           const items = orderItems.filter(i => i.orderId === order.id);
           items.forEach(item => {
             const product = products.find(p => p.id === item.productId);
-            let cost = 0;
+            let cost = parseFloat(item.costPrice) || 0;
             if (product) {
               if (product.variations && product.variations.length > 0) {
                 const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
