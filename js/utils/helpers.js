@@ -700,10 +700,35 @@
     },
 
     /* ── Payment methods ──────────────────────────── */
+    paymentMethodsList: [],
     paymentMethods: ['Cash', 'Card', 'bKash', 'Nagad', 'Rocket', 'Bank Transfer', 'Other'],
+
+    async loadPaymentMethods() {
+      try {
+        const S = window.POS && window.POS.Store;
+        if (S && typeof S.getAll === 'function') {
+          const list = await S.getAll('payment-methods');
+          if (Array.isArray(list) && list.length > 0) {
+            this.paymentMethodsList = list;
+            const active = list.filter(m => m.status === 'active').map(m => m.name);
+            if (active.length > 0) {
+              this.paymentMethods = active;
+            }
+            return list;
+          }
+        }
+      } catch (err) {
+        console.warn('Error loading dynamic payment methods:', err);
+      }
+      return this.paymentMethodsList || [];
+    },
 
     getPaymentMethodColor(method) {
       const m = String(method || '').toLowerCase().trim();
+      if (this.paymentMethodsList && this.paymentMethodsList.length > 0) {
+        const matched = this.paymentMethodsList.find(p => String(p.name || '').toLowerCase().trim() === m);
+        if (matched && matched.color) return matched.color;
+      }
       switch (m) {
         case 'cash': return '#10B981';
         case 'card': return '#3B82F6';
@@ -718,6 +743,21 @@
 
     getPaymentMethodIcon(method, size = 28) {
       const m = String(method || '').toLowerCase().trim();
+
+      // Check if custom icon defined in paymentMethodsList
+      if (this.paymentMethodsList && this.paymentMethodsList.length > 0) {
+        const matched = this.paymentMethodsList.find(p => String(p.name || '').toLowerCase().trim() === m);
+        if (matched && matched.icon && matched.icon.trim()) {
+          const iconStr = matched.icon.trim();
+          if (iconStr.startsWith('<svg')) {
+            return iconStr.replace(/width="[^"]*"/, `width="${size}"`).replace(/height="[^"]*"/, `height="${size}"`);
+          }
+          if (iconStr.startsWith('data:') || iconStr.startsWith('http') || iconStr.startsWith('/')) {
+            return `<img src="${iconStr}" alt="${this.esc(method)}" style="width:${size}px; height:${size}px; object-fit:contain; border-radius:6px; flex-shrink:0; background:#fff; padding:2px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.05);">`;
+          }
+        }
+      }
+
       switch (m) {
         case 'bkash':
           return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
@@ -781,14 +821,11 @@
             <line x1="22" y1="28" x2="33" y2="28" stroke="#A5B4FC" stroke-width="2" stroke-linecap="round"/>
           </svg>`;
 
-        default:
-          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
-            <rect width="48" height="48" rx="8" fill="#F1F5F9"/>
-            <rect x="11" y="14" width="26" height="20" rx="4" stroke="#475569" stroke-width="2.5" fill="#FFFFFF"/>
-            <path d="M28 24H35V28H28C26.8954 24 26.8954 28 28 24Z" fill="#CBD5E1" stroke="#475569" stroke-width="2"/>
-            <circle cx="30.5" cy="26" r="1.5" fill="#0F172A"/>
-            <path d="M11 19H37" stroke="#475569" stroke-width="2"/>
-          </svg>`;
+        default: {
+          const color = this.getPaymentMethodColor(method);
+          const initials = (method || 'P').trim().substr(0, 2).toUpperCase();
+          return `<div style="width:${size}px; height:${size}px; border-radius:8px; background:${color}18; border:1.5px solid ${color}45; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:${Math.max(10, Math.round(size * 0.36))}px; color:${color}; flex-shrink:0;">${initials}</div>`;
+        }
       }
     },
 
