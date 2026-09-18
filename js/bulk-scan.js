@@ -41,7 +41,7 @@
         <div class="page-header fade-in">
           <div>
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-              <h2 class="page-title" style="margin:0;">Bulk Scan Stock</h2>
+              <h2 class="page-title" style="margin:0;">Bulk Stock Update</h2>
               <span class="badge" style="background:#f0fdf4; color:#16a34a; font-weight:700; border:1px solid #bbf7d0; font-size:11px; padding:3px 10px; border-radius:20px; display:inline-flex; align-items:center; gap:6px;">
                 <span style="width:7px; height:7px; background:#16a34a; border-radius:50%; display:inline-block;"></span>
                 Inventory intake & deduction
