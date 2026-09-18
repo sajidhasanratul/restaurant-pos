@@ -204,6 +204,8 @@
       const S = POS.Store;
       const H = POS.Helpers;
 
+      await H.loadPaymentMethods();
+
       const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
       const orderItems = await S.getAll('orderItems');
       const payments = await S.getAll('payments');
@@ -372,7 +374,12 @@
       if (pmPill) pmPill.textContent = `Total Collections: ${H.formatCurrency(totalCollected)}`;
 
       if (pmGrid) {
-        pmGrid.innerHTML = H.paymentMethods.map(method => {
+        const displayMethods = [...H.paymentMethods];
+        Object.keys(paymentBreakdown).forEach(m => {
+          if (!displayMethods.includes(m)) displayMethods.push(m);
+        });
+
+        pmGrid.innerHTML = displayMethods.map(method => {
           const amt = paymentBreakdown[method] || 0;
           const count = paymentCount[method] || 0;
           const pct = totalCollected > 0 ? ((amt / totalCollected) * 100).toFixed(1) : '0.0';
