@@ -30,20 +30,24 @@
       const prods = await S.getAll('products');
 
       this.cart = items.map(i => {
+        const isCustom = (i.productId && i.productId.startsWith('custom_')) || !i.productId;
         const p = prods.find(prod => prod.id === i.productId);
-        let stock = p ? p.stock : i.qty;
+        let stock = isCustom ? 999999 : (p ? p.stock : i.qty);
         if (p && i.variationName && p.variations) {
           const v = p.variations.find(varObj => varObj.name === i.variationName);
           if (v) stock = v.stock;
         }
         return {
+          id: i.id,
           productId: i.productId,
           productName: i.productName,
-          variationName: i.variationName,
+          variationName: i.variationName || '',
           unitPrice: parseFloat(i.unitPrice) || 0,
+          costPrice: parseFloat(i.costPrice) || 0,
           qty: parseInt(i.qty) || 1,
           image: p ? p.image : '',
-          stock: stock + i.qty // make original quantity editable by adding back to stock pool
+          stock: isCustom ? 999999 : (stock + i.qty), // make original quantity editable by adding back to stock pool
+          isCustom: !!isCustom
         };
       });
 
@@ -81,7 +85,7 @@
               <div class="card-body form-row">
                 <div class="form-group" style="position:relative;">
                   <label class="form-label">Customer Phone / Name</label>
-                  <input type="text" class="form-input" id="search-customer" placeholder="Search phone or name...">
+                  <input type="text" class="form-input" id="search-customer" placeholder="Search phone or name..." style="border: 2px solid #64748b; font-weight:500;">
                   <div class="product-results" id="customer-results"></div>
                   <div id="customer-details" class="mt-1" style="display:none;"></div>
                 </div>
@@ -92,15 +96,15 @@
               </div>
             </div>
 
-            <!-- Product Search / Scan -->
+            <!-- Product Search / Custom Product -->
             <div class="card">
               <div class="card-body">
                 <div class="product-search-wrap">
                   <div style="display: flex; gap: 8px;">
                     <div class="search-box" style="flex: 1;">
-                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode...">
+                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode..." style="border: 2px solid #64748b; font-weight:500;">
                     </div>
-                    <button class="btn btn-secondary" id="btn-scan" title="Simulate Barcode Scan">📷 Scan</button>
+                    <button class="btn btn-secondary" id="btn-add-custom-prod" title="Add Custom Product" style="white-space:nowrap; font-weight:600; padding:0 14px;">+ Custom Product</button>
                   </div>
                   <div class="product-results" id="product-results"></div>
                 </div>
@@ -373,25 +377,10 @@
         }
       };
 
-      document.getElementById('btn-scan').onclick = () => {
-        searchProd.value = '';
-        searchProd.focus();
-        
-        searchProd.placeholder = "📷 Scanning... scan barcode now!";
-        searchProd.style.borderColor = "var(--primary-color, #3b82f6)";
-        searchProd.style.boxShadow = "0 0 0 3px rgba(59, 130, 246, 0.25)";
-        
-        H.showToast('Scanner ready. Scan the product barcode now.');
-
-        const resetStyle = () => {
-          searchProd.placeholder = "Type product name, SKU or scan barcode...";
-          searchProd.style.borderColor = "";
-          searchProd.style.boxShadow = "";
-        };
-
-        searchProd.onblur = resetStyle;
-        searchProd.oninput = resetStyle;
-      };
+      const btnCustom = document.getElementById('btn-add-custom-prod');
+      if (btnCustom) {
+        btnCustom.onclick = () => this.showAddCustomProductModal();
+      }
 
       // Discount & Tax recalculations
       const discType = document.getElementById('discount-type');
@@ -485,10 +474,106 @@
       }
     },
 
+    showAddCustomProductModal() {
+      const H = POS.Helpers;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay active';
+      overlay.innerHTML = `
+        <div class="modal animate" style="max-width:440px;">
+          <div class="modal-header">
+            <h3>Add Custom Product</h3>
+            <button class="modal-close" id="modal-close-custom">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label" style="font-weight:700;">Product Name</label>
+              <input type="text" class="form-input" id="custom-prod-name" placeholder="Enter product name..." value="" style="border: 2px solid #64748b;">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" style="font-weight:700;">Unit Price (৳)</label>
+                <input type="number" class="form-input" id="custom-prod-price" placeholder="0.00" value="" min="0" step="0.01" style="border: 2px solid #64748b;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-weight:700;">Quantity</label>
+                <input type="number" class="form-input" id="custom-prod-qty" value="1" min="1" style="border: 2px solid #64748b;">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="custom-prod-cancel">Cancel</button>
+            <button class="btn btn-primary" id="custom-prod-add">Add to Cart</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const nameInput = overlay.querySelector('#custom-prod-name');
+      const priceInput = overlay.querySelector('#custom-prod-price');
+      const qtyInput = overlay.querySelector('#custom-prod-qty');
+      setTimeout(() => nameInput.focus(), 80);
+
+      const close = () => overlay.remove();
+      overlay.querySelector('#modal-close-custom').onclick = close;
+      overlay.querySelector('#custom-prod-cancel').onclick = close;
+
+      const submitCustom = () => {
+        const pName = nameInput.value.trim();
+        if (!pName) {
+          H.showToast('Please enter a product name', 'warning');
+          nameInput.focus();
+          return;
+        }
+        const pPrice = parseFloat(priceInput.value) || 0;
+        const pQty = parseInt(qtyInput.value) || 1;
+
+        this.addToCart({
+          productId: 'custom_' + Date.now().toString(36),
+          productName: pName,
+          variationName: '',
+          unitPrice: pPrice,
+          costPrice: 0,
+          qty: pQty,
+          image: '',
+          stock: 999999,
+          isCustom: true
+        });
+        close();
+      };
+
+      overlay.querySelector('#custom-prod-add').onclick = submitCustom;
+      priceInput.onkeydown = (e) => {
+        if (e.key === 'Enter') submitCustom();
+      };
+      nameInput.onkeydown = (e) => {
+        if (e.key === 'Enter') priceInput.focus();
+      };
+    },
+
     addToCart(item) {
+      if (item.isCustom) {
+        this.cart.push({
+          id: Date.now().toString(36) + Math.random().toString(36).substr(2, 9) + '_' + item.productId,
+          productId: item.productId,
+          productName: item.productName,
+          variationName: '',
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          costPrice: parseFloat(item.costPrice) || 0,
+          qty: parseInt(item.qty) || 1,
+          image: '',
+          stock: 999999,
+          isCustom: true
+        });
+        this.renderCart();
+        this.recalculate();
+        return;
+      }
+
+      const pId = item.product ? item.product.id : item.productId;
+      const vName = item.variant ? item.variant.name : (item.variationName || null);
       const existing = this.cart.find(c =>
-        c.productId === item.product.id &&
-        c.variationName === (item.variant ? item.variant.name : null)
+        c.productId === pId &&
+        c.variationName === vName
       );
 
       if (existing) {
@@ -499,13 +584,16 @@
         }
       } else {
         this.cart.push({
-          productId: item.product.id,
-          productName: item.product.name,
-          variationName: item.variant ? item.variant.name : null,
-          unitPrice: parseFloat(item.price),
-          qty: 1,
-          image: item.product.image || '',
-          stock: item.stock
+          id: Date.now().toString(36) + Math.random().toString(36).substr(2, 9) + '_' + pId,
+          productId: pId,
+          productName: item.product ? item.product.name : item.productName,
+          variationName: vName,
+          unitPrice: parseFloat(item.price !== undefined ? item.price : item.unitPrice) || 0,
+          costPrice: item.product ? (parseFloat(item.product.costPrice) || 0) : (parseFloat(item.costPrice) || 0),
+          qty: parseInt(item.qty) || 1,
+          image: (item.product && item.product.image) || item.image || '',
+          stock: item.stock !== undefined ? item.stock : 999999,
+          isCustom: false
         });
       }
 
@@ -530,26 +618,41 @@
       this.cart.forEach((item, index) => {
         const total = item.unitPrice * item.qty;
         const row = document.createElement('tr');
+        row.className = 'cart-item-row';
+        row.dataset.index = index;
+
+        const thumbHtml = item.image 
+          ? `<img src="${item.image}" style="width:36px; height:36px; border-radius:var(--radius-xs); object-fit:cover; border:1px solid var(--border);">`
+          : `<div style="width:36px; height:36px; border-radius:var(--radius-xs); background:var(--primary-50); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:var(--primary);">${item.isCustom ? 'C' : '📦'}</div>`;
+
+        const nameDisplayHtml = item.isCustom
+          ? `<input type="text" class="form-input input-custom-name" value="${H.esc(item.productName)}" placeholder="Custom product name..." style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">`
+          : `
+            <div>
+              <div style="font-weight:600;">${H.esc(item.productName)}</div>
+              ${item.variationName ? `<div style="font-size:11px; color:#64748b;">${H.esc(item.variationName)}</div>` : ''}
+            </div>
+          `;
+
         row.innerHTML = `
           <td>
             <div style="display:flex; align-items:center; gap:8px;">
-              ${item.image ? `<img src="${item.image}" style="width:36px; height:36px; border-radius:var(--radius-xs); object-fit:cover; border:1px solid var(--border);">` : `<div style="width:36px; height:36px; border-radius:var(--radius-xs); background:var(--primary-50); display:flex; align-items:center; justify-content:center; font-size:16px;">📦</div>`}
-              <div>
-                <div style="font-weight:600;">${H.esc(item.productName)}</div>
-                ${item.variationName ? `<div style="font-size:11px; color:#64748b;">${H.esc(item.variationName)}</div>` : ''}
+              ${thumbHtml}
+              <div style="flex:1;">
+                ${nameDisplayHtml}
               </div>
             </div>
           </td>
           <td>
             <div style="display:flex; align-items:center; gap:4px; max-width:110px;">
               <span>৳</span>
-              <input type="number" class="input-price form-input" value="${item.unitPrice}" min="0.01" step="0.01" style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">
+              <input type="number" class="input-price form-input" value="${item.unitPrice || ''}" placeholder="0.00" min="0" step="0.01" style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">
             </div>
           </td>
           <td>
             <div class="qty-control">
               <button class="btn-qty-dec">-</button>
-              <input type="number" class="input-qty" value="${item.qty}" min="1">
+              <input type="number" class="input-qty" value="${item.qty}" min="1" ${item.isCustom ? '' : `max="${item.stock}"`}>
               <button class="btn-qty-inc">+</button>
             </div>
           </td>
@@ -558,6 +661,13 @@
         `;
 
         tbody.appendChild(row);
+
+        const customNameInput = row.querySelector('.input-custom-name');
+        if (customNameInput) {
+          customNameInput.onchange = (e) => {
+            item.productName = e.target.value.trim() || 'Custom Item';
+          };
+        }
 
         // Bind items events
         row.querySelector('.btn-qty-dec').onclick = () => {
@@ -569,7 +679,7 @@
         };
 
         row.querySelector('.btn-qty-inc').onclick = () => {
-          if (item.qty < item.stock) {
+          if (item.isCustom || item.qty < item.stock) {
             item.qty++;
             this.renderCart();
             this.recalculate();
@@ -581,7 +691,7 @@
         row.querySelector('.input-qty').onchange = (e) => {
           let val = parseInt(e.target.value) || 1;
           if (val < 1) val = 1;
-          if (val > item.stock) {
+          if (!item.isCustom && val > item.stock) {
             val = item.stock;
             H.showToast('Adjusted to max available stock', 'warning');
           }
@@ -808,14 +918,15 @@
       };
 
       const orderItemsList = this.cart.map(item => ({
-        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 9) + '_' + item.productId,
+        id: item.id || (Date.now().toString(36) + Math.random().toString(36).substr(2, 9) + '_' + item.productId),
         orderId,
         productId: item.productId,
         productName: item.productName,
-        variationName: item.variationName,
+        variationName: item.variationName || null,
         qty: item.qty,
         unitPrice: item.unitPrice,
-        total: item.unitPrice * item.qty
+        total: item.unitPrice * item.qty,
+        costPrice: parseFloat(item.costPrice) || 0.00
       }));
 
       const orderPaymentsList = this.payments.map(p => ({
