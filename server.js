@@ -1506,11 +1506,13 @@ app.put('/api/orders/:id', verifyRole(['admin', 'manager']), async (req, res) =>
     // 1. Revert old stock changes
     const [oldItems] = await connection.execute(`SELECT * FROM orderItems WHERE orderId = ?`, [oid]);
     for (const item of oldItems) {
-      if (item.variationName) {
-        await connection.execute(`UPDATE variations SET stock = stock + ? WHERE productId = ? AND name = ?`,
-          [item.qty, item.productId, item.variationName]);
+      if (item.productId && !item.productId.startsWith('custom_')) {
+        if (item.variationName) {
+          await connection.execute(`UPDATE variations SET stock = stock + ? WHERE productId = ? AND name = ?`,
+            [item.qty, item.productId, item.variationName]);
+        }
+        await connection.execute(`UPDATE products SET stock = stock + ? WHERE id = ?`, [item.qty, item.productId]);
       }
-      await connection.execute(`UPDATE products SET stock = stock + ? WHERE id = ?`, [item.qty, item.productId]);
     }
 
     // 2. Delete old records
@@ -1534,11 +1536,13 @@ app.put('/api/orders/:id', verifyRole(['admin', 'manager']), async (req, res) =>
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [item.id, oid, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total, parseFloat(item.costPrice) || 0.00]);
 
-      if (item.variationName) {
-        await connection.execute(`UPDATE variations SET stock = stock - ? WHERE productId = ? AND name = ?`,
-          [item.qty, item.productId, item.variationName]);
+      if (item.productId && !item.productId.startsWith('custom_')) {
+        if (item.variationName) {
+          await connection.execute(`UPDATE variations SET stock = stock - ? WHERE productId = ? AND name = ?`,
+            [item.qty, item.productId, item.variationName]);
+        }
+        await connection.execute(`UPDATE products SET stock = stock - ? WHERE id = ?`, [item.qty, item.productId]);
       }
-      await connection.execute(`UPDATE products SET stock = stock - ? WHERE id = ?`, [item.qty, item.productId]);
     }
 
     for (const p of payments) {
