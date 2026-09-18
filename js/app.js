@@ -1,648 +1,666 @@
 (function () {
   'use strict';
 
-  const Dashboard = {
-    async render() {
-      const mc = document.getElementById('main-content');
+  const App = {
+    init() {
+      const S = POS.Store;
+      S.init();
+
+      // Register routes
+      // Register routes with safe fallback handling
+      const R = POS.Router;
+      const safeRender = (modName, param) => {
+        const mod = POS[modName] || window[modName];
+        if (mod && typeof mod.render === 'function') {
+          return mod.render(param);
+        }
+        if (mod && typeof mod.reader === 'function') {
+          return mod.reader(param);
+        }
+        console.error(`POS.${modName} module is not available on window.POS. Ensure js/${modName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}.js is loaded.`);
+        POS.Helpers.showToast(`${modName} module not loaded. Please hard refresh your browser (Ctrl + F5).`, 'error');
+      };
+
+      R.register('/dashboard',         () => safeRender('Dashboard'));
+      R.register('/new-order',         () => safeRender('NewOrder'));
+      R.register('/edit-order/:id',    (p) => safeRender('EditOrder', p.id));
+      R.register('/sales-list',        () => safeRender('SalesList'));
+      R.register('/sales-return',      () => safeRender('SalesReturn'));
+      R.register('/return-list',       () => safeRender('ReturnList'));
+      R.register('/custom-item-price', () => safeRender('CustomItemPrice'));
+      R.register('/payment-methods',   () => safeRender('PaymentMethods'));
+      R.register('/invoice-settings',  () => this.renderInvoiceSettings());
+      R.register('/reports/:type',     (p) => safeRender('Reports', p.type));
+      R.register('/products',          () => safeRender('Products'));
+      R.register('/inventory-details', () => safeRender('InventoryDetails'));
+      R.register('/bulk-scan',         () => safeRender('BulkScan'));
+      R.register('/gallery',           () => safeRender('Gallery'));
+      R.register('/customers',         () => safeRender('Customers'));
+      R.register('/expenses',          () => safeRender('Expenses'));
+      R.register('/coupons',           () => {
+        const u = S.getCurrentUser();
+        if (u && u.role === 'admin') {
+          safeRender('Coupons');
+        } else {
+          POS.Helpers.showToast('Access denied: Admin only', 'error');
+          R.navigate('/dashboard');
+        }
+      });
+      R.register('/users',             () => safeRender('Users'));
+      R.register('/label-printer',      () => safeRender('LabelPrinter'));
+
+      // Pre-load dynamic payment channels and icons
+      POS.Helpers.loadPaymentMethods();
+
+      R.init();
+      this._setupSidebar();
+      this._updateHeaderDate();
+      this._setupSettings();
+      this._updateUserHeader();
+    },
+
+    /* ── Sidebar behaviour ─────────────────────────── */
+    _setupSidebar() {
+      const S = POS.Store;
+      const toggle  = document.getElementById('menu-toggle');
+      const sidebar = document.getElementById('sidebar');
+      const wrapper = document.getElementById('main-wrapper');
+      const overlay = document.getElementById('sidebar-overlay');
+
+      const toggleMenu = () => {
+        if (window.innerWidth <= 1024) {
+          sidebar.classList.toggle('mobile-open');
+          overlay.classList.toggle('active');
+        } else {
+          sidebar.classList.toggle('collapsed');
+          wrapper.classList.toggle('expanded');
+        }
+      };
+
+      toggle && toggle.addEventListener('click', toggleMenu);
+      overlay && overlay.addEventListener('click', () => {
+        sidebar.classList.remove('mobile-open');
+        overlay.classList.remove('active');
+      });
+
+      // Close mobile drawer on navigation click
+      document.querySelectorAll('#sidebar-nav a').forEach(link => {
+        link.addEventListener('click', () => {
+          if (window.innerWidth <= 1024) {
+            sidebar.classList.remove('mobile-open');
+            overlay.classList.remove('active');
+          }
+        });
+      });
+
+      document.querySelectorAll('.nav-group-header').forEach(header => {
+        header.addEventListener('click', () => {
+          const items = header.nextElementSibling;
+          const isOpen = header.classList.contains('open');
+
+          // Close others
+          document.querySelectorAll('.nav-group-header.open').forEach(h => {
+            if (h !== header) {
+              h.classList.remove('open');
+              h.nextElementSibling && h.nextElementSibling.classList.remove('open');
+            }
+          });
+
+          header.classList.toggle('open', !isOpen);
+          items && items.classList.toggle('open', !isOpen);
+        });
+      });
+
+      // Filter sidebar links depending on user role
+      const user = S.getCurrentUser();
+      if (user) {
+        const role = user.role;
+
+        // Hide specific elements based on role
+        const menuItems = [
+          'nav-grp-dashboard', 'nav-grp-new-order', 'nav-grp-sales', 'nav-grp-products',
+          'nav-grp-inventory', 'nav-grp-bulk-scan', 'nav-grp-expenses', 'nav-grp-reports', 'nav-grp-coupons',
+          'nav-grp-customers', 'nav-grp-label-printer', 'nav-grp-settings'
+        ];
+
+        const setMenuDisplay = (id, show) => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = show ? '' : 'none';
+        };
+
+        if (role === 'cashier') {
+          menuItems.forEach(item => {
+            const show = ['nav-grp-new-order', 'nav-grp-sales', 'nav-grp-inventory', 'nav-grp-bulk-scan', 'nav-grp-customers'].includes(item);
+            setMenuDisplay(item, show);
+          });
+        } else if (role === 'manager') {
+          menuItems.forEach(item => {
+            const hide = ['nav-grp-reports', 'nav-grp-coupons'].includes(item);
+            setMenuDisplay(item, !hide);
+          });
+          const adminCtrl = document.getElementById('nav-admin-control');
+          if (adminCtrl) adminCtrl.style.display = 'none';
+        } else {
+          // Admin sees everything
+          menuItems.forEach(item => setMenuDisplay(item, true));
+          const adminCtrl = document.getElementById('nav-admin-control');
+          if (adminCtrl) adminCtrl.style.display = '';
+        }
+      }
+
+      // Logout handler
+      const btnLogout = document.getElementById('nav-logout');
+      if (btnLogout) {
+        btnLogout.onclick = (e) => {
+          e.preventDefault();
+          S.logout();
+        };
+      }
+
+      // Auto-open current group
+      let path = window.location.pathname;
+      if (path === '/' || path === '/index.html' || path === '') {
+        path = '/dashboard';
+      }
+      const link = document.querySelector('.nav-item[href="' + path + '"]');
+      if (link) {
+        const group = link.closest('.nav-group-items');
+        if (group) {
+          group.classList.add('open');
+          group.previousElementSibling && group.previousElementSibling.classList.add('open');
+        }
+      }
+    },
+
+    /* ── Header date ───────────────────────────────── */
+    _updateHeaderDate() {
+      const el = document.getElementById('header-date');
+      if (el) {
+        el.textContent = new Date().toLocaleDateString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+      }
+    },
+
+    _updateUserHeader() {
+      const S = POS.Store;
+      const el = document.getElementById('user-profile-badge');
+      if (!el) return;
+
+      const user = S.getCurrentUser();
+      if (user) {
+        let roleName = user.role.toUpperCase();
+        el.innerHTML = `
+          <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" class="profile-click-trigger" title="Click to view profile details">
+            <div style="text-align:right;">
+              <div style="font-weight:700; color:var(--text-dark); font-size:13px;">${POS.Helpers.esc(user.name)}</div>
+              <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase;">${roleName}</div>
+            </div>
+            <div style="width:34px; height:34px; border-radius:50%; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">
+              ${user.name.charAt(0).toUpperCase()}
+            </div>
+          </div>
+        `;
+        el.querySelector('.profile-click-trigger').onclick = () => this.showUserProfileModal();
+      } else {
+        el.innerHTML = '';
+      }
+    },
+
+    showUserProfileModal() {
+      const S = POS.Store;
       const H = POS.Helpers;
-      const today = H.today();
+      const user = S.getCurrentUser();
+      if (!user) return;
 
-      // Get initial date range filters
-      let fromDate = localStorage.getItem('dash_from') || today;
-      let toDate = localStorage.getItem('dash_to') || today;
+      let modalOverlay = document.getElementById('global-profile-modal-overlay');
+      if (!modalOverlay) {
+        modalOverlay = document.createElement('div');
+        modalOverlay.id = 'global-profile-modal-overlay';
+        modalOverlay.className = 'modal-overlay';
+        document.body.appendChild(modalOverlay);
+      }
 
-      mc.innerHTML = `
-        <div class="page-header fade-in" style="margin-bottom: 20px;">
-          <div>
-            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-              <h2 class="page-title" style="margin:0; font-size:24px; font-weight:800; color:#0f172a;">Executive POS Dashboard</h2>
-              <span class="badge" style="background:#ecfdf5; color:#059669; font-weight:700; border:1px solid #a7f3d0; font-size:11px; padding:3px 10px; border-radius:20px; display:inline-flex; align-items:center; gap:6px;">
-                <span style="width:7px; height:7px; background:#10b981; border-radius:50%; display:inline-block;"></span>
-                Live Register • Ready
-              </span>
-            </div>
-            <p class="page-subtitle" style="margin-top:4px; font-size:13px; color:#64748b;">Real-time sales performance, revenue analytics, and multi-channel payment reconciliation.</p>
+      let roleLabel = 'Cashier';
+      let roleBg = '#6b7280';
+      if (user.role === 'admin') {
+        roleLabel = 'System Admin';
+        roleBg = '#5a5cea';
+      } else if (user.role === 'manager') {
+        roleLabel = 'Store Manager';
+        roleBg = '#f59e0b';
+      }
+
+      modalOverlay.innerHTML = `
+        <div class="modal animate" style="max-width:440px;">
+          <div class="modal-header">
+            <h3>👤 User Account Profile</h3>
+            <button class="modal-close" id="modal-close-global-profile">&times;</button>
           </div>
-          <div class="page-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button class="btn btn-secondary btn-sm" id="btn-today">Today</button>
-            <button class="btn btn-secondary btn-sm" id="btn-yesterday">Yesterday</button>
-            <button class="btn btn-secondary btn-sm" id="btn-this-week">This Week</button>
-            <button class="btn btn-secondary btn-sm" id="btn-this-month">This Month</button>
-            <button class="btn btn-secondary btn-sm" id="btn-refresh-dash" title="Refresh data" style="display:inline-flex; align-items:center; gap:6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              <span>Sync</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Filter Bar -->
-        <div class="filter-bar fade-in" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-          <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:260px; flex-wrap:wrap;">
-            <div class="form-group" style="margin-bottom:0; flex:1; min-width:130px;">
-              <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:3px;">From Date</label>
-              <input type="date" class="form-input" id="dash-from" value="${fromDate}" style="font-size:13px; padding:7px 10px;">
-            </div>
-            <div class="form-group" style="margin-bottom:0; flex:1; min-width:130px;">
-              <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:3px;">To Date</label>
-              <input type="date" class="form-input" id="dash-to" value="${toDate}" style="font-size:13px; padding:7px 10px;">
-            </div>
-          </div>
-          <div style="display:flex; align-items:flex-end; gap:8px;">
-            <button class="btn btn-primary" id="btn-filter" style="padding:7px 18px; font-size:13px; font-weight:600;">Apply Range</button>
-            <span id="dash-last-updated" style="font-size:11px; color:#94a3b8; align-self:center; margin-left:6px;"></span>
-          </div>
-        </div>
-
-        <!-- Primary KPI Metrics -->
-        <div class="stats-grid fade-in" id="dashboard-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">
-          <div style="grid-column: 1/-1; text-align: center; padding: 30px;"><div class="spinner" style="margin: 0 auto 10px;"></div>Loading Business Intelligence...</div>
-        </div>
-
-        <!-- Payment Settlement Status Card -->
-        <div class="card fade-in" style="border:1px solid #e2e8f0; border-radius:12px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff; overflow:hidden;">
-          <div class="card-header" style="background:#f8fafc; border-bottom:1px solid #edf2f7; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <div>
-              <div style="font-weight:700; font-size:15px; color:#0f172a; display:flex; align-items:center; gap:8px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-                Payment Settlement & Tender Channels
+          <div class="modal-body">
+            <!-- Profile Info Panel -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:var(--radius-sm); padding:16px; margin-bottom:20px;">
+              <div style="display:flex; align-items:center; gap:16px; margin-bottom:14px;">
+                <div style="width:48px; height:48px; border-radius:50%; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px;">
+                  ${user.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h4 style="margin:0; font-size:15px; font-weight:700; color:var(--text-dark);">${H.esc(user.name)}</h4>
+                  <span class="badge" style="background:${roleBg}; color:#fff; font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:10px; display:inline-block; margin-top:4px;">${roleLabel}</span>
+                </div>
               </div>
-              <p style="margin:2px 0 0; font-size:12px; color:#64748b;">Official brand channels reconciliation for bKash, Nagad, Rocket, Bank Transfer, Card, and Cash.</p>
-            </div>
-            <div id="payment-summary-pill" style="font-size:12px; font-weight:700; color:#1e293b; background:#e2e8f0; padding:4px 12px; border-radius:20px;">
-              Total Collections: ৳0.00
-            </div>
-          </div>
-          <div class="card-body" style="padding:18px 20px;">
-            <div id="payment-methods-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">
-              <!-- Dynamic payment channel cards with authentic brand icons -->
-            </div>
-          </div>
-        </div>
-
-        <!-- Visual Analytics Grid (2 Columns) -->
-        <div class="grid-2 fade-in" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px; margin-bottom:24px;">
-          <div class="card" style="border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff;">
-            <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              Sales Revenue Trend
-            </div>
-            <div class="card-body" style="padding:16px;">
-              <div class="chart-container" style="height:260px; position:relative;">
-                <canvas id="salesTrendChart"></canvas>
+              
+              <div style="display:grid; grid-template-columns: 110px 1fr; row-gap:10px; font-size:13px; line-height:1.4;">
+                <span style="font-weight:600; color:#64748b;">Username:</span>
+                <span style="font-weight:700; color:var(--text-dark);">${H.esc(user.username)}</span>
+                
+                <span style="font-weight:600; color:#64748b;">Email Address:</span>
+                <span style="font-weight:600; color:var(--text-dark);">${user.email ? H.esc(user.email) : '<span style="color:#ef4444; font-style:italic;">No Email Added</span>'}</span>
               </div>
             </div>
-          </div>
 
-          <div class="card" style="border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff;">
-            <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10H12V2z"/></svg>
-              Payment Method Share
+            <!-- Password Update Fields -->
+            <h4 style="margin-top:0; margin-bottom:12px; font-size:14px; font-weight:700; color:var(--text-dark); border-bottom: 1px solid var(--border-light); padding-bottom:6px;">🔑 Change Account Password</h4>
+            
+            <div class="form-group mb-2">
+              <label class="form-label">Current Password</label>
+              <input type="password" class="form-input" id="pwd-old" placeholder="Enter current password" required>
             </div>
-            <div class="card-body" style="padding:16px;">
-              <div class="chart-container" style="height:260px; position:relative;">
-                <canvas id="paymentMethodChart"></canvas>
-              </div>
+            <div class="form-group mb-2">
+              <label class="form-label">New Password</label>
+              <input type="password" class="form-input" id="pwd-new" placeholder="Enter new password" required>
             </div>
-          </div>
-        </div>
-
-        <!-- 24-Hour Hourly Distribution -->
-        <div class="card fade-in" style="border:1px solid #e2e8f0; border-radius:12px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff;">
-          <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            24-Hour Peak Customer Traffic (Hourly Sales Distribution)
-          </div>
-          <div class="card-body" style="padding:16px;">
-            <div class="chart-container" style="height:220px; position:relative;">
-              <canvas id="hourlySalesChart"></canvas>
+            <div class="form-group">
+              <label class="form-label">Confirm New Password</label>
+              <input type="password" class="form-input" id="pwd-confirm" placeholder="Confirm new password" required>
             </div>
           </div>
-        </div>
-
-        <!-- Operational Insights: Top Selling Products -->
-        <div class="card fade-in" style="border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff; margin-bottom:24px;">
-          <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            Top Selling Products
-          </div>
-          <div class="card-body" style="padding:0;">
-            <div class="table-wrapper" style="border:none;">
-              <table class="data-table" style="margin:0; font-size:13px;">
-                <thead>
-                  <tr style="background:#f8fafc;">
-                    <th style="width:60px; text-align:center;">#</th>
-                    <th>Product Name</th>
-                    <th style="text-align:center; width:140px;">Units Sold</th>
-                    <th style="text-align:right; width:180px;">Subtotal Revenue</th>
-                  </tr>
-                </thead>
-                <tbody id="top-selling-tbody"></tbody>
-              </table>
-            </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="btn-global-profile-cancel">Close</button>
+            <button class="btn btn-primary" id="btn-global-pwd-save">Update Password</button>
           </div>
         </div>
       `;
 
-      // Set up event listeners
-      document.getElementById('btn-filter').onclick = async () => {
-        fromDate = document.getElementById('dash-from').value;
-        toDate = document.getElementById('dash-to').value;
-        localStorage.setItem('dash_from', fromDate);
-        localStorage.setItem('dash_to', toDate);
-        await this.updateStats(fromDate, toDate);
-      };
+      modalOverlay.classList.add('active');
 
-      document.getElementById('btn-today').onclick = () => {
-        const t = H.today();
-        document.getElementById('dash-from').value = t;
-        document.getElementById('dash-to').value = t;
-        document.getElementById('btn-filter').click();
-      };
+      const close = () => modalOverlay.classList.remove('active');
+      modalOverlay.querySelector('#modal-close-global-profile').onclick = close;
+      modalOverlay.querySelector('#btn-global-profile-cancel').onclick = close;
 
-      document.getElementById('btn-yesterday').onclick = () => {
-        const d = new Date();
-        d.setDate(d.getDate() - 1);
-        const y = d.toISOString().split('T')[0];
-        document.getElementById('dash-from').value = y;
-        document.getElementById('dash-to').value = y;
-        document.getElementById('btn-filter').click();
-      };
+      modalOverlay.querySelector('#btn-global-pwd-save').onclick = async () => {
+        const oldP = document.getElementById('pwd-old').value;
+        const newP = document.getElementById('pwd-new').value;
+        const confP = document.getElementById('pwd-confirm').value;
 
-      document.getElementById('btn-this-week').onclick = () => {
-        const now = new Date();
-        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
-        const start = firstDay.toISOString().split('T')[0];
-        document.getElementById('dash-from').value = start;
-        document.getElementById('dash-to').value = H.today();
-        document.getElementById('btn-filter').click();
-      };
+        if (!oldP || !newP || !confP) {
+          H.showToast('Please fill out all fields.', 'error');
+          return;
+        }
+        if (newP !== confP) {
+          H.showToast('New passwords do not match!', 'error');
+          return;
+        }
 
-      document.getElementById('btn-this-month').onclick = () => {
-        const d = new Date();
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        document.getElementById('dash-from').value = `${y}-${m}-01`;
-        document.getElementById('dash-to').value = H.today();
-        document.getElementById('btn-filter').click();
+        const res = await S.changePassword(oldP, newP);
+        if (res.success) {
+          H.showToast('Password updated successfully!');
+          close();
+        } else {
+          H.showToast(res.error || 'Password update failed', 'error');
+        }
       };
-
-      document.getElementById('btn-refresh-dash').onclick = async () => {
-        const btn = document.getElementById('btn-refresh-dash');
-        btn.classList.add('disabled');
-        btn.style.opacity = '0.6';
-        await this.updateStats(document.getElementById('dash-from').value, document.getElementById('dash-to').value);
-        btn.classList.remove('disabled');
-        btn.style.opacity = '1';
-        H.showToast('Dashboard metrics refreshed', 'info');
-      };
-
-      // Initial stats load
-      await this.updateStats(fromDate, toDate);
     },
 
-    async updateStats(from, to) {
+
+
+    _setupSettings() {
+      const btn = document.getElementById('nav-invoice-settings') || document.getElementById('nav-settings');
+      if (!btn) return;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        POS.Router.navigate('/invoice-settings');
+      });
+    },
+
+    async renderInvoiceSettings() {
+      const mc = document.getElementById('main-content');
       const S = POS.Store;
       const H = POS.Helpers;
 
-      await H.loadPaymentMethods();
-
-      const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
-      const orderItems = await S.getAll('orderItems');
-      const payments = await S.getAll('payments');
-      const products = await S.getAll('products');
-
-      let totalSales = 0;
-      let totalDue = 0;
-      let dueOrdersCount = 0;
-      let cashSales = 0;
-      let cardSales = 0;
-      const paymentBreakdown = {};
-      const paymentCount = {};
-
-      H.paymentMethods.forEach(method => {
-        paymentBreakdown[method] = 0;
-        paymentCount[method] = 0;
-      });
-
-      orders.forEach(order => {
-        const gTotal = parseFloat(order.grandTotal) || 0;
-        const dAmt = parseFloat(order.dueAmount) || 0;
-        totalSales += gTotal;
-        totalDue += dAmt;
-        if (dAmt > 0.01) dueOrdersCount++;
-
-        // Sum payment methods for this order
-        const ordPayments = payments.filter(p => p.orderId === order.id);
-        if (ordPayments.length > 0) {
-          ordPayments.forEach(p => {
-            const amt = parseFloat(p.amount) || 0;
-            const m = p.method || 'Cash';
-            if (paymentBreakdown[m] !== undefined) {
-              paymentBreakdown[m] += amt;
-              paymentCount[m] = (paymentCount[m] || 0) + 1;
-            } else {
-              paymentBreakdown[m] = amt;
-              paymentCount[m] = 1;
-            }
-            if (m === 'Cash') cashSales += amt;
-            if (m === 'Card') cardSales += amt;
-          });
-        } else {
-          // Fallback if order has direct paymentMethod
-          const m = order.paymentMethod || 'Cash';
-          const paid = parseFloat(order.paidAmount) || gTotal;
-          if (paid > 0) {
-            if (paymentBreakdown[m] !== undefined) {
-              paymentBreakdown[m] += paid;
-              paymentCount[m] = (paymentCount[m] || 0) + 1;
-            } else {
-              paymentBreakdown[m] = paid;
-              paymentCount[m] = 1;
-            }
-            if (m === 'Cash') cashSales += paid;
-            if (m === 'Card') cardSales += paid;
-          }
-        }
-      });
-
-      // Calculate profit: Sell Price - Cost Price
-      let totalProfit = 0;
-      let totalUnitsSold = 0;
-      const uniqueSkusSold = new Set();
-
-      orders.forEach(order => {
-        const items = orderItems.filter(i => i.orderId === order.id);
-        let orderCost = 0;
-        items.forEach(item => {
-          totalUnitsSold += (parseInt(item.qty) || 0);
-          if (item.productId) uniqueSkusSold.add(item.productId);
-
-          const product = products.find(p => p.id === item.productId);
-          let cost = parseFloat(item.costPrice) || 0;
-          if (product) {
-            if (product.variations && product.variations.length > 0) {
-              const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
-              cost = variant ? variant.costPrice : product.costPrice;
-            } else {
-              cost = product.costPrice;
-            }
-          }
-          orderCost += (cost * item.qty);
-        });
-
-        const discountAllocated = parseFloat(order.discountAmount) || 0;
-        const profitForOrder = (parseFloat(order.subtotal) || 0) - orderCost - discountAllocated;
-        totalProfit += profitForOrder;
-      });
-
-      const aov = orders.length > 0 ? (totalSales / orders.length) : 0;
-      const marginPct = totalSales > 0 ? ((totalProfit / totalSales) * 100).toFixed(1) : '0.0';
-
-      // Update timestamp
-      const lastUpdatedEl = document.getElementById('dash-last-updated');
-      if (lastUpdatedEl) {
-        const now = new Date();
-        lastUpdatedEl.textContent = `Sync: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-      }
-
-      // ── 1. Render Executive KPI Cards (4 High-Contrast Metrics) ─────
-      const statsGrid = document.getElementById('dashboard-stats');
-      statsGrid.innerHTML = `
-        <!-- Total Revenue (Primary Hero Card) -->
-        <div class="stat-card purple" style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border:none; border-radius:12px; padding:20px; box-shadow:0 4px 14px rgba(99,102,241,0.25); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:rgba(255,255,255,0.2); color:#ffffff; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-          </div>
-          <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#ede9fe; letter-spacing:0.8px;">Gross Revenue</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#ffffff; margin-top:2px; line-height:1.1;">${H.formatCurrency(totalSales)}</div>
-            <div style="font-size:11px; color:#ffffff; background:rgba(255,255,255,0.2); font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
-              <span>${orders.length} Completed Invoices</span>
+        mc.innerHTML = `
+          <div class="page-header">
+            <div>
+              <h2 class="page-title">⚙️ System & Printing Settings</h2>
+              <p class="page-subtitle">Configure printed store receipt templates, paper invoices, and default barcode label designs.</p>
             </div>
           </div>
-        </div>
-
-        <!-- Estimated Gross Profit -->
-        <div class="stat-card green" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          </div>
-          <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Gross Profit</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1;">${H.formatCurrency(totalProfit)}</div>
-            <div style="font-size:11px; color:#065f46; background:#d1fae5; border:1px solid #a7f3d0; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
-              <span>Margin: <strong>${marginPct}%</strong></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Average Order Value (AOV) -->
-        <div class="stat-card blue" style="background:#fff; border:1.5px solid #3b82f6; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(59,130,246,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-          </div>
-          <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Avg Order Value</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#1e40af; margin-top:2px; line-height:1.1;">${H.formatCurrency(aov)}</div>
-            <div style="font-size:11px; color:#1e40af; background:#dbeafe; border:1px solid #bfdbfe; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
-              <span>Spend per Customer</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Total Items Sold -->
-        <div class="stat-card teal" style="background:#fff; border:1.5px solid #0d9488; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(13,148,136,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#f0fdfa; color:#0d9488; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-          </div>
-          <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Units Sold</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#115e59; margin-top:2px; line-height:1.1;">${totalUnitsSold} <span style="font-size:13px; font-weight:600; color:#0d9488;">pcs</span></div>
-            <div style="font-size:11px; color:#115e59; background:#ccfbf1; border:1px solid #99f6e4; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
-              <span>Across ${uniqueSkusSold.size} SKUs</span>
-            </div>
-          </div>
-        </div>
-      `;
-
-      // ── 2. Render Payment Method Settlement Cards ────
-      let totalCollected = 0;
-      Object.values(paymentBreakdown).forEach(amt => totalCollected += amt);
-
-      const pmGrid = document.getElementById('payment-methods-grid');
-      const pmPill = document.getElementById('payment-summary-pill');
-      if (pmPill) pmPill.textContent = `Total Collections: ${H.formatCurrency(totalCollected)}`;
-
-      if (pmGrid) {
-        const displayMethods = [...H.paymentMethods];
-        Object.keys(paymentBreakdown).forEach(m => {
-          if (!displayMethods.includes(m)) displayMethods.push(m);
-        });
-
-        pmGrid.innerHTML = displayMethods.map(method => {
-          const amt = paymentBreakdown[method] || 0;
-          const count = paymentCount[method] || 0;
-          const pct = totalCollected > 0 ? ((amt / totalCollected) * 100).toFixed(1) : '0.0';
-          const brandColor = H.getPaymentMethodColor(method);
-          const iconHtml = H.getPaymentMethodIcon(method, 40);
-          const isActive = amt > 0;
-
-          return `
-            <div class="payment-channel-card" style="background:#fff; border:1px solid ${isActive ? '#cbd5e1' : '#f1f5f9'}; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; transition:all 0.2s ease; box-shadow:${isActive ? '0 2px 5px rgba(0,0,0,0.03)' : 'none'};">
-              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-                  ${iconHtml}
-                  <div style="min-width:0;">
-                    <div style="font-weight:700; font-size:14px; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${method}</div>
-                    <div style="font-size:11px; color:#64748b;">${count} transaction${count === 1 ? '' : 's'}</div>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1150px; align-items:start;" class="fade-in">
+            
+            <!-- Left Card: Invoice & Receipt Settings -->
+            <div class="card">
+              <div class="card-header">
+                <h3>🧾 Invoice & Receipt Configurations</h3>
+              </div>
+              <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
+                <div class="form-group">
+                  <label class="form-label">Store Logo</label>
+                  <div style="display:flex; gap:12px; align-items:center; background:#f8fafc; padding:10px; border:1px solid var(--border); border-radius:var(--radius-sm);">
+                    <div id="set-logo-preview" style="width:60px; height:60px; border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; overflow:hidden; background:#fff;">
+                      <span style="font-size:20px; color:#cbd5e1;">Logo</span>
+                    </div>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                      <input type="file" id="set-logo-file" accept="image/*" style="font-size:11px;">
+                      <input type="text" class="form-input" id="set-logo-url" placeholder="Or paste image URL..." style="height:28px; font-size:11px;">
+                    </div>
                   </div>
                 </div>
-                <div>
-                  ${isActive 
-                    ? `<span style="font-size:10px; font-weight:700; color:#16a34a; background:#f0fdf4; border:1px solid #bbf7d0; padding:2px 7px; border-radius:12px;">Active</span>`
-                    : `<span style="font-size:10px; font-weight:600; color:#94a3b8; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 7px; border-radius:12px;">0 Tx</span>`
-                  }
+                <div class="form-group">
+                  <label class="form-label">Store / Company Name</label>
+                  <input type="text" class="form-input" id="set-store-name" value="Fetching...">
                 </div>
-              </div>
-
-              <div>
-                <div style="font-size:17px; font-weight:800; color:#0f172a;">${H.formatCurrency(amt)}</div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; font-size:11px; color:#64748b;">
-                  <span>Channel share</span>
-                  <span style="font-weight:700; color:${brandColor};">${pct}%</span>
+                <div class="form-group">
+                  <label class="form-label">Show Store Name on Invoices / Receipts</label>
+                  <select class="form-select" id="set-invoice-show-store-name">
+                    <option value="1">Show</option>
+                    <option value="0">Hide</option>
+                  </select>
                 </div>
-                <div style="width:100%; height:5px; background:#f1f5f9; border-radius:4px; margin-top:4px; overflow:hidden;">
-                  <div style="width:${pct}%; height:100%; background:${brandColor}; border-radius:4px; transition:width 0.4s ease;"></div>
+                <div class="form-group">
+                  <label class="form-label">Store Address</label>
+                  <input type="text" class="form-input" id="set-store-address" value="Fetching...">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Contact / Phone Number</label>
+                  <input type="text" class="form-input" id="set-store-phone" value="Fetching...">
+                </div>
+                 <div class="form-group">
+                  <label class="form-label">Store Website URL</label>
+                  <input type="text" class="form-input" id="set-store-website" placeholder="e.g. www.myshop.com">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Invoice / Receipt Footer Note</label>
+                  <textarea class="form-input" id="set-invoice-note" rows="2" style="resize:vertical;" placeholder="e.g. Thank you for shopping with us!"></textarea>
+                </div>
+                <div class="form-group" style="display:flex; gap:10px;">
+                  <div style="flex:1;">
+                    <label class="form-label">Thermal Width (mm)</label>
+                    <input type="number" class="form-input" id="set-receipt-width" placeholder="e.g. 80" min="40" max="150">
+                  </div>
+                  <div style="flex:1;">
+                    <label class="form-label">Paper Width (px)</label>
+                    <input type="number" class="form-input" id="set-invoice-width" placeholder="e.g. 800" min="300" max="1500">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Default Print Format</label>
+                  <select class="form-select" id="set-print-type">
+                    <option value="receipt">Thermal Receipt (80mm)</option>
+                    <option value="invoice">Paper Invoice (A4/A5)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="group-invoice-style">
+                  <label class="form-label">Paper Invoice Theme</label>
+                  <select class="form-select" id="set-invoice-style">
+                    <option value="theme-modern">Modern Minimalist</option>
+                    <option value="theme-classic">Classic Business</option>
+                    <option value="theme-compact">Compact Invoice</option>
+                  </select>
+                </div>
+                <div class="form-group" id="group-receipt-style">
+                  <label class="form-label">Thermal Receipt Theme</label>
+                  <select class="form-select" id="set-receipt-style">
+                    <option value="style-1">Style 1: Standard Minimalist</option>
+                    <option value="style-2">Style 2: Classic Bordered</option>
+                    <option value="style-3">Style 3: Modern Elegant (Centered)</option>
+                  </select>
                 </div>
               </div>
             </div>
-          `;
-        }).join('');
-      }
 
-      // ── 3. Charts & Operational Insights ─────────────
-      this.renderCharts(orders, paymentBreakdown, from, to);
-      this.renderTopSelling(orders, orderItems);
-    },
-
-    renderCharts(orders, paymentBreakdown, from, to) {
-      const H = POS.Helpers;
-
-      const diffTime = Math.abs(new Date(to) - new Date(from));
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-      // 1. Sales Trend (by day)
-      const dailySales = {};
-      orders.forEach(o => {
-        const day = H.formatDate(o.date);
-        dailySales[day] = (dailySales[day] || 0) + (parseFloat(o.grandTotal) || 0);
-      });
-
-      const trendLabels = Object.keys(dailySales).reverse();
-      const trendData = Object.values(dailySales).reverse();
-
-      const ctxTrend = document.getElementById('salesTrendChart').getContext('2d');
-      if (window.trendChart) window.trendChart.destroy();
-
-      // Create rich gradient
-      const gradient = ctxTrend.createLinearGradient(0, 0, 0, 240);
-      gradient.addColorStop(0, 'rgba(124, 58, 237, 0.25)');
-      gradient.addColorStop(1, 'rgba(124, 58, 237, 0.0)');
-
-      window.trendChart = new Chart(ctxTrend, {
-        type: 'line',
-        data: {
-          labels: trendLabels.length ? trendLabels : ['No Data'],
-          datasets: [{
-            label: 'Sales Revenue',
-            data: trendData.length ? trendData : [0],
-            borderColor: '#7C3AED',
-            backgroundColor: gradient,
-            fill: true,
-            tension: 0.35,
-            borderWidth: 2.5,
-            pointRadius: 4,
-            pointBackgroundColor: '#7C3AED',
-            pointBorderColor: '#fff',
-            pointHoverRadius: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (context) => `Revenue: ${H.formatCurrency(context.raw)}`
-              }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              grid: { color: 'rgba(0, 0, 0, 0.04)' }
-            },
-            x: {
-              grid: { display: false }
-            }
-          }
-        }
-      });
-
-      // 2. Payment Method Distribution (Authentic Brand Colors)
-      const payLabels = Object.keys(paymentBreakdown).filter(k => paymentBreakdown[k] > 0);
-      const payData = payLabels.map(k => paymentBreakdown[k]);
-      const payColors = payLabels.map(k => H.getPaymentMethodColor(k));
-
-      const ctxPay = document.getElementById('paymentMethodChart').getContext('2d');
-      if (window.payChart) window.payChart.destroy();
-      window.payChart = new Chart(ctxPay, {
-        type: 'doughnut',
-        data: {
-          labels: payLabels.length ? payLabels : ['No Transactions'],
-          datasets: [{
-            data: payData.length ? payData : [1],
-            backgroundColor: payColors.length ? payColors : ['#CBD5E1'],
-            borderWidth: 2,
-            borderColor: '#ffffff'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '68%',
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                boxWidth: 12,
-                padding: 12,
-                font: { size: 12, weight: 600 }
-              }
-            },
-            tooltip: {
-              callbacks: {
-                label: (context) => `${context.label}: ${H.formatCurrency(context.raw)}`
-              }
-            }
-          }
-        }
-      });
-
-      // 3. 24-Hour Distribution (Hourly peaks)
-      const hourlyCounts = Array(24).fill(0);
-      orders.forEach(o => {
-        const hr = new Date(o.date).getHours();
-        if (hr >= 0 && hr < 24) {
-          hourlyCounts[hr]++;
-        }
-      });
-
-      const hourlyData = diffDays > 2 
-        ? hourlyCounts.map(c => parseFloat((c / diffDays).toFixed(2))) 
-        : hourlyCounts;
-
-      const hourLabels = Array.from({ length: 24 }, (_, i) => {
-        const h = i % 12 || 12;
-        const ampm = i < 12 ? 'AM' : 'PM';
-        return `${h} ${ampm}`;
-      });
-
-      const maxHourly = Math.max(...hourlyCounts, 1);
-      const barColors = hourlyCounts.map(val => val === maxHourly && val > 0 ? '#7C3AED' : 'rgba(59, 130, 246, 0.7)');
-
-      const ctxHour = document.getElementById('hourlySalesChart').getContext('2d');
-      if (window.hourChart) window.hourChart.destroy();
-      window.hourChart = new Chart(ctxHour, {
-        type: 'bar',
-        data: {
-          labels: hourLabels,
-          datasets: [{
-            label: diffDays > 2 ? 'Avg Hourly Invoices' : 'Hourly Invoices',
-            data: hourlyData,
-            backgroundColor: barColors,
-            borderColor: '#3B82F6',
-            borderWidth: 1,
-            borderRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (context) => `Traffic: ${context.raw} invoice(s)`
-              }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: { precision: 0 },
-              grid: { color: 'rgba(0, 0, 0, 0.04)' }
-            },
-            x: {
-              grid: { display: false }
-            }
-          }
-        }
-      });
-    },
-
-    renderTopSelling(orders, orderItems) {
-      const H = POS.Helpers;
-      const orderIds = orders.map(o => o.id);
-      const items = orderItems.filter(i => orderIds.includes(i.orderId));
-
-      const totals = {};
-      items.forEach(i => {
-        const key = i.productName + (i.variationName ? ` (${i.variationName})` : '');
-        if (!totals[key]) {
-          totals[key] = { qty: 0, amount: 0 };
-        }
-        totals[key].qty += (parseInt(i.qty) || 0);
-        totals[key].amount += (parseFloat(i.total) || 0);
-      });
-
-      const sorted = Object.entries(totals)
-        .sort((a, b) => b[1].qty - a[1].qty)
-        .slice(0, 5);
-
-      const tbody = document.getElementById('top-selling-tbody');
-      tbody.innerHTML = '';
-
-      if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:24px; color:#94a3b8; font-style:italic;">No sales recorded in selected range.</td></tr>`;
-        return;
-      }
-
-      const maxQty = sorted[0][1].qty || 1;
-
-      sorted.forEach(([name, data], idx) => {
-        const rankMedals = ['🥇', '🥈', '🥉', '4', '5'];
-        const medal = rankMedals[idx] || (idx + 1);
-        const barWidth = Math.round((data.qty / maxQty) * 100);
-
-        tbody.innerHTML += `
-          <tr style="border-bottom: 1px solid #f1f5f9;">
-            <td style="text-align:center; font-weight:700; font-size:14px;">${medal}</td>
-            <td style="padding:10px 12px;">
-              <div style="font-weight:600; color:#1e293b;">${H.esc(name)}</div>
-              <div style="width:100%; height:4px; background:#f1f5f9; border-radius:3px; margin-top:4px; overflow:hidden;">
-                <div style="width:${barWidth}%; height:100%; background:#f59e0b; border-radius:3px;"></div>
+            <!-- Right Card: Barcode Label Settings -->
+            <div class="card">
+              <div class="card-header">
+                <h3>🏷️ Barcode Label Template Defaults</h3>
               </div>
-            </td>
-            <td style="text-align:center; font-weight:700; color:#334155;">${data.qty}</td>
-            <td style="text-align:right; font-weight:700; color:#059669;">${H.formatCurrency(data.amount)}</td>
-          </tr>
+              <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
+                <div class="form-group">
+                  <label class="form-label">Default Design Template</label>
+                  <select class="form-select" id="set-label-template">
+                    <option value="standard">Standard Retail</option>
+                    <option value="clothing">Clothing / Tag Label</option>
+                    <option value="barcode_only">Barcode Only Sticker</option>
+                    <option value="price_tag">Price Tag Sticker</option>
+                    <option value="premium">Premium Brand Tag</option>
+                    <option value="shelf">Shelf / Bin Label</option>
+                    <option value="sale_discount">Sale / Promo Tag</option>
+                    <option value="qr_only">QR Code Sticker</option>
+                    <option value="warehouse">Warehouse Label</option>
+                    <option value="small_sticker">Small Sticker (Compact)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Default Dimensions Preset</label>
+                  <select class="form-select" id="set-label-preset">
+                    <option value="40x25">40 × 25 mm</option>
+                    <option value="50x30">50 × 30 mm</option>
+                    <option value="58x40">58 × 40 mm</option>
+                    <option value="70x50">70 × 50 mm</option>
+                    <option value="80x50">80 × 50 mm</option>
+                    <option value="100x50">100 × 50 mm</option>
+                    <option value="custom">Custom Size (mm)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="set-lbl-custom-dims" style="display:none; gap:10px;">
+                  <div style="flex:1;">
+                    <label class="form-label">Width (mm)</label>
+                    <input type="number" class="form-input" id="set-label-width" value="50" min="10" max="250">
+                  </div>
+                  <div style="flex:1;">
+                    <label class="form-label">Height (mm)</label>
+                    <input type="number" class="form-input" id="set-label-height" value="30" min="10" max="250">
+                  </div>
+                </div>
+
+                <div style="border-top:1px solid #edf2f7; padding-top:10px;">
+                  <h4 style="margin:0 0 10px 0; font-size:12px; color:var(--text-dark);">Visibility Toggles:</h4>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-store" checked> Show Store Name
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-name" checked> Show Product Name
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-barcode" checked> Show Barcode
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-human-readable" checked> Show Barcode Text
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-qr"> Show QR Code
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-sku" checked> Show SKU
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-price" checked> Show Price
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                      <input type="checkbox" id="set-chk-label-show-attribs"> Show Size & Color
+                    </label>
+                  </div>
+                </div>
+
+                <button class="btn btn-primary" id="btn-save-settings" style="padding:14px; font-weight:700; margin-top:10px;" disabled>
+                  💾 Save All Configurations
+                </button>
+              </div>
+            </div>
+
+          </div>
         `;
-      });
+
+        const settings = await S.getSettings();
+        console.log('--- SYSTEM SETTINGS LOADED ---');
+        console.log(settings);
+        console.log('------------------------------');
+        
+        let activeLogo = settings.invoice_logo || '';
+        const logoPreview = document.getElementById('set-logo-preview');
+        const logoUrlInput = document.getElementById('set-logo-url');
+        const logoFileInput = document.getElementById('set-logo-file');
+        
+        const updateLogoPreview = (src) => {
+          if (src) {
+            logoPreview.innerHTML = `<img src="${src}" style="width:100%; height:100%; object-fit:contain;">`;
+          } else {
+            logoPreview.innerHTML = `<span style="font-size:16px; color:#cbd5e1;">Logo</span>`;
+          }
+        };
+        
+        updateLogoPreview(activeLogo);
+        if (activeLogo && !activeLogo.startsWith('data:')) {
+          logoUrlInput.value = activeLogo;
+        }
+
+        logoFileInput.onchange = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            activeLogo = reader.result;
+            updateLogoPreview(activeLogo);
+            logoUrlInput.value = '';
+          };
+          reader.readAsDataURL(file);
+        };
+
+        logoUrlInput.oninput = (e) => {
+          activeLogo = e.target.value.trim();
+          updateLogoPreview(activeLogo);
+        };
+
+        document.getElementById('set-store-name').value = settings.store_name || '';
+        document.getElementById('set-invoice-show-store-name').value = settings.invoice_show_store_name || '1';
+        document.getElementById('set-store-address').value = settings.store_address || '';
+        document.getElementById('set-store-phone').value = settings.store_phone || '';
+        document.getElementById('set-store-website').value = settings.store_website || '';
+        document.getElementById('set-invoice-note').value = settings.invoice_note || '';
+        document.getElementById('set-receipt-width').value = settings.receipt_width || '80';
+        document.getElementById('set-invoice-width').value = settings.invoice_width || '800';
+        document.getElementById('set-print-type').value = settings.default_print_type || 'receipt';
+        document.getElementById('set-invoice-style').value = settings.invoice_style || 'theme-modern';
+        document.getElementById('set-receipt-style').value = settings.receipt_style || 'style-1';
+        
+        // Barcode Label settings mapping
+        document.getElementById('set-label-template').value = settings.label_template || 'standard';
+        document.getElementById('set-label-preset').value = settings.label_preset || '50x30';
+        document.getElementById('set-label-width').value = settings.label_width || '50';
+        document.getElementById('set-label-height').value = settings.label_height || '30';
+        document.getElementById('set-chk-label-show-store').checked = settings.label_show_store !== '0';
+        document.getElementById('set-chk-label-show-name').checked = settings.label_show_name !== '0';
+        document.getElementById('set-chk-label-show-barcode').checked = settings.label_show_barcode !== '0';
+        document.getElementById('set-chk-label-show-human-readable').checked = settings.label_show_human_readable !== '0';
+        document.getElementById('set-chk-label-show-qr').checked = settings.label_show_qr === '1';
+        document.getElementById('set-chk-label-show-sku').checked = settings.label_show_sku !== '0';
+        document.getElementById('set-chk-label-show-price').checked = settings.label_show_price !== '0';
+        document.getElementById('set-chk-label-show-attribs').checked = settings.label_show_attribs === '1';
+
+        // Preset dropdown toggle
+        const handlePresetChange = () => {
+          const val = document.getElementById('set-label-preset').value;
+          const customDims = document.getElementById('set-lbl-custom-dims');
+          if (val === 'custom') {
+            customDims.style.display = 'flex';
+          } else {
+            customDims.style.display = 'none';
+            const [w, h] = val.split('x');
+            document.getElementById('set-label-width').value = w;
+            document.getElementById('set-label-height').value = h;
+          }
+        };
+        document.getElementById('set-label-preset').onchange = handlePresetChange;
+        handlePresetChange();
+
+        const saveBtn = document.getElementById('btn-save-settings');
+        saveBtn.disabled = false;
+
+        saveBtn.onclick = async () => {
+          const store_name = document.getElementById('set-store-name').value.trim();
+          const invoice_show_store_name = document.getElementById('set-invoice-show-store-name').value;
+          const store_address = document.getElementById('set-store-address').value.trim();
+          const store_phone = document.getElementById('set-store-phone').value.trim();
+          const store_website = document.getElementById('set-store-website').value.trim();
+          const invoice_note = document.getElementById('set-invoice-note').value.trim();
+          const receipt_width = document.getElementById('set-receipt-width').value.trim();
+          const invoice_width = document.getElementById('set-invoice-width').value.trim();
+          const default_print_type = document.getElementById('set-print-type').value;
+          const invoice_style = document.getElementById('set-invoice-style').value;
+          const receipt_style = document.getElementById('set-receipt-style').value;
+
+          const label_template = document.getElementById('set-label-template').value;
+          const label_preset = document.getElementById('set-label-preset').value;
+          const label_width = document.getElementById('set-label-width').value;
+          const label_height = document.getElementById('set-label-height').value;
+          const label_show_store = document.getElementById('set-chk-label-show-store').checked ? '1' : '0';
+          const label_show_name = document.getElementById('set-chk-label-show-name').checked ? '1' : '0';
+          const label_show_barcode = document.getElementById('set-chk-label-show-barcode').checked ? '1' : '0';
+          const label_show_human_readable = document.getElementById('set-chk-label-show-human-readable').checked ? '1' : '0';
+          const label_show_qr = document.getElementById('set-chk-label-show-qr').checked ? '1' : '0';
+          const label_show_sku = document.getElementById('set-chk-label-show-sku').checked ? '1' : '0';
+          const label_show_price = document.getElementById('set-chk-label-show-price').checked ? '1' : '0';
+          const label_show_attribs = document.getElementById('set-chk-label-show-attribs').checked ? '1' : '0';
+
+          if (!store_name || !store_address || !store_phone) {
+            H.showToast('Please fill out all settings fields.', 'error');
+            return;
+          }
+
+          saveBtn.disabled = true;
+          saveBtn.innerText = 'Saving...';
+
+          const res = await S.updateSettings({ 
+            store_name, 
+            invoice_show_store_name,
+            store_address, 
+            store_phone, 
+            store_website,
+            invoice_note,
+            invoice_logo: activeLogo,
+            receipt_width,
+            invoice_width,
+            invoice_style, 
+            default_print_type, 
+            receipt_style,
+            label_template,
+            label_preset,
+            label_width,
+            label_height,
+            label_show_store,
+            label_show_name,
+            label_show_barcode,
+            label_show_human_readable,
+            label_show_qr,
+            label_show_sku,
+            label_show_price,
+            label_show_attribs
+          });
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '💾 Save All Configurations';
+
+          if (res.success) {
+            H.showToast('All configurations saved successfully!');
+          } else {
+            H.showToast('Could not save settings: ' + res.error, 'error');
+          }
+        };
     }
   };
 
   window.POS = window.POS || {};
-  window.POS.Dashboard = Dashboard;
+  window.POS.App = App;
+
+  document.addEventListener('DOMContentLoaded', () => App.init());
 })();
