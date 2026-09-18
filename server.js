@@ -1216,7 +1216,7 @@ app.get('/api/products/resolve-scan', async (req, res) => {
   }
 });
 
-app.post('/api/products/bulk-stock-update', verifyRole(['admin', 'manager']), async (req, res) => {
+app.post('/api/products/bulk-stock-update', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
   try {
     const updates = req.body;
     if (!Array.isArray(updates)) {
