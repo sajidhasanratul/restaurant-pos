@@ -70,7 +70,7 @@
         let allowed = true;
 
         if (role === 'cashier') {
-          const permitted = ['/new-order', '/sales-list', '/sales-return', '/return-list', '/inventory-details', '/bulk-scan', '/customers'];
+          const permitted = ['/new-order', '/sales-list', '/sales-return', '/return-list', '/custom-item-price', '/inventory-details', '/bulk-scan', '/customers'];
           if (!permitted.includes(path)) {
             allowed = false;
           }
