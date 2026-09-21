@@ -200,7 +200,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   transition: max-height .3s ease;
 }
 
-.nav-group-items.open { max-height: 800px; }
+.nav-group-items.open { max-height: 500px; }
 
 .sub-item { padding-left: 56px; font-size: 13px; }
 
@@ -343,7 +343,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 /* ── Stats Cards ───────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -351,15 +351,17 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .stat-card {
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: 18px 16px;
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 14px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   transition: all var(--transition);
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .stat-card::before {
@@ -412,6 +414,9 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   font-weight: 700;
   color: var(--text);
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-sub {
