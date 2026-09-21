@@ -68,43 +68,40 @@
         </div>
       </div>
 
-      <!-- 4. Products -->
-      <div id="nav-grp-products">
-        <a href="/products" class="nav-item" data-page="products">
+      <!-- 4. Inventory (Dropdown) -->
+      <div class="nav-group" id="nav-grp-inventory">
+        <div class="nav-group-header" data-group="inventory">
           <span class="nav-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg>
           </span>
-          <span class="nav-text">Products</span>
-        </a>
+          <span class="nav-text">Inventory</span>
+          <span class="nav-arrow">&#9656;</span>
+        </div>
+        <div class="nav-group-items">
+          <a href="/products"          class="nav-item sub-item" data-page="products">Products</a>
+          <a href="/bulk-scan"         class="nav-item sub-item" data-page="bulk-scan">Bulk Stock Update</a>
+          <a href="/inventory-details" class="nav-item sub-item" data-page="inventory-details">Inventory Details</a>
+          <a href="/label-printer"     class="nav-item sub-item" data-page="label-printer">Label Printer</a>
+        </div>
       </div>
 
-      <!-- 5. Inventory Details -->
-      <div id="nav-grp-inventory">
-        <a href="/inventory-details" class="nav-item" data-page="inventory-details">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          </span>
-          <span class="nav-text">Inventory Details</span>
-        </a>
-      </div>
-
-      <!-- 6. Bulk Stock Update -->
-      <div id="nav-grp-bulk-scan">
-        <a href="/bulk-scan" class="nav-item" data-page="bulk-scan">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5v14M21 5v14M7 5v14M17 5v14M11 5v14M14 5v14"/></svg>
-          </span>
-          <span class="nav-text">Bulk Stock Update</span>
-        </a>
-      </div>
-
-      <!-- 7. Expenses -->
+      <!-- 5. Expenses -->
       <div id="nav-grp-expenses">
         <a href="/expenses" class="nav-item" data-page="expenses">
           <span class="nav-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
           </span>
           <span class="nav-text">Expenses</span>
+        </a>
+      </div>
+
+      <!-- 6. Suppliers -->
+      <div id="nav-grp-suppliers">
+        <a href="/suppliers" class="nav-item" data-page="suppliers">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+          </span>
+          <span class="nav-text">Suppliers</span>
         </a>
       </div>
 
@@ -149,16 +146,6 @@
         </a>
       </div>
 
-      <!-- 10. Label Printer -->
-      <div id="nav-grp-label-printer">
-        <a href="/label-printer" class="nav-item" data-page="label-printer">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
-          </span>
-          <span class="nav-text">Label Printer</span>
-        </a>
-      </div>
-
       <div class="nav-divider"></div>
 
       <!-- 11. Settings (Dropdown) -->
@@ -174,6 +161,7 @@
           <a href="/invoice-settings" class="nav-item sub-item" id="nav-invoice-settings" data-page="invoice-settings">Invoice Settings</a>
           <a href="/users" class="nav-item sub-item" id="nav-admin-control" data-page="users">Admin Control</a>
           <a href="/payment-methods" class="nav-item sub-item" id="nav-payment-methods" data-page="payment-methods">Payment Method</a>
+          <a href="/report-settings" class="nav-item sub-item" id="nav-report-settings" data-page="report-settings">Report Settings</a>
           <a href="/gallery" class="nav-item sub-item" id="nav-gallery" data-page="gallery">Gallery</a>
         </div>
       </div>
@@ -219,28 +207,30 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="js/data/store.js?v=2.6"></script>
-  <script src="js/utils/helpers.js?v=2.6"></script>
-  <script src="js/router.js?v=2.6"></script>
-  <script src="js/dashboard.js?v=2.6"></script>
-  <script src="js/new-order.js?v=2.6"></script>
-  <script src="js/edit-order.js?v=2.6"></script>
-  <script src="js/sales-list.js?v=2.6"></script>
-  <script src="js/sales-return.js?v=2.6"></script>
-  <script src="js/return-list.js?v=2.6"></script>
-  <script src="js/custom-item-price.js?v=2.6"></script>
-  <script src="js/payment-methods.js?v=2.6"></script>
-  <script src="js/reports.js?v=2.6"></script>
-  <script src="js/products.js?v=2.6"></script>
-  <script src="js/inventory-details.js?v=2.6"></script>
-  <script src="js/bulk-scan.js?v=2.6"></script>
-  <script src="js/gallery.js?v=2.6"></script>
-  <script src="js/customers.js?v=2.6"></script>
-  <script src="js/users.js?v=2.6"></script>
-  <script src="js/expenses.js?v=2.6"></script>
-  <script src="js/coupons.js?v=2.6"></script>
-  <script src="js/label-printer.js?v=2.6"></script>
-  <script src="js/app.js?v=2.6"></script>
+  <script src="js/data/store.js?v=2.7"></script>
+  <script src="js/utils/helpers.js?v=2.7"></script>
+  <script src="js/router.js?v=2.7"></script>
+  <script src="js/dashboard.js?v=2.7"></script>
+  <script src="js/new-order.js?v=2.7"></script>
+  <script src="js/edit-order.js?v=2.7"></script>
+  <script src="js/sales-list.js?v=2.7"></script>
+  <script src="js/sales-return.js?v=2.7"></script>
+  <script src="js/return-list.js?v=2.7"></script>
+  <script src="js/custom-item-price.js?v=2.7"></script>
+  <script src="js/payment-methods.js?v=2.7"></script>
+  <script src="js/reports.js?v=2.7"></script>
+  <script src="js/products.js?v=2.7"></script>
+  <script src="js/inventory-details.js?v=2.7"></script>
+  <script src="js/bulk-scan.js?v=2.7"></script>
+  <script src="js/gallery.js?v=2.7"></script>
+  <script src="js/customers.js?v=2.7"></script>
+  <script src="js/users.js?v=2.7"></script>
+  <script src="js/expenses.js?v=2.7"></script>
+  <script src="js/suppliers.js?v=2.7"></script>
+  <script src="js/report-settings.js?v=2.7"></script>
+  <script src="js/coupons.js?v=2.7"></script>
+  <script src="js/label-printer.js?v=2.7"></script>
+  <script src="js/app.js?v=2.7"></script>
   <div class="modal-overlay" id="global-modal-overlay"></div>
 </body>
 </html>
