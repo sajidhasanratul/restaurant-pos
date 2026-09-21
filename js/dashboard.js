@@ -54,7 +54,7 @@
         </div>
 
         <!-- Primary KPI Metrics -->
-        <div class="stats-grid fade-in" id="dashboard-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">
+        <div class="stats-grid fade-in" id="dashboard-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap:16px; margin-bottom:24px;">
           <div style="grid-column: 1/-1; text-align: center; padding: 30px;"><div class="spinner" style="margin: 0 auto 10px;"></div>Loading Business Intelligence...</div>
         </div>
 
@@ -343,101 +343,115 @@
       const statsGrid = document.getElementById('dashboard-stats');
       statsGrid.innerHTML = `
         <!-- Total Revenue (Primary Hero Card) -->
-        <div class="stat-card purple" style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border:none; border-radius:12px; padding:20px; box-shadow:0 4px 14px rgba(99,102,241,0.25); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:rgba(255,255,255,0.2); color:#ffffff; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+        <div class="stat-card purple" style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border:none; border-radius:12px; padding:18px 16px; box-shadow:0 4px 14px rgba(99,102,241,0.25); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,0.2); color:#ffffff; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#ede9fe; letter-spacing:0.8px;">Gross Revenue</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#ffffff; margin-top:2px; line-height:1.1;">${H.formatCurrency(totalSales)}</div>
-            <div style="font-size:11px; color:#ffffff; background:rgba(255,255,255,0.2); font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#ede9fe; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Gross Revenue</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#ffffff; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalSales)}</div>
+            <div style="font-size:11px; color:#ffffff; background:rgba(255,255,255,0.2); font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>${orders.length} Completed Invoices</span>
             </div>
           </div>
         </div>
 
         <!-- Estimated Gross Profit -->
-        <div class="stat-card green" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        <div class="stat-card green" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Gross Profit</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1;">${H.formatCurrency(totalProfit)}</div>
-            <div style="font-size:11px; color:#065f46; background:#d1fae5; border:1px solid #a7f3d0; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Gross Profit</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalProfit)}</div>
+            <div style="font-size:11px; color:#065f46; background:#d1fae5; border:1px solid #a7f3d0; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>Margin: <strong>${marginPct}%</strong></span>
             </div>
           </div>
         </div>
 
         <!-- Expenses Amount Card -->
-        <div class="stat-card red" style="background:#fff; border:1.5px solid #ef4444; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(239,68,68,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#fef2f2; color:#dc2626; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div class="stat-card red" style="background:#fff; border:1.5px solid #ef4444; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(239,68,68,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fef2f2; color:#dc2626; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between;">
-              <span>Expenses Amount</span>
-              ${isSupplierAsExpense ? '<span style="font-size:9px; background:#ecfdf5; color:#059669; padding:1px 5px; border-radius:4px; font-weight:700;">+Suppliers</span>' : ''}
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
+              <span style="overflow:hidden; text-overflow:ellipsis;">Expenses Amount</span>
+              ${isSupplierAsExpense ? '<span style="font-size:9px; background:#ecfdf5; color:#059669; padding:1px 5px; border-radius:4px; font-weight:700; flex-shrink:0;">+Suppliers</span>' : ''}
             </div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#b91c1c; margin-top:2px; line-height:1.1;">${H.formatCurrency(displayedExpenseTotal)}</div>
-            <div style="font-size:11px; color:#64748b; margin-top:5px; font-weight:600; line-height:1.3;">
-              Paid Amount: <span style="font-weight:700; color:#059669;">${H.formatCurrency(displayedExpensePaid)}</span> &bull; Unpaid Amount: <span style="font-weight:700; color:#dc2626;">${H.formatCurrency(displayedExpenseUnpaid)}</span>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#b91c1c; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(displayedExpenseTotal)}</div>
+            <div style="margin-top:8px; padding-top:6px; border-top:1px solid #fee2e2; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Paid Amount:</span>
+                <span style="font-weight:700; color:#059669;">${H.formatCurrency(displayedExpensePaid)}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Unpaid Amount:</span>
+                <span style="font-weight:700; color:#dc2626;">${H.formatCurrency(displayedExpenseUnpaid)}</span>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Supplier Payments Card -->
-        <div class="stat-card amber" style="background:#fff; border:1.5px solid #f59e0b; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(245,158,11,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#fffbeb; color:#d97706; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+        <div class="stat-card amber" style="background:#fff; border:1.5px solid #f59e0b; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(245,158,11,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fffbeb; color:#d97706; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Supplier Payments</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#b45309; margin-top:2px; line-height:1.1;">${H.formatCurrency(totalSupplierPayments)}</div>
-            <div style="font-size:11px; color:#64748b; margin-top:5px; font-weight:600; line-height:1.3;">
-              Paid Amount: <span style="font-weight:700; color:#059669;">${H.formatCurrency(paidSupplierPayments)}</span> &bull; Unpaid Amount: <span style="font-weight:700; color:#dc2626;">${H.formatCurrency(unpaidSupplierPayments)}</span>
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Supplier Payments</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#b45309; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalSupplierPayments)}</div>
+            <div style="margin-top:8px; padding-top:6px; border-top:1px solid #fef3c7; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Paid Amount:</span>
+                <span style="font-weight:700; color:#059669;">${H.formatCurrency(paidSupplierPayments)}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Unpaid Amount:</span>
+                <span style="font-weight:700; color:#dc2626;">${H.formatCurrency(unpaidSupplierPayments)}</span>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Overall Profit Card -->
-        <div class="stat-card ${isNetProfitPositive ? 'green' : 'red'}" style="background:#fff; border:1.5px solid ${isNetProfitPositive ? '#10b981' : '#ef4444'}; border-radius:12px; padding:20px; box-shadow:0 2px 8px ${isNetProfitPositive ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:${isNetProfitPositive ? '#ecfdf5' : '#fef2f2'}; color:${isNetProfitPositive ? '#059669' : '#dc2626'}; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+        <div class="stat-card ${isNetProfitPositive ? 'green' : 'red'}" style="background:#fff; border:1.5px solid ${isNetProfitPositive ? '#10b981' : '#ef4444'}; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px ${isNetProfitPositive ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:${isNetProfitPositive ? '#ecfdf5' : '#fef2f2'}; color:${isNetProfitPositive ? '#059669' : '#dc2626'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Overall Profit</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; margin-top:2px; line-height:1.1;">${H.formatCurrency(overallNetProfit)}</div>
-            <div style="font-size:11px; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; background:${isNetProfitPositive ? '#d1fae5' : '#fee2e2'}; border:1px solid ${isNetProfitPositive ? '#a7f3d0' : '#fca5a5'}; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Overall Profit</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(overallNetProfit)}</div>
+            <div style="font-size:11px; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; background:${isNetProfitPositive ? '#d1fae5' : '#fee2e2'}; border:1px solid ${isNetProfitPositive ? '#a7f3d0' : '#fca5a5'}; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>Net Margin: <strong>${netMarginPct}%</strong></span>
             </div>
           </div>
         </div>
 
         <!-- Average Order Value (AOV) -->
-        <div class="stat-card blue" style="background:#fff; border:1.5px solid #3b82f6; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(59,130,246,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <div class="stat-card blue" style="background:#fff; border:1.5px solid #3b82f6; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(59,130,246,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Avg Order Value</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#1e40af; margin-top:2px; line-height:1.1;">${H.formatCurrency(aov)}</div>
-            <div style="font-size:11px; color:#1e40af; background:#dbeafe; border:1px solid #bfdbfe; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Avg Order Value</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#1e40af; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(aov)}</div>
+            <div style="font-size:11px; color:#1e40af; background:#dbeafe; border:1px solid #bfdbfe; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>Spend per Customer</span>
             </div>
           </div>
         </div>
 
         <!-- Total Items Sold -->
-        <div class="stat-card teal" style="background:#fff; border:1.5px solid #0d9488; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(13,148,136,0.08); display:flex; align-items:center; gap:16px;">
-          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:#f0fdfa; color:#0d9488; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        <div class="stat-card teal" style="background:#fff; border:1.5px solid #0d9488; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(13,148,136,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#f0fdfa; color:#0d9488; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Units Sold</div>
-            <div class="stat-value" style="font-size:24px; font-weight:800; color:#115e59; margin-top:2px; line-height:1.1;">${totalUnitsSold} <span style="font-size:13px; font-weight:600; color:#0d9488;">pcs</span></div>
-            <div style="font-size:11px; color:#115e59; background:#ccfbf1; border:1px solid #99f6e4; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Units Sold</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#115e59; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${totalUnitsSold} <span style="font-size:13px; font-weight:600; color:#0d9488;">pcs</span></div>
+            <div style="font-size:11px; color:#115e59; background:#ccfbf1; border:1px solid #99f6e4; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>Across ${uniqueSkusSold.size} SKUs</span>
             </div>
           </div>
