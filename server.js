@@ -270,10 +270,14 @@ const initDB = async () => {
 
   await dbQuery(`CREATE TABLE IF NOT EXISTS expenses (
     id VARCHAR(50) PRIMARY KEY,
+    supplier_name VARCHAR(255) DEFAULT '',
+    reason VARCHAR(255) DEFAULT '',
     name VARCHAR(255) NOT NULL,
     category VARCHAR(100),
     amount DECIMAL(10,2) NOT NULL,
+    paid_amount DECIMAL(10,2) DEFAULT 0.00,
     date DATETIME NOT NULL,
+    payment_date DATE NULL DEFAULT NULL,
     status VARCHAR(50) DEFAULT 'Paid',
     image LONGTEXT,
     note TEXT
@@ -282,14 +286,46 @@ const initDB = async () => {
   // Auto-migration check: If expenses lacks columns, add them.
   try {
     const columns = await dbQuery(`SHOW COLUMNS FROM expenses`);
-    const hasCategory = columns.some(c => c.Field === 'category');
-    if (!hasCategory) {
+    const colNames = columns.map(c => c.Field);
+    if (!colNames.includes('category')) {
       await dbQuery(`ALTER TABLE expenses ADD COLUMN category VARCHAR(100), ADD COLUMN status VARCHAR(50) DEFAULT 'Paid', ADD COLUMN image LONGTEXT`);
       console.log('Database Migration: Added category, status and image columns to expenses table.');
+    }
+    if (!colNames.includes('supplier_name')) {
+      await dbQuery(`ALTER TABLE expenses ADD COLUMN supplier_name VARCHAR(255) DEFAULT ''`);
+      console.log('Database Migration: Added supplier_name to expenses table.');
+    }
+    if (!colNames.includes('reason')) {
+      await dbQuery(`ALTER TABLE expenses ADD COLUMN reason VARCHAR(255) DEFAULT ''`);
+      console.log('Database Migration: Added reason to expenses table.');
+    }
+    if (!colNames.includes('paid_amount')) {
+      await dbQuery(`ALTER TABLE expenses ADD COLUMN paid_amount DECIMAL(10,2) DEFAULT 0.00`);
+      await dbQuery(`UPDATE expenses SET paid_amount = amount WHERE status = 'Paid'`);
+      console.log('Database Migration: Added paid_amount to expenses table.');
+    }
+    if (!colNames.includes('payment_date')) {
+      await dbQuery(`ALTER TABLE expenses ADD COLUMN payment_date DATE NULL DEFAULT NULL`);
+      console.log('Database Migration: Added payment_date to expenses table.');
     }
   } catch (migErr) {
     console.warn('Warning during database column migration check:', migErr.message);
   }
+
+  // Create supplier_payments table
+  await dbQuery(`CREATE TABLE IF NOT EXISTS supplier_payments (
+    id VARCHAR(50) PRIMARY KEY,
+    supplier_name VARCHAR(255) NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    paid_amount DECIMAL(10,2) DEFAULT 0.00,
+    status VARCHAR(50) DEFAULT 'Paid',
+    date DATETIME NOT NULL,
+    payment_date DATE NULL DEFAULT NULL,
+    image LONGTEXT,
+    note TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
 
   // Seed default coupons if empty
   const couponsCount = await dbQuery(`SELECT COUNT(*) as count FROM coupons`);
@@ -376,6 +412,7 @@ const initDB = async () => {
     for (const [key, val] of Object.entries(defaultLabelKeys)) {
       await dbQuery(`INSERT IGNORE INTO settings (key_name, val) VALUES (?, ?)`, [key, val]);
     }
+    await dbQuery(`INSERT IGNORE INTO settings (key_name, val) VALUES ('supplier_as_expense', '0')`);
   }
 
   // Seeding Catalog if empty
@@ -782,7 +819,23 @@ app.delete('/api/coupons/:code', verifyRole(['admin']), async (req, res) => {
 // Expenses
 app.get('/api/expenses', async (req, res) => {
   try {
-    const rows = await dbQuery(`SELECT id, name, category, amount, DATE_FORMAT(date, '%Y-%m-%dT%H:%i:%s.000Z') as date, status, image, note FROM expenses ORDER BY date DESC`);
+    const rows = await dbQuery(`
+      SELECT 
+        id, 
+        COALESCE(supplier_name, '') as supplier_name,
+        COALESCE(reason, name, '') as reason,
+        name,
+        category, 
+        amount, 
+        COALESCE(paid_amount, CASE WHEN status='Paid' THEN amount ELSE 0 END) as paid_amount,
+        DATE_FORMAT(date, '%Y-%m-%dT%H:%i:%s.000Z') as date, 
+        DATE_FORMAT(payment_date, '%Y-%m-%d') as payment_date,
+        status, 
+        image, 
+        note 
+      FROM expenses 
+      ORDER BY date DESC
+    `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -791,13 +844,72 @@ app.get('/api/expenses', async (req, res) => {
 
 app.post('/api/expenses', async (req, res) => {
   try {
-    const { id, name, category, amount, date, status, image, note } = req.body;
-    if (!name || !date || amount === undefined) {
+    const { id, supplier_name, reason, name, category, amount, paid_amount, date, payment_date, status, image, note } = req.body;
+    const finalReason = reason || name || '';
+    const finalName = name || reason || '';
+    if (!finalReason || !date || amount === undefined) {
       return res.status(400).json({ error: 'Missing expense fields' });
     }
     const formattedDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
-    await dbQuery(`INSERT INTO expenses (id, name, category, amount, date, status, image, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id || 'exp_' + Math.random().toString(36).substr(2, 9), name, category || 'Other', amount, formattedDate, status || 'Paid', image || '', note || '']);
+    const formattedPaymentDate = payment_date ? new Date(payment_date).toISOString().slice(0, 10) : null;
+    const finalPaid = paid_amount !== undefined && paid_amount !== null ? parseFloat(paid_amount) : (status === 'Paid' ? parseFloat(amount) : 0);
+    const finalStatus = status || (finalPaid >= parseFloat(amount) ? 'Paid' : (finalPaid > 0 ? 'Partial' : 'Unpaid'));
+
+    await dbQuery(
+      `INSERT INTO expenses (id, supplier_name, reason, name, category, amount, paid_amount, date, payment_date, status, image, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id || 'exp_' + Math.random().toString(36).substr(2, 9),
+        supplier_name || '',
+        finalReason,
+        finalName,
+        category || 'Other',
+        parseFloat(amount) || 0,
+        finalPaid,
+        formattedDate,
+        formattedPaymentDate,
+        finalStatus,
+        image || '',
+        note || ''
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/expenses/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const eid = req.params.id;
+    const { supplier_name, reason, name, category, amount, paid_amount, date, payment_date, status, image, note } = req.body;
+    const finalReason = reason || name || '';
+    const finalName = name || reason || '';
+    if (!finalReason || !date || amount === undefined) {
+      return res.status(400).json({ error: 'Missing expense fields' });
+    }
+    const formattedDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
+    const formattedPaymentDate = payment_date ? new Date(payment_date).toISOString().slice(0, 10) : null;
+    const finalPaid = paid_amount !== undefined && paid_amount !== null ? parseFloat(paid_amount) : (status === 'Paid' ? parseFloat(amount) : 0);
+    const finalStatus = status || (finalPaid >= parseFloat(amount) ? 'Paid' : (finalPaid > 0 ? 'Partial' : 'Unpaid'));
+
+    await dbQuery(`
+      UPDATE expenses 
+      SET supplier_name = ?, reason = ?, name = ?, category = ?, amount = ?, paid_amount = ?, date = ?, payment_date = ?, status = ?, image = ?, note = ?
+      WHERE id = ?
+    `, [
+      supplier_name || '',
+      finalReason,
+      finalName,
+      category || 'Other',
+      parseFloat(amount) || 0,
+      finalPaid,
+      formattedDate,
+      formattedPaymentDate,
+      finalStatus,
+      image || '',
+      note || '',
+      eid
+    ]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -808,6 +920,108 @@ app.delete('/api/expenses/:id', verifyRole(['admin', 'manager']), async (req, re
   try {
     const eid = req.params.id;
     await dbQuery(`DELETE FROM expenses WHERE id = ?`, [eid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Supplier Payments Endpoints ────────────────────────────────
+app.get('/api/supplier-payments', async (req, res) => {
+  try {
+    const rows = await dbQuery(`
+      SELECT 
+        id, 
+        supplier_name, 
+        reason, 
+        amount, 
+        paid_amount, 
+        DATE_FORMAT(date, '%Y-%m-%dT%H:%i:%s.000Z') as date, 
+        DATE_FORMAT(payment_date, '%Y-%m-%d') as payment_date, 
+        status, 
+        image, 
+        note, 
+        created_at 
+      FROM supplier_payments 
+      ORDER BY date DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supplier-payments', async (req, res) => {
+  try {
+    const { id, supplier_name, reason, amount, paid_amount, date, payment_date, status, image, note } = req.body;
+    if (!supplier_name || !reason || amount === undefined || !date) {
+      return res.status(400).json({ error: 'Missing supplier payment fields' });
+    }
+    const formattedDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
+    const formattedPaymentDate = payment_date ? new Date(payment_date).toISOString().slice(0, 10) : null;
+    const finalPaid = paid_amount !== undefined && paid_amount !== null ? parseFloat(paid_amount) : (status === 'Paid' ? parseFloat(amount) : 0);
+    const finalStatus = status || (finalPaid >= parseFloat(amount) ? 'Paid' : (finalPaid > 0 ? 'Partial' : 'Unpaid'));
+
+    await dbQuery(`
+      INSERT INTO supplier_payments 
+        (id, supplier_name, reason, amount, paid_amount, status, date, payment_date, image, note) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id || 'sp_' + Math.random().toString(36).substr(2, 9),
+      supplier_name,
+      reason,
+      parseFloat(amount) || 0,
+      finalPaid,
+      finalStatus,
+      formattedDate,
+      formattedPaymentDate,
+      image || '',
+      note || ''
+    ]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/supplier-payments/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const spId = req.params.id;
+    const { supplier_name, reason, amount, paid_amount, date, payment_date, status, image, note } = req.body;
+    if (!supplier_name || !reason || amount === undefined || !date) {
+      return res.status(400).json({ error: 'Missing supplier payment fields' });
+    }
+    const formattedDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
+    const formattedPaymentDate = payment_date ? new Date(payment_date).toISOString().slice(0, 10) : null;
+    const finalPaid = paid_amount !== undefined && paid_amount !== null ? parseFloat(paid_amount) : (status === 'Paid' ? parseFloat(amount) : 0);
+    const finalStatus = status || (finalPaid >= parseFloat(amount) ? 'Paid' : (finalPaid > 0 ? 'Partial' : 'Unpaid'));
+
+    await dbQuery(`
+      UPDATE supplier_payments 
+      SET supplier_name = ?, reason = ?, amount = ?, paid_amount = ?, status = ?, date = ?, payment_date = ?, image = ?, note = ?
+      WHERE id = ?
+    `, [
+      supplier_name,
+      reason,
+      parseFloat(amount) || 0,
+      finalPaid,
+      finalStatus,
+      formattedDate,
+      formattedPaymentDate,
+      image || '',
+      note || '',
+      spId
+    ]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/supplier-payments/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const spId = req.params.id;
+    await dbQuery(`DELETE FROM supplier_payments WHERE id = ?`, [spId]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
