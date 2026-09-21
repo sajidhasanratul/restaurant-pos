@@ -21,7 +21,7 @@
                 Live Register • Ready
               </span>
             </div>
-            <p class="page-subtitle" style="margin-top:4px; font-size:13px; color:#64748b;">Real-time sales performance, revenue analytics, and multi-channel payment reconciliation.</p>
+            <p class="page-subtitle" style="margin-top:4px; font-size:13px; color:#ffffff;">Real-time sales performance, revenue analytics, and multi-channel payment reconciliation.</p>
           </div>
           <div class="page-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" id="btn-today">Today</button>
@@ -64,9 +64,8 @@
             <div>
               <div style="font-weight:700; font-size:15px; color:#0f172a; display:flex; align-items:center; gap:8px;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-                Payment Settlement & Tender Channels
+                Payment Settlement
               </div>
-              <p style="margin:2px 0 0; font-size:12px; color:#64748b;">Official brand channels reconciliation for bKash, Nagad, Rocket, Bank Transfer, Card, and Cash.</p>
             </div>
             <div id="payment-summary-pill" style="font-size:12px; font-weight:700; color:#1e293b; background:#e2e8f0; padding:4px 12px; border-radius:20px;">
               Total Collections: ৳0.00
@@ -336,6 +335,10 @@
       const displayedExpensePaid = isSupplierAsExpense ? (directPaidExpenses + paidSupplierPayments) : directPaidExpenses;
       const displayedExpenseUnpaid = isSupplierAsExpense ? (directUnpaidExpenses + unpaidSupplierPayments) : directUnpaidExpenses;
 
+      const overallNetProfit = totalProfit - displayedExpenseTotal;
+      const netMarginPct = totalSales > 0 ? ((overallNetProfit / totalSales) * 100).toFixed(1) : '0.0';
+      const isNetProfitPositive = overallNetProfit >= 0;
+
       // ── 1. Render Executive KPI Cards (High-Contrast Metrics) ─────
       const statsGrid = document.getElementById('dashboard-stats');
       statsGrid.innerHTML = `
@@ -394,6 +397,20 @@
             <div class="stat-value" style="font-size:24px; font-weight:800; color:#b45309; margin-top:2px; line-height:1.1;">${H.formatCurrency(totalSupplierPayments)}</div>
             <div style="font-size:11px; color:#64748b; margin-top:5px; font-weight:600; line-height:1.3;">
               Paid Amount: <span style="font-weight:700; color:#059669;">${H.formatCurrency(paidSupplierPayments)}</span> &bull; Unpaid Amount: <span style="font-weight:700; color:#dc2626;">${H.formatCurrency(unpaidSupplierPayments)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overall Profit Card -->
+        <div class="stat-card ${isNetProfitPositive ? 'green' : 'red'}" style="background:#fff; border:1.5px solid ${isNetProfitPositive ? '#10b981' : '#ef4444'}; border-radius:12px; padding:20px; box-shadow:0 2px 8px ${isNetProfitPositive ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; display:flex; align-items:center; gap:16px;">
+          <div class="stat-icon" style="width:52px; height:52px; border-radius:12px; background:${isNetProfitPositive ? '#ecfdf5' : '#fef2f2'}; color:${isNetProfitPositive ? '#059669' : '#dc2626'}; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+          </div>
+          <div class="stat-info" style="min-width:0; flex:1;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px;">Overall Profit</div>
+            <div class="stat-value" style="font-size:24px; font-weight:800; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; margin-top:2px; line-height:1.1;">${H.formatCurrency(overallNetProfit)}</div>
+            <div style="font-size:11px; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; background:${isNetProfitPositive ? '#d1fae5' : '#fee2e2'}; border:1px solid ${isNetProfitPositive ? '#a7f3d0' : '#fca5a5'}; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:5px;">
+              <span>Net Margin: <strong>${netMarginPct}%</strong></span>
             </div>
           </div>
         </div>
