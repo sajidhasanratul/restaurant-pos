@@ -79,60 +79,123 @@
         </div>
 
         <!-- Visual Analytics Grid (2 Columns) -->
-        <div class="grid-2 fade-in" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px; margin-bottom:24px;">
-          <div class="card" style="border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff;">
-            <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              Sales Revenue Trend
+        <div class="grid-2 fade-in" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:20px; margin-bottom:24px;">
+          <!-- 1. Sales by Category (Executive Donut / Pie Chart) -->
+          <div class="card modern-chart-card">
+            <div class="chart-header-modern">
+              <div class="chart-title-wrap">
+                <div class="chart-icon-box" style="background:#f5f3ff; color:#7c3aed;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                </div>
+                <div>
+                  <div class="chart-title-text">Sales by Category</div>
+                  <div class="chart-subtitle-text">Revenue distribution across product catalog categories</div>
+                </div>
+              </div>
+              <div id="cat-summary-badge" class="chart-header-badge">
+                <span style="width:7px; height:7px; background:#7c3aed; border-radius:50%;"></span>
+                <span>Calculating...</span>
+              </div>
             </div>
-            <div class="card-body" style="padding:16px;">
-              <div class="chart-container" style="height:260px; position:relative;">
-                <canvas id="salesTrendChart"></canvas>
+            <div class="card-body" style="padding:18px;">
+              <div class="category-chart-layout">
+                <div class="category-chart-canvas-wrap">
+                  <canvas id="categoryPieChart"></canvas>
+                  <div class="chart-donut-center" id="categoryChartCenterText">
+                    <div class="chart-donut-label">Category Sales</div>
+                    <div class="chart-donut-val" id="catCenterTotal">৳0</div>
+                  </div>
+                </div>
+                <div id="categoryLegendList" class="category-legend-scroll">
+                  <!-- Dynamic category legend rows -->
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="card" style="border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff;">
-            <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10H12V2z"/></svg>
-              Payment Method Share
+          <!-- 2. Payment Method Share (Executive Donut Chart) -->
+          <div class="card modern-chart-card">
+            <div class="chart-header-modern">
+              <div class="chart-title-wrap">
+                <div class="chart-icon-box" style="background:#eff6ff; color:#3b82f6;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10H12V2z"/></svg>
+                </div>
+                <div>
+                  <div class="chart-title-text">Payment Method Share</div>
+                  <div class="chart-subtitle-text">Tender channel volume and collection breakdown</div>
+                </div>
+              </div>
+              <div id="payment-summary-badge" class="chart-header-badge">
+                <span style="width:7px; height:7px; background:#3b82f6; border-radius:50%;"></span>
+                <span>Channels</span>
+              </div>
             </div>
-            <div class="card-body" style="padding:16px;">
-              <div class="chart-container" style="height:260px; position:relative;">
-                <canvas id="paymentMethodChart"></canvas>
+            <div class="card-body" style="padding:18px;">
+              <div class="category-chart-layout">
+                <div class="category-chart-canvas-wrap">
+                  <canvas id="paymentMethodChart"></canvas>
+                  <div class="chart-donut-center" id="paymentChartCenterText">
+                    <div class="chart-donut-label">Collected</div>
+                    <div class="chart-donut-val" id="payCenterTotal">৳0</div>
+                  </div>
+                </div>
+                <div id="paymentLegendList" class="category-legend-scroll">
+                  <!-- Dynamic payment legend rows -->
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 24-Hour Hourly Distribution -->
-        <div class="card fade-in" style="border:1px solid #e2e8f0; border-radius:12px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff;">
-          <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            24-Hour Peak Customer Traffic (Hourly Sales Distribution)
+        <!-- 24-Hour Peak Customer Traffic -->
+        <div class="card modern-chart-card fade-in" style="margin-bottom:24px;">
+          <div class="chart-header-modern">
+            <div class="chart-title-wrap">
+              <div class="chart-icon-box" style="background:#f0f9ff; color:#0284c7;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <div class="chart-title-text">24-Hour Peak Customer Traffic</div>
+                <div class="chart-subtitle-text">Hourly order velocity and customer rush pattern</div>
+              </div>
+            </div>
+            <div id="hourly-peak-badge" class="chart-header-badge" style="background:#ecfdf5; border-color:#a7f3d0; color:#065f46;">
+              <span style="width:7px; height:7px; background:#10b981; border-radius:50%;"></span>
+              <span>Peak: Analyzing...</span>
+            </div>
           </div>
-          <div class="card-body" style="padding:16px;">
-            <div class="chart-container" style="height:220px; position:relative;">
+          <div class="card-body" style="padding:18px;">
+            <div class="chart-container" style="height:230px; position:relative;">
               <canvas id="hourlySalesChart"></canvas>
             </div>
           </div>
         </div>
 
         <!-- Operational Insights: Top Selling Products -->
-        <div class="card fade-in" style="border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04); background:#fff; margin-bottom:24px;">
-          <div class="card-header" style="border-bottom:1px solid #edf2f7; padding:14px 18px; font-weight:700; font-size:14px; color:#1e293b; display:flex; align-items:center; gap:8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            Top Selling Products
+        <div class="card modern-chart-card fade-in" style="margin-bottom:24px;">
+          <div class="chart-header-modern">
+            <div class="chart-title-wrap">
+              <div class="chart-icon-box" style="background:#fffbeb; color:#d97706;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <div>
+                <div class="chart-title-text">Top Selling Products</div>
+                <div class="chart-subtitle-text">Best-performing inventory by units sold and gross revenue</div>
+              </div>
+            </div>
+            <span class="chart-header-badge" style="background:#fff7ed; border-color:#fed7aa; color:#9a3412;">
+              Top 5 Volume Leaders
+            </span>
           </div>
           <div class="card-body" style="padding:0;">
             <div class="table-wrapper" style="border:none;">
               <table class="data-table" style="margin:0; font-size:13px;">
                 <thead>
-                  <tr style="background:#f8fafc;">
-                    <th style="width:60px; text-align:center;">#</th>
-                    <th>Product Name</th>
+                  <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                    <th style="width:65px; text-align:center;">Rank</th>
+                    <th>Product & Variation</th>
                     <th style="text-align:center; width:140px;">Units Sold</th>
-                    <th style="text-align:right; width:180px;">Subtotal Revenue</th>
+                    <th style="text-align:right; width:180px;">Gross Revenue</th>
                   </tr>
                 </thead>
                 <tbody id="top-selling-tbody"></tbody>
@@ -514,79 +577,197 @@
       }
 
       // ── 3. Charts & Operational Insights ─────────────
-      this.renderCharts(orders, paymentBreakdown, from, to);
+      await this.renderCharts(orders, paymentBreakdown, from, to);
       this.renderTopSelling(orders, orderItems);
     },
 
-    renderCharts(orders, paymentBreakdown, from, to) {
+    async renderCharts(orders, paymentBreakdown, from, to) {
       const H = POS.Helpers;
 
       const diffTime = Math.abs(new Date(to) - new Date(from));
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-      // 1. Sales Trend (by day)
-      const dailySales = {};
-      orders.forEach(o => {
-        const day = H.formatDate(o.date);
-        dailySales[day] = (dailySales[day] || 0) + (parseFloat(o.grandTotal) || 0);
-      });
+      // ── 1. Sales by Category (Executive Donut / Pie Chart) ──
+      let catData = [];
+      try {
+        const resp = await fetch(`/api/dashboard/category-sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        if (resp.ok) {
+          catData = await resp.json();
+        }
+      } catch (err) {
+        console.warn('Could not fetch server category sales, falling back to client calculation:', err);
+      }
 
-      const trendLabels = Object.keys(dailySales).reverse();
-      const trendData = Object.values(dailySales).reverse();
+      // Fallback if API returned empty or failed
+      if (!Array.isArray(catData) || catData.length === 0) {
+        const catMap = {};
+        orders.forEach(o => {
+          if (o.status === 'cancelled' || o.status === 'void') return;
+          (o.items || []).forEach(it => {
+            const cName = it.category || 'General';
+            const amt = parseFloat(it.total) || 0;
+            const q = parseInt(it.qty) || 0;
+            if (!catMap[cName]) catMap[cName] = { categoryName: cName, totalAmount: 0, totalQty: 0 };
+            catMap[cName].totalAmount += amt;
+            catMap[cName].totalQty += q;
+          });
+        });
+        catData = Object.values(catMap).sort((a, b) => b.totalAmount - a.totalAmount);
+      }
 
-      const ctxTrend = document.getElementById('salesTrendChart').getContext('2d');
-      if (window.trendChart) window.trendChart.destroy();
+      // Modern cohesive executive palette
+      const modernCatPalette = [
+        '#6366f1', // Indigo
+        '#10b981', // Emerald
+        '#f59e0b', // Amber
+        '#06b6d4', // Cyan
+        '#ec4899', // Pink
+        '#8b5cf6', // Violet
+        '#3b82f6', // Blue
+        '#f97316', // Orange
+        '#14b8a6', // Teal
+        '#84cc16', // Lime
+        '#64748b'  // Slate
+      ];
 
-      // Create rich gradient
-      const gradient = ctxTrend.createLinearGradient(0, 0, 0, 240);
-      gradient.addColorStop(0, 'rgba(124, 58, 237, 0.25)');
-      gradient.addColorStop(1, 'rgba(124, 58, 237, 0.0)');
+      let totalCatAmount = 0;
+      catData.forEach(c => totalCatAmount += (parseFloat(c.totalAmount) || 0));
 
-      window.trendChart = new Chart(ctxTrend, {
-        type: 'line',
+      const catBadge = document.getElementById('cat-summary-badge');
+      if (catBadge) {
+        catBadge.innerHTML = `<span style="width:7px; height:7px; background:#7c3aed; border-radius:50%; display:inline-block;"></span> <span>${catData.length} ${catData.length === 1 ? 'Category' : 'Categories'} • ${H.formatCurrency(totalCatAmount)}</span>`;
+      }
+
+      const catCenterVal = document.getElementById('catCenterTotal');
+      if (catCenterVal) {
+        catCenterVal.textContent = H.formatCurrency(totalCatAmount);
+      }
+
+      const catLegendList = document.getElementById('categoryLegendList');
+      if (catLegendList) {
+        if (catData.length === 0) {
+          catLegendList.innerHTML = `
+            <div style="text-align:center; padding:30px 10px; color:#94a3b8;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.8" style="margin-bottom:6px;"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+              <div style="font-size:12px; font-weight:600;">No Category Sales</div>
+              <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">No orders found in date range</div>
+            </div>
+          `;
+        } else {
+          catLegendList.innerHTML = catData.map((cat, idx) => {
+            const color = modernCatPalette[idx % modernCatPalette.length];
+            const amt = parseFloat(cat.totalAmount) || 0;
+            const pct = totalCatAmount > 0 ? ((amt / totalCatAmount) * 100).toFixed(1) : '0.0';
+            return `
+              <div class="cat-legend-row">
+                <div class="cat-legend-left">
+                  <span class="cat-dot" style="background:${color};"></span>
+                  <span class="cat-name" title="${H.esc(cat.categoryName)}">${H.esc(cat.categoryName)}</span>
+                </div>
+                <div class="cat-legend-right">
+                  <span class="cat-amount">${H.formatCurrency(amt)}</span>
+                  <span class="cat-pct-badge">${pct}%</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      const catLabels = catData.length ? catData.map(c => c.categoryName) : ['No Sales'];
+      const catChartData = catData.length ? catData.map(c => parseFloat(c.totalAmount) || 0) : [1];
+      const catColors = catData.length 
+        ? catData.map((_, i) => modernCatPalette[i % modernCatPalette.length]) 
+        : ['#e2e8f0'];
+
+      const ctxCat = document.getElementById('categoryPieChart').getContext('2d');
+      if (window.categoryChart) window.categoryChart.destroy();
+      window.categoryChart = new Chart(ctxCat, {
+        type: 'doughnut',
         data: {
-          labels: trendLabels.length ? trendLabels : ['No Data'],
+          labels: catLabels,
           datasets: [{
-            label: 'Sales Revenue',
-            data: trendData.length ? trendData : [0],
-            borderColor: '#7C3AED',
-            backgroundColor: gradient,
-            fill: true,
-            tension: 0.35,
-            borderWidth: 2.5,
-            pointRadius: 4,
-            pointBackgroundColor: '#7C3AED',
-            pointBorderColor: '#fff',
-            pointHoverRadius: 6
+            data: catChartData,
+            backgroundColor: catColors,
+            borderWidth: 2,
+            borderColor: '#ffffff',
+            hoverOffset: 6
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          cutout: '72%',
           plugins: {
             legend: { display: false },
             tooltip: {
+              enabled: catData.length > 0,
+              backgroundColor: '#0f172a',
+              titleFont: { size: 13, weight: '700' },
+              bodyFont: { size: 12, weight: '600' },
+              padding: 10,
+              cornerRadius: 8,
+              boxPadding: 4,
               callbacks: {
-                label: (context) => `Revenue: ${H.formatCurrency(context.raw)}`
+                label: (context) => {
+                  const val = context.raw || 0;
+                  const pct = totalCatAmount > 0 ? ((val / totalCatAmount) * 100).toFixed(1) : '0.0';
+                  return ` Sales: ${H.formatCurrency(val)} (${pct}%)`;
+                }
               }
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              grid: { color: 'rgba(0, 0, 0, 0.04)' }
-            },
-            x: {
-              grid: { display: false }
             }
           }
         }
       });
 
-      // 2. Payment Method Distribution (Authentic Brand Colors)
+      // ── 2. Payment Method Share (Executive Donut Chart) ──
       const payLabels = Object.keys(paymentBreakdown).filter(k => paymentBreakdown[k] > 0);
       const payData = payLabels.map(k => paymentBreakdown[k]);
       const payColors = payLabels.map(k => H.getPaymentMethodColor(k));
+
+      let totalCollected = 0;
+      Object.values(paymentBreakdown).forEach(amt => totalCollected += amt);
+
+      const payBadge = document.getElementById('payment-summary-badge');
+      if (payBadge) {
+        payBadge.innerHTML = `<span style="width:7px; height:7px; background:#3b82f6; border-radius:50%; display:inline-block;"></span> <span>${payLabels.length} Active Channels • ${H.formatCurrency(totalCollected)}</span>`;
+      }
+
+      const payCenterVal = document.getElementById('payCenterTotal');
+      if (payCenterVal) {
+        payCenterVal.textContent = H.formatCurrency(totalCollected);
+      }
+
+      const payLegendList = document.getElementById('paymentLegendList');
+      if (payLegendList) {
+        if (payLabels.length === 0) {
+          payLegendList.innerHTML = `
+            <div style="text-align:center; padding:30px 10px; color:#94a3b8;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.8" style="margin-bottom:6px;"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10H12V2z"/></svg>
+              <div style="font-size:12px; font-weight:600;">No Collections</div>
+              <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">No payment records in range</div>
+            </div>
+          `;
+        } else {
+          payLegendList.innerHTML = payLabels.map(method => {
+            const amt = paymentBreakdown[method] || 0;
+            const pct = totalCollected > 0 ? ((amt / totalCollected) * 100).toFixed(1) : '0.0';
+            const color = H.getPaymentMethodColor(method);
+            return `
+              <div class="cat-legend-row">
+                <div class="cat-legend-left">
+                  <span class="cat-dot" style="background:${color};"></span>
+                  <span class="cat-name" title="${H.esc(method)}">${H.esc(method)}</span>
+                </div>
+                <div class="cat-legend-right">
+                  <span class="cat-amount">${H.formatCurrency(amt)}</span>
+                  <span class="cat-pct-badge">${pct}%</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
 
       const ctxPay = document.getElementById('paymentMethodChart').getContext('2d');
       if (window.payChart) window.payChart.destroy();
@@ -596,34 +777,39 @@
           labels: payLabels.length ? payLabels : ['No Transactions'],
           datasets: [{
             data: payData.length ? payData : [1],
-            backgroundColor: payColors.length ? payColors : ['#CBD5E1'],
+            backgroundColor: payColors.length ? payColors : ['#e2e8f0'],
             borderWidth: 2,
-            borderColor: '#ffffff'
+            borderColor: '#ffffff',
+            hoverOffset: 6
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          cutout: '68%',
+          cutout: '72%',
           plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                boxWidth: 12,
-                padding: 12,
-                font: { size: 12, weight: 600 }
-              }
-            },
+            legend: { display: false },
             tooltip: {
+              enabled: payLabels.length > 0,
+              backgroundColor: '#0f172a',
+              titleFont: { size: 13, weight: '700' },
+              bodyFont: { size: 12, weight: '600' },
+              padding: 10,
+              cornerRadius: 8,
+              boxPadding: 4,
               callbacks: {
-                label: (context) => `${context.label}: ${H.formatCurrency(context.raw)}`
+                label: (context) => {
+                  const val = context.raw || 0;
+                  const pct = totalCollected > 0 ? ((val / totalCollected) * 100).toFixed(1) : '0.0';
+                  return ` Share: ${H.formatCurrency(val)} (${pct}%)`;
+                }
               }
             }
           }
         }
       });
 
-      // 3. 24-Hour Distribution (Hourly peaks)
+      // ── 3. 24-Hour Distribution (Hourly Traffic & Rush Identification) ──
       const hourlyCounts = Array(24).fill(0);
       orders.forEach(o => {
         const hr = new Date(o.date).getHours();
@@ -642,8 +828,31 @@
         return `${h} ${ampm}`;
       });
 
-      const maxHourly = Math.max(...hourlyCounts, 1);
-      const barColors = hourlyCounts.map(val => val === maxHourly && val > 0 ? '#7C3AED' : 'rgba(59, 130, 246, 0.7)');
+      const maxHourly = Math.max(...hourlyCounts, 0);
+      const peakIndex = hourlyCounts.indexOf(maxHourly);
+      const peakHourLabel = maxHourly > 0 ? hourLabels[peakIndex] : 'None';
+
+      const peakBadge = document.getElementById('hourly-peak-badge');
+      if (peakBadge) {
+        if (maxHourly > 0) {
+          peakBadge.innerHTML = `<span style="width:7px; height:7px; background:#10b981; border-radius:50%; display:inline-block;"></span> <span>🔥 Peak: <strong>${peakHourLabel}</strong> (${maxHourly} orders)</span>`;
+          peakBadge.style.background = '#ecfdf5';
+          peakBadge.style.borderColor = '#a7f3d0';
+          peakBadge.style.color = '#065f46';
+        } else {
+          peakBadge.innerHTML = `<span style="width:7px; height:7px; background:#94a3b8; border-radius:50%; display:inline-block;"></span> <span>No Traffic Recorded</span>`;
+          peakBadge.style.background = '#f8fafc';
+          peakBadge.style.borderColor = '#e2e8f0';
+          peakBadge.style.color = '#64748b';
+        }
+      }
+
+      const barBgColors = hourlyCounts.map(val => 
+        val === maxHourly && val > 0 ? '#7c3aed' : 'rgba(99, 102, 241, 0.72)'
+      );
+      const barBorderColors = hourlyCounts.map(val => 
+        val === maxHourly && val > 0 ? '#6d28d9' : '#6366f1'
+      );
 
       const ctxHour = document.getElementById('hourlySalesChart').getContext('2d');
       if (window.hourChart) window.hourChart.destroy();
@@ -654,10 +863,11 @@
           datasets: [{
             label: diffDays > 2 ? 'Avg Hourly Invoices' : 'Hourly Invoices',
             data: hourlyData,
-            backgroundColor: barColors,
-            borderColor: '#3B82F6',
-            borderWidth: 1,
-            borderRadius: 4
+            backgroundColor: barBgColors,
+            borderColor: barBorderColors,
+            borderWidth: 1.5,
+            borderRadius: 6,
+            hoverBackgroundColor: '#4f46e5'
           }]
         },
         options: {
@@ -666,18 +876,24 @@
           plugins: {
             legend: { display: false },
             tooltip: {
+              backgroundColor: '#0f172a',
+              titleFont: { size: 13, weight: '700' },
+              bodyFont: { size: 12, weight: '600' },
+              padding: 10,
+              cornerRadius: 8,
               callbacks: {
-                label: (context) => `Traffic: ${context.raw} invoice(s)`
+                label: (context) => `Traffic Volume: ${context.raw} invoice(s)`
               }
             }
           },
           scales: {
             y: {
               beginAtZero: true,
-              ticks: { precision: 0 },
-              grid: { color: 'rgba(0, 0, 0, 0.04)' }
+              ticks: { precision: 0, font: { size: 11, weight: '600' }, color: '#64748b' },
+              grid: { color: 'rgba(226, 232, 240, 0.6)' }
             },
             x: {
+              ticks: { font: { size: 10.5, weight: '600' }, color: '#64748b' },
               grid: { display: false }
             }
           }
@@ -708,28 +924,34 @@
       tbody.innerHTML = '';
 
       if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:24px; color:#94a3b8; font-style:italic;">No sales recorded in selected range.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:32px 16px; color:#94a3b8; font-style:italic;">No product sales recorded in selected range.</td></tr>`;
         return;
       }
 
       const maxQty = sorted[0][1].qty || 1;
 
       sorted.forEach(([name, data], idx) => {
-        const rankMedals = ['🥇', '🥈', '🥉', '4', '5'];
-        const medal = rankMedals[idx] || (idx + 1);
+        const rankMedals = ['🥇 1st', '🥈 2nd', '🥉 3rd', '4th', '5th'];
+        const medal = rankMedals[idx] || `${idx + 1}th`;
         const barWidth = Math.round((data.qty / maxQty) * 100);
 
         tbody.innerHTML += `
-          <tr style="border-bottom: 1px solid #f1f5f9;">
-            <td style="text-align:center; font-weight:700; font-size:14px;">${medal}</td>
-            <td style="padding:10px 12px;">
-              <div style="font-weight:600; color:#1e293b;">${H.esc(name)}</div>
-              <div style="width:100%; height:4px; background:#f1f5f9; border-radius:3px; margin-top:4px; overflow:hidden;">
-                <div style="width:${barWidth}%; height:100%; background:#f59e0b; border-radius:3px;"></div>
+          <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+            <td style="text-align:center; font-weight:800; font-size:13px; vertical-align:middle; color:#475569;">${medal}</td>
+            <td style="padding:12px 14px;">
+              <div style="font-weight:700; color:#1e293b; font-size:13.5px;">${H.esc(name)}</div>
+              <div style="width:100%; height:5px; background:#f1f5f9; border-radius:4px; margin-top:6px; overflow:hidden;">
+                <div style="width:${barWidth}%; height:100%; background:linear-gradient(90deg, #f59e0b, #fbbf24); border-radius:4px; transition:width 0.3s ease;"></div>
               </div>
             </td>
-            <td style="text-align:center; font-weight:700; color:#334155;">${data.qty}</td>
-            <td style="text-align:right; font-weight:700; color:#059669;">${H.formatCurrency(data.amount)}</td>
+            <td style="text-align:center; vertical-align:middle;">
+              <span style="display:inline-block; padding:3px 10px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:12px; font-weight:700; color:#334155; font-size:12px;">
+                ${data.qty} pcs
+              </span>
+            </td>
+            <td style="text-align:right; font-weight:800; color:#059669; font-size:13.5px; vertical-align:middle; padding-right:16px;">
+              ${H.formatCurrency(data.amount)}
+            </td>
           </tr>
         `;
       });
