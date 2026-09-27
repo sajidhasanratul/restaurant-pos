@@ -1838,6 +1838,49 @@ app.get('/api/orderItems', async (req, res) => {
   }
 });
 
+// Category sales aggregation for dashboard pie chart
+app.get('/api/dashboard/category-sales', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const { from, to } = req.query;
+    let whereClauses = ["(o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))"];
+    const params = [];
+    if (from) {
+      whereClauses.push(`DATE(o.date) >= ?`);
+      params.push(from);
+    }
+    if (to) {
+      whereClauses.push(`DATE(o.date) <= ?`);
+      params.push(to);
+    }
+
+    const whereSql = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+
+    const sql = `
+      SELECT 
+        COALESCE(
+          NULLIF(TRIM(c.name), ''), 
+          NULLIF(TRIM(p.category), ''), 
+          'General / Uncategorized'
+        ) AS categoryName,
+        ROUND(SUM(oi.total), 2) AS totalAmount,
+        SUM(oi.qty) AS totalQty,
+        COUNT(DISTINCT oi.orderId) AS orderCount
+      FROM orderItems oi
+      INNER JOIN orders o ON oi.orderId = o.id
+      LEFT JOIN products p ON oi.productId = p.id
+      LEFT JOIN categories c ON p.categoryId = c.id
+      ${whereSql}
+      GROUP BY categoryName
+      ORDER BY totalAmount DESC
+    `;
+    const rows = await dbQuery(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get all custom order items with order details
 app.get('/api/custom-order-items', async (req, res) => {
   try {
