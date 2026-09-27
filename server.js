@@ -77,7 +77,7 @@ const initDB = async () => {
     image LONGTEXT
   )`);
 
-  // Auto-migration check: If database already exists but lacks the "image" or "tag" columns, add them.
+  // Auto-migration check: If database already exists but lacks columns or indexes, add them.
   try {
     const columns = await dbQuery(`SHOW COLUMNS FROM products LIKE 'image'`);
     if (columns.length === 0) {
@@ -94,8 +94,48 @@ const initDB = async () => {
       await dbQuery(`ALTER TABLE products ADD COLUMN createdAt DATETIME DEFAULT CURRENT_TIMESTAMP`);
       console.log('Database Migration: Added "createdAt" column to products table.');
     }
+    const genericCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'generic'`);
+    if (genericCols.length === 0) {
+      await dbQuery(`ALTER TABLE products ADD COLUMN generic VARCHAR(255) DEFAULT NULL`);
+      console.log('Database Migration: Added "generic" column to products table.');
+    }
+    const brandCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'brand'`);
+    if (brandCols.length === 0) {
+      await dbQuery(`ALTER TABLE products ADD COLUMN brand VARCHAR(255) DEFAULT NULL`);
+    }
+    const strengthCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'strength'`);
+    if (strengthCols.length === 0) {
+      await dbQuery(`ALTER TABLE products ADD COLUMN strength VARCHAR(100) DEFAULT NULL`);
+    }
+    const catCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'category'`);
+    if (catCols.length === 0) {
+      await dbQuery(`ALTER TABLE products ADD COLUMN category VARCHAR(100) DEFAULT NULL`);
+    }
+
+    // Auto-migration check: Indexes on products & variations for high-speed searching
+    const pIndexes = await dbQuery(`SHOW INDEX FROM products`);
+    const pIndexNames = new Set((pIndexes || []).map(i => i.Key_name));
+    const ensureIndex = async (table, indexName, colDef) => {
+      try {
+        await dbQuery(`CREATE INDEX ${indexName} ON ${table}(${colDef})`);
+      } catch (e) {
+        // ignore if already exists
+      }
+    };
+    if (!pIndexNames.has('idx_products_name')) await ensureIndex('products', 'idx_products_name', 'name(191)');
+    if (!pIndexNames.has('idx_products_generic')) await ensureIndex('products', 'idx_products_generic', 'generic(191)');
+    if (!pIndexNames.has('idx_products_barcode')) await ensureIndex('products', 'idx_products_barcode', 'barcode');
+    if (!pIndexNames.has('idx_products_status')) await ensureIndex('products', 'idx_products_status', 'status');
+    if (!pIndexNames.has('idx_products_deletedAt')) await ensureIndex('products', 'idx_products_deletedAt', 'deletedAt');
+    if (!pIndexNames.has('idx_products_priority')) await ensureIndex('products', 'idx_products_priority', 'priority');
+
+    const vIndexes = await dbQuery(`SHOW INDEX FROM variations`);
+    const vIndexNames = new Set((vIndexes || []).map(i => i.Key_name));
+    if (!vIndexNames.has('idx_variations_productId')) await ensureIndex('variations', 'idx_variations_productId', 'productId');
+    if (!vIndexNames.has('idx_variations_sku')) await ensureIndex('variations', 'idx_variations_sku', 'sku');
+    if (!vIndexNames.has('idx_variations_barcode')) await ensureIndex('variations', 'idx_variations_barcode', 'barcode');
   } catch (migErr) {
-    console.warn('Warning during database column migration check:', migErr.message);
+    console.warn('Warning during database column/index migration check:', migErr.message);
   }
 
   await dbQuery(`CREATE TABLE IF NOT EXISTS variations (
@@ -1219,68 +1259,219 @@ app.delete('/api/categories/:id', verifyRole(['admin', 'manager']), async (req, 
 });
 
 // Products
+// ── Dedicated High-Performance Server-Side Product Search ─────────────
+app.get('/api/products/search', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const q = (req.query.q || req.query.query || '').toString().trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 25, 1), 100);
+    const includeTrashed = req.query.includeTrashed === 'true';
+
+    if (!q) {
+      return res.json([]);
+    }
+
+    const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) {
+      return res.json([]);
+    }
+
+    let sql = `SELECT p.* FROM products p WHERE 1=1`;
+    const params = [];
+
+    if (!includeTrashed) {
+      sql += ` AND (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')`;
+    }
+
+    for (const token of tokens) {
+      const t = '%' + token + '%';
+      sql += ` AND (
+        LOWER(p.name) LIKE ? 
+        OR LOWER(COALESCE(p.generic, '')) LIKE ? 
+        OR LOWER(COALESCE(p.strength, '')) LIKE ? 
+        OR LOWER(COALESCE(p.brand, '')) LIKE ? 
+        OR LOWER(COALESCE(p.category, '')) LIKE ? 
+        OR LOWER(p.sku) LIKE ? 
+        OR LOWER(COALESCE(p.barcode, '')) LIKE ? 
+        OR LOWER(COALESCE(p.tag, '')) LIKE ? 
+        OR EXISTS (
+          SELECT 1 FROM variations v 
+          WHERE v.productId = p.id 
+          AND (LOWER(v.name) LIKE ? OR LOWER(COALESCE(v.sku, '')) LIKE ? OR LOWER(COALESCE(v.barcode, '')) LIKE ?)
+        )
+      )`;
+      params.push(t, t, t, t, t, t, t, t, t, t, t);
+    }
+
+    sql += ` ORDER BY p.priority DESC, p.name ASC LIMIT ${limit}`;
+
+    const products = await dbQuery(sql, params);
+
+    // Attach variations ONLY for the matched products (never 20,000!)
+    if (products.length > 0) {
+      const pids = products.map(p => p.id);
+      const placeholders = pids.map(() => '?').join(',');
+      const variations = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+      products.forEach(p => {
+        p.variations = variations.filter(v => v.productId === p.id);
+      });
+    }
+
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Main Products Endpoint (Server-Side Paginated & Filtered or Full List Fallback) ──
 app.get('/api/products', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const isPaginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginate === 'true';
+
+    if (isPaginated) {
+      const page = Math.max(parseInt(req.query.page) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 500);
+      const offset = (page - 1) * limit;
+
+      const tab = req.query.tab || req.query.status || 'all';
+      const search = (req.query.search || req.query.q || '').toString().trim();
+      const genericFilter = (req.query.generic || '').toString().trim();
+      const categoryFilter = (req.query.category || req.query.categoryId || '').toString().trim();
+
+      let whereClauses = [];
+      let queryParams = [];
+
+      // 1. Tab / soft-delete filtering in MySQL
+      if (tab === 'Trash') {
+        whereClauses.push(`(p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00')`);
+      } else {
+        whereClauses.push(`(p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')`);
+        if (tab === 'Publish' || tab === 'Draft') {
+          whereClauses.push(`p.status = ?`);
+          queryParams.push(tab);
+        }
+      }
+
+      // 2. Generic filter in MySQL
+      if (genericFilter && genericFilter !== 'all') {
+        whereClauses.push(`p.generic = ?`);
+        queryParams.push(genericFilter);
+      }
+
+      // 3. Category filter in MySQL
+      if (categoryFilter && categoryFilter !== 'all') {
+        whereClauses.push(`(p.categoryId = ? OR p.category = ?)`);
+        queryParams.push(categoryFilter, categoryFilter);
+      }
+
+      // 4. Tokenized search in MySQL
+      if (search) {
+        const tokens = search.toLowerCase().split(/\s+/).filter(Boolean);
+        for (const token of tokens) {
+          const t = '%' + token + '%';
+          whereClauses.push(`(
+            LOWER(p.name) LIKE ? 
+            OR LOWER(COALESCE(p.generic, '')) LIKE ? 
+            OR LOWER(COALESCE(p.strength, '')) LIKE ? 
+            OR LOWER(COALESCE(p.brand, '')) LIKE ? 
+            OR LOWER(COALESCE(p.category, '')) LIKE ? 
+            OR LOWER(p.sku) LIKE ? 
+            OR LOWER(COALESCE(p.barcode, '')) LIKE ? 
+            OR LOWER(COALESCE(p.tag, '')) LIKE ? 
+            OR EXISTS (
+              SELECT 1 FROM variations v 
+              WHERE v.productId = p.id 
+              AND (LOWER(v.name) LIKE ? OR LOWER(COALESCE(v.sku, '')) LIKE ? OR LOWER(COALESCE(v.barcode, '')) LIKE ?)
+            )
+          )`);
+          queryParams.push(t, t, t, t, t, t, t, t, t, t, t);
+        }
+      }
+
+      const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+      // Global count metrics for tabs (unfiltered by search so tabs always show true counts)
+      const [allCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00')`);
+      const [pubCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00') AND status = 'Publish'`);
+      const [draftCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00') AND status = 'Draft'`);
+      const [trashCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NOT NULL AND deletedAt != '0000-00-00 00:00:00')`);
+
+      // Filtered total count
+      const countSql = `SELECT COUNT(*) as total FROM products p ${whereSql}`;
+      const [totalRow] = await dbQuery(countSql, queryParams);
+      const total = totalRow ? totalRow.total : 0;
+      const totalPages = Math.ceil(total / limit) || 1;
+
+      // Paginated items query
+      const itemsSql = `SELECT p.* FROM products p ${whereSql} ORDER BY p.priority DESC, p.createdAt DESC, p.name ASC LIMIT ${limit} OFFSET ${offset}`;
+      const items = await dbQuery(itemsSql, queryParams);
+
+      if (items.length > 0) {
+        const pids = items.map(p => p.id);
+        const placeholders = pids.map(() => '?').join(',');
+        const variations = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+        items.forEach(p => {
+          p.variations = variations.filter(v => v.productId === p.id);
+        });
+      }
+
+      return res.json({
+        items,
+        total,
+        page,
+        limit,
+        totalPages,
+        counts: {
+          all: allCountRow ? allCountRow.c : 0,
+          publish: pubCountRow ? pubCountRow.c : 0,
+          draft: draftCountRow ? draftCountRow.c : 0,
+          trash: trashCountRow ? trashCountRow.c : 0
+        }
+      });
+    }
+
+    // ── Non-paginated legacy fallback (filtered in MySQL directly) ──
     const includeTrashed = req.query.includeTrashed === 'true';
     const statusFilter = req.query.status;
 
-    // Fetch raw table contents safely to avoid schema dependencies throwing SQL errors
-    const prods = await dbQuery(`SELECT * FROM products`);
-    const vars = await dbQuery(`SELECT * FROM variations`);
-
-    let result = prods.map(p => {
-      p.variations = vars.filter(v => v.productId === p.id);
-      return p;
-    });
-
-    // Helper to determine if a deletedAt value represents a real deletion timestamp
-    const isTrashed = (val) => {
-      if (!val) return false;
-      if (val === '0000-00-00 00:00:00') return false;
-      if (val instanceof Date) {
-        if (isNaN(val.getTime())) return false;
-        if (val.getFullYear() <= 1970) return false; // MySQL default or epoch
-        return true;
-      }
-      if (typeof val === 'string' && val.includes('0000-00-00')) return false;
-      return true;
-    };
-
-    // 1. Perform soft-delete and status checks dynamically in Node.js
+    let sql = `SELECT p.* FROM products p`;
+    const params = [];
     if (!includeTrashed) {
-      result = result.filter(p => !isTrashed(p.deletedAt));
+      sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')`;
       if (statusFilter) {
-        result = result.filter(p => p.status === statusFilter);
+        sql += ` AND p.status = ?`;
+        params.push(statusFilter);
       }
     } else {
       if (statusFilter === 'Trash') {
-        result = result.filter(p => isTrashed(p.deletedAt));
+        sql += ` WHERE (p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00')`;
       } else if (statusFilter) {
-        result = result.filter(p => !isTrashed(p.deletedAt) && p.status === statusFilter);
+        sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00') AND p.status = ?`;
+        params.push(statusFilter);
       }
     }
 
-    // 2. Perform sorting dynamically in Node.js (priority first, then recently added on top)
-    result.sort((a, b) => {
-      const priorityA = parseInt(a.priority) || 0;
-      const priorityB = parseInt(b.priority) || 0;
-      if (priorityA !== priorityB) {
-        return priorityB - priorityA; // Descending priority
-      }
-      // Recently added product on top (newest first)
-      if (a.createdAt && b.createdAt) {
-        const diff = new Date(b.createdAt) - new Date(a.createdAt);
-        if (diff !== 0) return diff;
-      } else if (b.createdAt && !a.createdAt) {
-        return 1;
-      } else if (a.createdAt && !b.createdAt) {
-        return -1;
-      }
-      return (b.id || '').localeCompare(a.id || '');
-    });
+    sql += ` ORDER BY p.priority DESC, p.createdAt DESC, p.id DESC`;
 
-    res.json(result);
+    const prods = await dbQuery(sql, params);
+    
+    // Attach variations
+    if (prods.length > 0 && prods.length <= 500) {
+      const pids = prods.map(p => p.id);
+      const placeholders = pids.map(() => '?').join(',');
+      const vars = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+      prods.forEach(p => {
+        p.variations = vars.filter(v => v.productId === p.id);
+      });
+    } else if (prods.length > 0) {
+      const vars = await dbQuery(`SELECT * FROM variations`);
+      prods.forEach(p => {
+        p.variations = vars.filter(v => v.productId === p.id);
+      });
+    }
+
+    res.json(prods);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1470,8 +1661,8 @@ app.post('/api/products/:id/restore', verifyRole(['admin', 'manager']), async (r
   }
 });
 
-// Bulk scan resolve and update endpoints
-app.get('/api/products/resolve-scan', async (req, res) => {
+// Bulk scan resolve and exact search endpoints
+app.get(['/api/products/resolve-scan', '/api/products/search-exact'], async (req, res) => {
   try {
     const { query } = req.query;
     if (!query) {
@@ -1482,7 +1673,8 @@ app.get('/api/products/resolve-scan', async (req, res) => {
 
     // 1. Try variations first
     const varRows = await dbQuery(`
-      SELECT v.id as variationId, v.productId, v.name as variationName, v.sku, v.barcode, p.name as productName, v.stock
+      SELECT v.id as variationId, v.productId, v.name as variationName, v.sku, v.barcode, v.price as variationPrice,
+             p.name as productName, p.image, p.sellingPrice, v.stock
       FROM variations v
       JOIN products p ON v.productId = p.id
       WHERE v.sku = ? OR v.barcode = ?
@@ -1496,9 +1688,13 @@ app.get('/api/products/resolve-scan', async (req, res) => {
           type: 'variation',
           id: row.variationId,
           productId: row.productId,
+          productName: row.productName,
+          variationName: row.variationName,
           name: `${row.productName} (${row.variationName})`,
           sku: row.sku || '',
           barcode: row.barcode || '',
+          price: (row.variationPrice !== null && row.variationPrice !== undefined && row.variationPrice !== '') ? parseFloat(row.variationPrice) : parseFloat(row.sellingPrice || 0),
+          image: row.image || '',
           currentStock: row.stock || 0
         }
       });
@@ -1506,7 +1702,7 @@ app.get('/api/products/resolve-scan', async (req, res) => {
 
     // 2. Try products
     const prodRows = await dbQuery(`
-      SELECT id as productId, name as productName, sku, barcode, stock
+      SELECT id as productId, name as productName, image, sku, barcode, stock, sellingPrice
       FROM products
       WHERE sku = ? OR barcode = ?
     `, [code, code]);
@@ -1519,9 +1715,13 @@ app.get('/api/products/resolve-scan', async (req, res) => {
           type: 'product',
           id: row.productId,
           productId: row.productId,
+          productName: row.productName,
+          variationName: '',
           name: row.productName,
           sku: row.sku || '',
           barcode: row.barcode || '',
+          price: parseFloat(row.sellingPrice || 0),
+          image: row.image || '',
           currentStock: row.stock || 0
         }
       });
