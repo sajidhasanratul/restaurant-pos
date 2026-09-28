@@ -27,7 +27,7 @@ let pool;
 
 const getPool = () => {
   if (!pool) {
-    pool = mysql.createPool(config.db);
+    pool = mysql.createPool({ ...config.db, dateStrings: true });
   }
   return pool;
 };
@@ -77,39 +77,54 @@ const initDB = async () => {
     image LONGTEXT
   )`);
 
-  // Auto-migration check: If database already exists but lacks columns or indexes, add them.
+  await dbQuery(`CREATE TABLE IF NOT EXISTS variations (
+    id VARCHAR(50) PRIMARY KEY,
+    productId VARCHAR(50),
+    name VARCHAR(100) NOT NULL,
+    sku VARCHAR(100),
+    barcode VARCHAR(100),
+    price DECIMAL(10,2) DEFAULT 0.00,
+    costPrice DECIMAL(10,2) DEFAULT 0.00,
+    stock INT DEFAULT 0
+  )`);
+
+  // Auto-migration check: If database already exists but lacks columns, add them safely.
   try {
-    const columns = await dbQuery(`SHOW COLUMNS FROM products LIKE 'image'`);
-    if (columns.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN image LONGTEXT`);
-      console.log('Database Migration: Added "image" column to products table.');
-    }
-    const tagColumns = await dbQuery(`SHOW COLUMNS FROM products LIKE 'tag'`);
-    if (tagColumns.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN tag VARCHAR(255) DEFAULT NULL`);
-      console.log('Database Migration: Added "tag" column to products table.');
-    }
-    const createdCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'createdAt'`);
-    if (createdCols.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN createdAt DATETIME DEFAULT CURRENT_TIMESTAMP`);
-      console.log('Database Migration: Added "createdAt" column to products table.');
-    }
-    const genericCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'generic'`);
-    if (genericCols.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN generic VARCHAR(255) DEFAULT NULL`);
-      console.log('Database Migration: Added "generic" column to products table.');
-    }
-    const brandCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'brand'`);
-    if (brandCols.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN brand VARCHAR(255) DEFAULT NULL`);
-    }
-    const strengthCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'strength'`);
-    if (strengthCols.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN strength VARCHAR(100) DEFAULT NULL`);
-    }
-    const catCols = await dbQuery(`SHOW COLUMNS FROM products LIKE 'category'`);
-    if (catCols.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN category VARCHAR(100) DEFAULT NULL`);
+    const pCols = await dbQuery(`SHOW COLUMNS FROM products`);
+    const pColNames = new Set((pCols || []).map(c => c.Field));
+
+    const addCol = async (field, typeDef) => {
+      if (!pColNames.has(field)) {
+        try {
+          await dbQuery(`ALTER TABLE products ADD COLUMN ${field} ${typeDef}`);
+          console.log(`Database Migration: Added "${field}" column to products table.`);
+        } catch (e) {
+          console.warn(`Database Migration Notice: Could not add column ${field}:`, e.message);
+        }
+      }
+    };
+
+    await addCol('image', 'LONGTEXT');
+    await addCol('tag', 'VARCHAR(255) DEFAULT NULL');
+    await addCol('createdAt', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+    await addCol('generic', 'VARCHAR(255) DEFAULT NULL');
+    await addCol('brand', 'VARCHAR(255) DEFAULT NULL');
+    await addCol('strength', 'VARCHAR(100) DEFAULT NULL');
+    await addCol('category', 'VARCHAR(100) DEFAULT NULL');
+    await addCol('status', "VARCHAR(50) NOT NULL DEFAULT 'Publish'");
+    await addCol('deletedAt', 'DATETIME NULL DEFAULT NULL');
+    await addCol('priority', 'INT NOT NULL DEFAULT 0');
+
+    // Auto-fix: Ensure deletedAt is nullable and reset any bad default timestamps for active products
+    try {
+      await dbQuery(`ALTER TABLE products MODIFY COLUMN deletedAt DATETIME NULL DEFAULT NULL`);
+    } catch (e) { /* ignore */ }
+
+    try {
+      await dbQuery(`UPDATE products SET deletedAt = NULL WHERE status != 'Trash' OR status IS NULL OR status = ''`);
+      await dbQuery(`UPDATE products SET status = 'Publish' WHERE status IS NULL OR status = '' OR status = 'active'`);
+    } catch (e) {
+      console.warn('Update deletedAt/status notice:', e.message);
     }
 
     // Auto-migration check: Indexes on products & variations for high-speed searching
@@ -137,17 +152,6 @@ const initDB = async () => {
   } catch (migErr) {
     console.warn('Warning during database column/index migration check:', migErr.message);
   }
-
-  await dbQuery(`CREATE TABLE IF NOT EXISTS variations (
-    id VARCHAR(50) PRIMARY KEY,
-    productId VARCHAR(50),
-    name VARCHAR(100) NOT NULL,
-    sku VARCHAR(100),
-    barcode VARCHAR(100),
-    price DECIMAL(10,2) DEFAULT 0.00,
-    costPrice DECIMAL(10,2) DEFAULT 0.00,
-    stock INT DEFAULT 0
-  )`);
 
   await dbQuery(`CREATE TABLE IF NOT EXISTS customers (
     id VARCHAR(50) PRIMARY KEY,
@@ -456,50 +460,22 @@ const initDB = async () => {
   }
 
   // Seeding Catalog if empty
-  // Auto-migration check: status, deletedAt, priority columns
+  // Auto-migration check: lastFour column in payments
   try {
-    const statusCol = await dbQuery(`SHOW COLUMNS FROM products LIKE 'status'`);
-    if (statusCol.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Publish'`);
-      console.log('Database Migration: Added "status" column to products.');
-    }
-    const deletedCol = await dbQuery(`SHOW COLUMNS FROM products LIKE 'deletedAt'`);
-    if (deletedCol.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN deletedAt DATETIME NULL DEFAULT NULL`);
-      console.log('Database Migration: Added "deletedAt" column to products.');
-    } else {
-      // Force modify the column to ensure DEFAULT NULL is set if it already exists with wrong default
-      await dbQuery(`ALTER TABLE products MODIFY COLUMN deletedAt DATETIME NULL DEFAULT NULL`);
-    }
-    const priorityCol = await dbQuery(`SHOW COLUMNS FROM products LIKE 'priority'`);
-    if (priorityCol.length === 0) {
-      await dbQuery(`ALTER TABLE products ADD COLUMN priority INT NOT NULL DEFAULT 0`);
-      console.log('Database Migration: Added "priority" column to products.');
-    }
     const paymentCols = await dbQuery(`SHOW COLUMNS FROM payments LIKE 'lastFour'`);
     if (paymentCols.length === 0) {
       await dbQuery(`ALTER TABLE payments ADD COLUMN lastFour VARCHAR(10) DEFAULT NULL`);
       console.log('Database Migration: Added "lastFour" column to payments table.');
     }
   } catch (migErr) {
-    console.warn('Migration error for status/deletedAt/priority/lastFour:', migErr.message);
+    console.warn('Migration error for lastFour in payments:', migErr.message);
   }
 
-  // Auto-cleanup: Permanently delete trashed products older than 30 days
+  // Auto-cleanup: Permanently delete trashed products older than 30 days ONLY if status is Trash
   try {
-    await dbQuery(`DELETE FROM products WHERE deletedAt IS NOT NULL AND deletedAt < DATE_SUB(NOW(), INTERVAL 30 DAY)`);
+    await dbQuery(`DELETE FROM products WHERE status = 'Trash' AND deletedAt IS NOT NULL AND deletedAt < DATE_SUB(NOW(), INTERVAL 30 DAY)`);
   } catch (cleanupErr) {
     console.warn('Warning during database trash auto-cleanup:', cleanupErr.message);
-  }
-
-  // Data recovery & integrity fix: Ensure deletedAt is nullable and reset erroneously marked deletedAt values
-  try {
-    await dbQuery(`ALTER TABLE products MODIFY COLUMN deletedAt DATETIME NULL DEFAULT NULL`);
-    await dbQuery(`UPDATE products SET deletedAt = NULL WHERE status != 'Trash' OR status IS NULL OR status = ''`);
-    await dbQuery(`UPDATE products SET status = 'Publish' WHERE status IS NULL OR status = ''`);
-    console.log('Database Data Self-Heal: Restored active products and ensured clean status/deletedAt values.');
-  } catch (err) {
-    console.warn('Could not reset deletedAt/status values:', err.message);
   }
 
   const prods = await dbQuery(`SELECT count(*) as count FROM products`);
@@ -1282,7 +1258,7 @@ app.get('/api/products/search', async (req, res) => {
     const params = [];
 
     if (!includeTrashed) {
-      sql += ` AND (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')`;
+      sql += ` AND (p.status != 'Trash' OR p.status IS NULL)`;
     }
 
     for (const token of tokens) {
@@ -1321,6 +1297,7 @@ app.get('/api/products/search', async (req, res) => {
 
     res.json(products);
   } catch (err) {
+    console.error('Error in /api/products/search:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1344,18 +1321,16 @@ app.get('/api/products', async (req, res) => {
       let whereClauses = [];
       let queryParams = [];
 
-      // 1. Tab / soft-delete filtering in MySQL (Resilient against accidental deletedAt timestamps)
+      // 1. Tab filtering in MySQL (Clean status check, immune to zero-date and timestamp bugs)
       if (tab === 'Trash') {
-        whereClauses.push(`(p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00' AND p.status = 'Trash')`);
+        whereClauses.push(`p.status = 'Trash'`);
+      } else if (tab === 'Draft') {
+        whereClauses.push(`p.status = 'Draft'`);
+      } else if (tab === 'Publish') {
+        whereClauses.push(`(p.status = 'Publish' OR p.status IS NULL OR p.status = '' OR p.status = 'active')`);
       } else {
-        if (tab === 'Publish') {
-          whereClauses.push(`(p.status = 'Publish' OR (p.status IS NULL AND (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')))`);
-        } else if (tab === 'Draft') {
-          whereClauses.push(`p.status = 'Draft'`);
-        } else {
-          // tab === 'all'
-          whereClauses.push(`(p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00' OR p.status != 'Trash' OR p.status IS NULL)`);
-        }
+        // tab === 'all'
+        whereClauses.push(`(p.status != 'Trash' OR p.status IS NULL)`);
       }
 
       // 2. Generic filter in MySQL
@@ -1397,10 +1372,10 @@ app.get('/api/products', async (req, res) => {
       const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
       // Global count metrics for tabs (unfiltered by search so tabs always show true counts)
-      const [allCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00' OR status != 'Trash' OR status IS NULL)`);
-      const [pubCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status = 'Publish' OR (status IS NULL AND (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00'))`);
+      const [allCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (status != 'Trash' OR status IS NULL)`);
+      const [pubCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (status = 'Publish' OR status IS NULL OR status = '' OR status = 'active')`);
       const [draftCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status = 'Draft'`);
-      const [trashCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE deletedAt IS NOT NULL AND deletedAt != '0000-00-00 00:00:00' AND status = 'Trash'`);
+      const [trashCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status = 'Trash'`);
 
       // Filtered total count
       const countSql = `SELECT COUNT(*) as total FROM products p ${whereSql}`;
@@ -1413,18 +1388,23 @@ app.get('/api/products', async (req, res) => {
       const items = await dbQuery(itemsSql, queryParams);
 
       if (items.length > 0) {
-        const pids = items.map(p => p.id);
-        const placeholders = pids.map(() => '?').join(',');
-        const variations = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
-        const varMap = new Map();
-        for (let i = 0; i < variations.length; i++) {
-          const v = variations[i];
-          if (!varMap.has(v.productId)) varMap.set(v.productId, []);
-          varMap.get(v.productId).push(v);
+        try {
+          const pids = items.map(p => p.id);
+          const placeholders = pids.map(() => '?').join(',');
+          const variations = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+          const varMap = new Map();
+          for (let i = 0; i < variations.length; i++) {
+            const v = variations[i];
+            if (!varMap.has(v.productId)) varMap.set(v.productId, []);
+            varMap.get(v.productId).push(v);
+          }
+          items.forEach(p => {
+            p.variations = varMap.get(p.id) || [];
+          });
+        } catch (vErr) {
+          console.warn('Variations load notice for paginated products:', vErr.message);
+          items.forEach(p => { p.variations = p.variations || []; });
         }
-        items.forEach(p => {
-          p.variations = varMap.get(p.id) || [];
-        });
       }
 
       return res.json({
@@ -1449,16 +1429,19 @@ app.get('/api/products', async (req, res) => {
     let sql = `SELECT p.* FROM products p`;
     const params = [];
     if (!includeTrashed) {
-      sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00' OR p.status != 'Trash' OR p.status IS NULL)`;
-      if (statusFilter) {
-        sql += ` AND p.status = ?`;
+      if (statusFilter === 'Trash') {
+        sql += ` WHERE p.status = 'Trash'`;
+      } else if (statusFilter) {
+        sql += ` WHERE p.status = ?`;
         params.push(statusFilter);
+      } else {
+        sql += ` WHERE (p.status != 'Trash' OR p.status IS NULL)`;
       }
     } else {
       if (statusFilter === 'Trash') {
-        sql += ` WHERE (p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00' AND p.status = 'Trash')`;
+        sql += ` WHERE p.status = 'Trash'`;
       } else if (statusFilter) {
-        sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00' OR p.status != 'Trash' OR p.status IS NULL) AND p.status = ?`;
+        sql += ` WHERE p.status = ?`;
         params.push(statusFilter);
       }
     }
@@ -1467,31 +1450,114 @@ app.get('/api/products', async (req, res) => {
 
     const prods = await dbQuery(sql, params);
     
-    // Attach variations using fast Map (O(N) instead of O(N*M))
+    // Attach variations safely
     if (prods.length > 0) {
-      let vars = [];
-      if (prods.length <= 500) {
-        const pids = prods.map(p => p.id);
-        const placeholders = pids.map(() => '?').join(',');
-        vars = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
-      } else {
-        vars = await dbQuery(`SELECT * FROM variations`);
-      }
-      const varMap = new Map();
-      for (let i = 0; i < vars.length; i++) {
-        const v = vars[i];
-        if (!varMap.has(v.productId)) varMap.set(v.productId, []);
-        varMap.get(v.productId).push(v);
-      }
-      for (let i = 0; i < prods.length; i++) {
-        const p = prods[i];
-        p.variations = varMap.get(p.id) || [];
+      try {
+        let vars = [];
+        if (prods.length <= 500) {
+          const pids = prods.map(p => p.id);
+          const placeholders = pids.map(() => '?').join(',');
+          vars = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+        } else {
+          vars = await dbQuery(`SELECT * FROM variations`);
+        }
+        const varMap = new Map();
+        for (let i = 0; i < vars.length; i++) {
+          const v = vars[i];
+          if (!varMap.has(v.productId)) varMap.set(v.productId, []);
+          varMap.get(v.productId).push(v);
+        }
+        for (let i = 0; i < prods.length; i++) {
+          prods[i].variations = varMap.get(prods[i].id) || [];
+        }
+      } catch (vErr) {
+        console.warn('Variations load notice for full products list:', vErr.message);
+        prods.forEach(p => { p.variations = p.variations || []; });
       }
     }
 
     res.json(prods);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error in /api/products:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
+  }
+});
+
+// ── Database Diagnostics & Self-Healing Endpoint (Public, Accessible in Browser) ──
+app.all(['/api/system/fix-products', '/api/debug/fix-products'], async (req, res) => {
+  try {
+    const results = [];
+    
+    // 1. Check and add columns
+    const cols = await dbQuery(`SHOW COLUMNS FROM products`);
+    const colNames = new Set((cols || []).map(c => c.Field));
+
+    const addCol = async (field, typeDef) => {
+      if (!colNames.has(field)) {
+        try {
+          await dbQuery(`ALTER TABLE products ADD COLUMN ${field} ${typeDef}`);
+          results.push(`Added missing column: ${field}`);
+        } catch (e) {
+          results.push(`Could not add column ${field}: ${e.message}`);
+        }
+      }
+    };
+
+    await addCol('image', 'LONGTEXT');
+    await addCol('tag', 'VARCHAR(255) DEFAULT NULL');
+    await addCol('createdAt', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+    await addCol('generic', 'VARCHAR(255) DEFAULT NULL');
+    await addCol('brand', 'VARCHAR(255) DEFAULT NULL');
+    await addCol('strength', 'VARCHAR(100) DEFAULT NULL');
+    await addCol('category', 'VARCHAR(100) DEFAULT NULL');
+    await addCol('status', "VARCHAR(50) NOT NULL DEFAULT 'Publish'");
+    await addCol('deletedAt', 'DATETIME NULL DEFAULT NULL');
+    await addCol('priority', 'INT NOT NULL DEFAULT 0');
+
+    // 2. Ensure deletedAt is nullable
+    try {
+      await dbQuery(`ALTER TABLE products MODIFY COLUMN deletedAt DATETIME NULL DEFAULT NULL`);
+      results.push('Ensured deletedAt column is NULLABLE');
+    } catch (e) {
+      results.push(`ALTER deletedAt notice: ${e.message}`);
+    }
+
+    // 3. Reset timestamps and ensure Publish status
+    try {
+      const r1 = await dbQuery(`UPDATE products SET deletedAt = NULL WHERE status != 'Trash' OR status IS NULL OR status = ''`);
+      results.push(`Reset deletedAt = NULL for active products (Affected: ${r1.affectedRows || 0})`);
+    } catch (e) {
+      results.push(`Update deletedAt notice: ${e.message}`);
+    }
+
+    try {
+      const r2 = await dbQuery(`UPDATE products SET status = 'Publish' WHERE status IS NULL OR status = '' OR status = 'active'`);
+      results.push(`Normalized status = 'Publish' (Affected: ${r2.affectedRows || 0})`);
+    } catch (e) {
+      results.push(`Update status notice: ${e.message}`);
+    }
+
+    // 4. Verification counts
+    const [totalRow] = await dbQuery(`SELECT COUNT(*) as c FROM products`);
+    const [activeRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status != 'Trash' OR status IS NULL`);
+    const [trashRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status = 'Trash'`);
+    const sample = await dbQuery(`SELECT id, name, sku, stock, costPrice, sellingPrice, status, deletedAt FROM products LIMIT 5`);
+
+    res.json({
+      success: true,
+      message: 'Product database self-healing completed successfully!',
+      timestamp: new Date().toISOString(),
+      counts: {
+        totalProducts: totalRow ? totalRow.c : 0,
+        activeProducts: activeRow ? activeRow.c : 0,
+        trashedProducts: trashRow ? trashRow.c : 0
+      },
+      diagnosticLog: results,
+      sampleProducts: sample
+    });
+  } catch (err) {
+    console.error('Error in /api/system/fix-products:', err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
 });
 
