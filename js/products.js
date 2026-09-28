@@ -471,11 +471,53 @@
           headers: S.getHeaders(),
           signal
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          let errText = `HTTP ${res.status}`;
+          try {
+            const errJson = await res.json();
+            if (errJson.error) errText += `: ${errJson.error}`;
+          } catch(e) {}
+          const tableBody = document.getElementById('products-table-body');
+          if (tableBody) {
+            tableBody.innerHTML = `
+              <tr>
+                <td colspan="8" style="padding: 36px 20px; text-align: center; color: #dc2626;">
+                  <div style="font-weight: 700; font-size: 16px; margin-bottom: 8px;">⚠️ Server Error: Could not load products</div>
+                  <div style="font-size: 13px; color: #64748b; margin-bottom: 16px; max-width: 600px; margin-left: auto; margin-right: auto;">
+                    ${H.esc(errText)}
+                  </div>
+                  <button class="btn btn-primary btn-sm" id="btn-fix-products-err" style="display:inline-flex; align-items:center; gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    Run Database Self-Repair
+                  </button>
+                </td>
+              </tr>
+            `;
+            const btnFixErr = document.getElementById('btn-fix-products-err');
+            if (btnFixErr) {
+              btnFixErr.onclick = async () => {
+                btnFixErr.disabled = true;
+                btnFixErr.textContent = 'Repairing...';
+                await this.runDbRepair();
+              };
+            }
+          }
+          return;
+        }
         data = await res.json();
       } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('Failed to update product list:', err);
+        const tableBody = document.getElementById('products-table-body');
+        if (tableBody) {
+          tableBody.innerHTML = `
+            <tr>
+              <td colspan="8" style="padding: 30px; text-align: center; color: #dc2626;">
+                Failed to communicate with server: ${H.esc(err.message)}
+              </td>
+            </tr>
+          `;
+        }
         return;
       }
 
@@ -505,11 +547,26 @@
       if (pageItems.length === 0) {
         tableBody.innerHTML = `
           <tr>
-            <td colspan="8" class="text-muted text-center" style="padding: 30px;">
-              No products found in this category or search selection.
+            <td colspan="8" class="text-muted text-center" style="padding: 40px 20px;">
+              <div style="font-size: 15px; font-weight: 600; color: #475569; margin-bottom: 6px;">No products found in this category or search selection.</div>
+              <div style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
+                If you imported products into your database but they are not appearing, your database timestamps or status may need a 1-click self-repair.
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-fix-products-empty" style="display:inline-flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Auto-Repair Products Database
+              </button>
             </td>
           </tr>
         `;
+        const btnFix = document.getElementById('btn-fix-products-empty');
+        if (btnFix) {
+          btnFix.onclick = async () => {
+            btnFix.disabled = true;
+            btnFix.textContent = 'Repairing...';
+            await this.runDbRepair();
+          };
+        }
         document.getElementById('catalog-pagination').innerHTML = '';
         return;
       }
@@ -1338,6 +1395,23 @@
       };
 
       await renderCats();
+    },
+
+    async runDbRepair() {
+      const H = POS.Helpers;
+      try {
+        const res = await fetch(`${window.location.origin}/api/system/fix-products`);
+        const data = await res.json();
+        if (data.success) {
+          alert(`✅ Database Repair Successful!\n\nTotal products in database: ${data.counts.totalProducts}\nActive products visible: ${data.counts.activeProducts}\n\nThe product list will now reload.`);
+          this.currentPage = 1;
+          await this.updateList();
+        } else {
+          alert(`❌ Repair failed: ${data.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        alert(`❌ Network error calling self-repair: ${err.message}`);
+      }
     }
   };
 
