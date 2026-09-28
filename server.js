@@ -492,12 +492,14 @@ const initDB = async () => {
     console.warn('Warning during database trash auto-cleanup:', cleanupErr.message);
   }
 
-  // Data recovery fix: Reset deletedAt to NULL to restore active products
+  // Data recovery & integrity fix: Ensure deletedAt is nullable and reset erroneously marked deletedAt values
   try {
-    await dbQuery(`UPDATE products SET deletedAt = NULL`);
-    console.log('Database Data Fix: Restored all products from default timestamp issue.');
+    await dbQuery(`ALTER TABLE products MODIFY COLUMN deletedAt DATETIME NULL DEFAULT NULL`);
+    await dbQuery(`UPDATE products SET deletedAt = NULL WHERE status != 'Trash' OR status IS NULL OR status = ''`);
+    await dbQuery(`UPDATE products SET status = 'Publish' WHERE status IS NULL OR status = ''`);
+    console.log('Database Data Self-Heal: Restored active products and ensured clean status/deletedAt values.');
   } catch (err) {
-    console.warn('Could not reset deletedAt values:', err.message);
+    console.warn('Could not reset deletedAt/status values:', err.message);
   }
 
   const prods = await dbQuery(`SELECT count(*) as count FROM products`);
@@ -1342,14 +1344,17 @@ app.get('/api/products', async (req, res) => {
       let whereClauses = [];
       let queryParams = [];
 
-      // 1. Tab / soft-delete filtering in MySQL
+      // 1. Tab / soft-delete filtering in MySQL (Resilient against accidental deletedAt timestamps)
       if (tab === 'Trash') {
-        whereClauses.push(`(p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00')`);
+        whereClauses.push(`(p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00' AND p.status = 'Trash')`);
       } else {
-        whereClauses.push(`(p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')`);
-        if (tab === 'Publish' || tab === 'Draft') {
-          whereClauses.push(`p.status = ?`);
-          queryParams.push(tab);
+        if (tab === 'Publish') {
+          whereClauses.push(`(p.status = 'Publish' OR (p.status IS NULL AND (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')))`);
+        } else if (tab === 'Draft') {
+          whereClauses.push(`p.status = 'Draft'`);
+        } else {
+          // tab === 'all'
+          whereClauses.push(`(p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00' OR p.status != 'Trash' OR p.status IS NULL)`);
         }
       }
 
@@ -1392,10 +1397,10 @@ app.get('/api/products', async (req, res) => {
       const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
       // Global count metrics for tabs (unfiltered by search so tabs always show true counts)
-      const [allCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00')`);
-      const [pubCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00') AND status = 'Publish'`);
-      const [draftCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00') AND status = 'Draft'`);
-      const [trashCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NOT NULL AND deletedAt != '0000-00-00 00:00:00')`);
+      const [allCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00' OR status != 'Trash' OR status IS NULL)`);
+      const [pubCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status = 'Publish' OR (status IS NULL AND (deletedAt IS NULL OR deletedAt = '0000-00-00 00:00:00'))`);
+      const [draftCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE status = 'Draft'`);
+      const [trashCountRow] = await dbQuery(`SELECT COUNT(*) as c FROM products WHERE deletedAt IS NOT NULL AND deletedAt != '0000-00-00 00:00:00' AND status = 'Trash'`);
 
       // Filtered total count
       const countSql = `SELECT COUNT(*) as total FROM products p ${whereSql}`;
@@ -1411,8 +1416,14 @@ app.get('/api/products', async (req, res) => {
         const pids = items.map(p => p.id);
         const placeholders = pids.map(() => '?').join(',');
         const variations = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+        const varMap = new Map();
+        for (let i = 0; i < variations.length; i++) {
+          const v = variations[i];
+          if (!varMap.has(v.productId)) varMap.set(v.productId, []);
+          varMap.get(v.productId).push(v);
+        }
         items.forEach(p => {
-          p.variations = variations.filter(v => v.productId === p.id);
+          p.variations = varMap.get(p.id) || [];
         });
       }
 
@@ -1438,16 +1449,16 @@ app.get('/api/products', async (req, res) => {
     let sql = `SELECT p.* FROM products p`;
     const params = [];
     if (!includeTrashed) {
-      sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00')`;
+      sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00' OR p.status != 'Trash' OR p.status IS NULL)`;
       if (statusFilter) {
         sql += ` AND p.status = ?`;
         params.push(statusFilter);
       }
     } else {
       if (statusFilter === 'Trash') {
-        sql += ` WHERE (p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00')`;
+        sql += ` WHERE (p.deletedAt IS NOT NULL AND p.deletedAt != '0000-00-00 00:00:00' AND p.status = 'Trash')`;
       } else if (statusFilter) {
-        sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00') AND p.status = ?`;
+        sql += ` WHERE (p.deletedAt IS NULL OR p.deletedAt = '0000-00-00 00:00:00' OR p.status != 'Trash' OR p.status IS NULL) AND p.status = ?`;
         params.push(statusFilter);
       }
     }
@@ -1456,19 +1467,26 @@ app.get('/api/products', async (req, res) => {
 
     const prods = await dbQuery(sql, params);
     
-    // Attach variations
-    if (prods.length > 0 && prods.length <= 500) {
-      const pids = prods.map(p => p.id);
-      const placeholders = pids.map(() => '?').join(',');
-      const vars = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
-      prods.forEach(p => {
-        p.variations = vars.filter(v => v.productId === p.id);
-      });
-    } else if (prods.length > 0) {
-      const vars = await dbQuery(`SELECT * FROM variations`);
-      prods.forEach(p => {
-        p.variations = vars.filter(v => v.productId === p.id);
-      });
+    // Attach variations using fast Map (O(N) instead of O(N*M))
+    if (prods.length > 0) {
+      let vars = [];
+      if (prods.length <= 500) {
+        const pids = prods.map(p => p.id);
+        const placeholders = pids.map(() => '?').join(',');
+        vars = await dbQuery(`SELECT * FROM variations WHERE productId IN (${placeholders})`, pids);
+      } else {
+        vars = await dbQuery(`SELECT * FROM variations`);
+      }
+      const varMap = new Map();
+      for (let i = 0; i < vars.length; i++) {
+        const v = vars[i];
+        if (!varMap.has(v.productId)) varMap.set(v.productId, []);
+        varMap.get(v.productId).push(v);
+      }
+      for (let i = 0; i < prods.length; i++) {
+        const p = prods[i];
+        p.variations = varMap.get(p.id) || [];
+      }
     }
 
     res.json(prods);
