@@ -345,6 +345,17 @@ const initDB = async () => {
     console.warn('Warning during database column migration check:', migErr.message);
   }
 
+  // Auto-migration check: If users lacks permissions column, add it.
+  try {
+    const columnsP = await dbQuery(`SHOW COLUMNS FROM users LIKE 'permissions'`);
+    if (columnsP.length === 0) {
+      await dbQuery(`ALTER TABLE users ADD COLUMN permissions LONGTEXT NULL`);
+      console.log('Database Migration: Added "permissions" column to users table.');
+    }
+  } catch (migErr) {
+    console.warn('Warning during database users permissions column migration check:', migErr.message);
+  }
+
   // Auto-migration check: If orderItems lacks costPrice column, add it.
   try {
     const columnsOI = await dbQuery(`SHOW COLUMNS FROM orderItems LIKE 'costPrice'`);
@@ -443,6 +454,31 @@ const initDB = async () => {
     note TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+
+  // Create gallery tables
+  await dbQuery(`CREATE TABLE IF NOT EXISTS gallery_folders (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await dbQuery(`CREATE TABLE IF NOT EXISTS gallery_images (
+    id VARCHAR(50) PRIMARY KEY,
+    folder_id VARCHAR(50) DEFAULT 'default',
+    name VARCHAR(255) NOT NULL,
+    data LONGTEXT NOT NULL,
+    size VARCHAR(50) DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  try {
+    const gfCount = await dbQuery(`SELECT COUNT(*) as count FROM gallery_folders`);
+    if (gfCount[0].count === 0) {
+      await dbQuery(`INSERT INTO gallery_folders (id, name) VALUES ('default', 'Default Folder')`);
+    }
+  } catch (gfErr) {
+    console.warn('Warning seeding default gallery folder:', gfErr.message);
+  }
 
   // Seed default coupons if empty
   const couponsCount = await dbQuery(`SELECT COUNT(*) as count FROM coupons`);
@@ -636,7 +672,24 @@ const seedCatalog = async () => {
 
 initDB().catch(console.error);
 
-// ── Authentication Middleware ────────────────────
+// ── Authentication Middleware & Module Permissions ───
+const ALL_MODULES = [
+  'dashboard', 'new-order', 'sales', 'inventory', 'expenses', 'suppliers',
+  'reports', 'coupons', 'customers', 'gallery', 'invoice-settings',
+  'payment-methods', 'report-settings', 'users'
+];
+
+const getDefaultPermissions = (role) => {
+  if (role === 'admin') return [...ALL_MODULES];
+  if (role === 'manager') {
+    return ['dashboard', 'new-order', 'sales', 'inventory', 'expenses', 'suppliers', 'customers', 'gallery', 'invoice-settings', 'payment-methods', 'report-settings'];
+  }
+  if (role === 'cashier') {
+    return ['new-order', 'sales', 'inventory', 'customers'];
+  }
+  return [];
+};
+
 // For this standalone setup, we will pass active user object as header 'x-user-role' and 'x-user-name' for validation
 const verifyRole = (roles) => {
   return (req, res, next) => {
@@ -660,6 +713,13 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid username/email or password' });
     }
     const user = rows[0];
+    let perms = [];
+    if (user.permissions) {
+      try { perms = JSON.parse(user.permissions); } catch (e) { perms = []; }
+    }
+    if (!Array.isArray(perms) || perms.length === 0) {
+      perms = getDefaultPermissions(user.role);
+    }
     res.json({
       success: true,
       user: {
@@ -667,7 +727,8 @@ app.post('/api/auth/login', async (req, res) => {
         username: user.username,
         name: user.name,
         role: user.role,
-        email: user.email
+        email: user.email,
+        permissions: perms
       }
     });
   } catch (err) {
@@ -1215,8 +1276,21 @@ app.delete('/api/payment-methods/:id', verifyRole(['admin', 'manager']), async (
 // Users Management (Admin Only)
 app.get('/api/users', verifyRole(['admin']), async (req, res) => {
   try {
-    const rows = await dbQuery(`SELECT id, username, name, role, email FROM users ORDER BY name`);
-    res.json(rows);
+    const rows = await dbQuery(`SELECT id, username, name, role, email, permissions FROM users ORDER BY name`);
+    const users = rows.map(u => {
+      let perms = [];
+      if (u.permissions) {
+        try { perms = JSON.parse(u.permissions); } catch (e) { perms = []; }
+      }
+      if (!Array.isArray(perms) || perms.length === 0) {
+        perms = getDefaultPermissions(u.role);
+      }
+      return {
+        ...u,
+        permissions: perms
+      };
+    });
+    res.json(users);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1224,9 +1298,10 @@ app.get('/api/users', verifyRole(['admin']), async (req, res) => {
 
 app.post('/api/users', verifyRole(['admin']), async (req, res) => {
   try {
-    const { id, username, password, name, role, email } = req.body;
-    await dbQuery(`INSERT INTO users (id, username, password, name, role, email) VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, username, password, name, role, email || null]);
+    const { id, username, password, name, role, email, permissions } = req.body;
+    const permsJson = JSON.stringify(Array.isArray(permissions) ? permissions : getDefaultPermissions(role));
+    await dbQuery(`INSERT INTO users (id, username, password, name, role, email, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, username, password, name, role, email || null, permsJson]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1236,13 +1311,14 @@ app.post('/api/users', verifyRole(['admin']), async (req, res) => {
 app.put('/api/users/:id', verifyRole(['admin']), async (req, res) => {
   try {
     const uid = req.params.id;
-    const { username, password, name, role, email } = req.body;
+    const { username, password, name, role, email, permissions } = req.body;
+    const permsJson = JSON.stringify(Array.isArray(permissions) ? permissions : getDefaultPermissions(role));
     if (password) {
-      await dbQuery(`UPDATE users SET username = ?, password = ?, name = ?, role = ?, email = ? WHERE id = ?`,
-        [username, password, name, role, email || null, uid]);
+      await dbQuery(`UPDATE users SET username = ?, password = ?, name = ?, role = ?, email = ?, permissions = ? WHERE id = ?`,
+        [username, password, name, role, email || null, permsJson, uid]);
     } else {
-      await dbQuery(`UPDATE users SET username = ?, name = ?, role = ?, email = ? WHERE id = ?`,
-        [username, name, role, email || null, uid]);
+      await dbQuery(`UPDATE users SET username = ?, name = ?, role = ?, email = ?, permissions = ? WHERE id = ?`,
+        [username, name, role, email || null, permsJson, uid]);
     }
     res.json({ success: true });
   } catch (err) {
@@ -1257,6 +1333,111 @@ app.delete('/api/users/:id', verifyRole(['admin']), async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete primary admin account' });
     }
     await dbQuery(`DELETE FROM users WHERE id = ?`, [uid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Gallery Management ──────────────────────────────────────
+app.get('/api/gallery/folders', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const rows = await dbQuery(`
+      SELECT f.id, f.name, f.created_at, 
+             (SELECT COUNT(*) FROM gallery_images i WHERE i.folder_id = f.id) as imageCount 
+      FROM gallery_folders f 
+      ORDER BY f.created_at ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/gallery/folders', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Folder name is required' });
+    }
+    const cleanName = name.trim();
+    const id = 'gf_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
+    await dbQuery(`INSERT INTO gallery_folders (id, name) VALUES (?, ?)`, [id, cleanName]);
+    res.json({ success: true, folder: { id, name: cleanName, imageCount: 0 } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/gallery/folders/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const fid = req.params.id;
+    if (fid === 'default') {
+      return res.status(400).json({ error: 'Cannot delete the default folder' });
+    }
+    // Move any images from this folder to the default folder
+    await dbQuery(`UPDATE gallery_images SET folder_id = 'default' WHERE folder_id = ?`, [fid]);
+    await dbQuery(`DELETE FROM gallery_folders WHERE id = ?`, [fid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/gallery/images', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const folderId = req.query.folderId;
+    let sql = `SELECT id, folder_id, name, data, size, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.000Z') as created_at FROM gallery_images`;
+    const params = [];
+    if (folderId && folderId !== 'all') {
+      sql += ` WHERE folder_id = ?`;
+      params.push(folderId);
+    }
+    sql += ` ORDER BY created_at DESC`;
+    const rows = await dbQuery(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/gallery/images', async (req, res) => {
+  try {
+    const { folder_id, name, data, size } = req.body;
+    if (!data) {
+      return res.status(400).json({ error: 'Image data is required' });
+    }
+    const id = 'gimg_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const folderId = folder_id || 'default';
+    const imgName = name || ('Photo_' + Date.now().toString(36));
+    await dbQuery(`INSERT INTO gallery_images (id, folder_id, name, data, size) VALUES (?, ?, ?, ?, ?)`,
+      [id, folderId, imgName, data, size || null]);
+    res.json({ success: true, image: { id, folder_id: folderId, name: imgName, data, size } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/gallery/images/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const id = req.params.id;
+    await dbQuery(`DELETE FROM gallery_images WHERE id = ?`, [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/gallery/images/:id/move', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { folder_id } = req.body;
+    if (!folder_id) {
+      return res.status(400).json({ error: 'Target folder is required' });
+    }
+    await dbQuery(`UPDATE gallery_images SET folder_id = ? WHERE id = ?`, [folder_id, id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
