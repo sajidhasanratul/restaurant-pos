@@ -22,12 +22,29 @@ app.get(['/', '/index.html'], (req, res) => {
 // Serve static frontend assets
 app.use(express.static(path.join(__dirname)));
 
+// ── Process Crash Safeguards ──────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // ── MySQL Connection Pool ─────────────────────────
 let pool;
 
 const getPool = () => {
   if (!pool) {
-    pool = mysql.createPool({ ...config.db, dateStrings: true });
+    pool = mysql.createPool({
+      ...config.db,
+      dateStrings: true,
+      waitForConnections: true,
+      connectionLimit: 10,
+      maxIdle: 10,
+      idleTimeout: 60000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000
+    });
   }
   return pool;
 };
