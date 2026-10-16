@@ -1,0 +1,1364 @@
+(function () {
+  'use strict';
+
+  const Reports = {
+    async render(type) {
+      const mc = document.getElementById('main-content');
+      const H = POS.Helpers;
+
+      const titleMap = {
+        'daily-sale': 'Daily Sale Report',
+        'product-profit': 'Product Profit Report',
+        'top-selling': 'Top Selling Products Report',
+        'slow-selling': 'Slow Selling Products Report',
+        'payment-method': 'Payment Method Report',
+        'stock-value': 'Stock Value Report',
+        'sales-summary': 'Sales Summary Report',
+        'overall-profit': 'Overall Profit Report'
+      };
+
+      const title = titleMap[type] || 'Reports Overview';
+
+      let fromDate = localStorage.getItem('rep_from') || H.today();
+      let toDate = localStorage.getItem('rep_to') || H.today();
+
+      mc.innerHTML = `
+        <div class="page-header fade-in">
+          <div>
+            <h2 class="page-title">📈 ${title}</h2>
+            <p class="page-subtitle">Analyze business performance, check cashflows and output CSV logs.</p>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-success btn-sm" id="btn-export-rep">📥 Export CSV</button>
+          </div>
+        </div>
+
+        <div class="filter-bar fade-in">
+          <div class="form-group" style="margin-bottom:0; flex:1; min-width:150px;">
+            <label class="form-label">From Date</label>
+            <input type="date" class="form-input" id="rep-from" value="${fromDate}">
+          </div>
+          <div class="form-group" style="margin-bottom:0; flex:1; min-width:150px;">
+            <label class="form-label">To Date</label>
+            <input type="date" class="form-input" id="rep-to" value="${toDate}">
+          </div>
+          <button class="btn btn-primary" id="btn-apply-rep-filter" style="margin-top:18px;">Apply Filter</button>
+        </div>
+
+        <div id="report-output-container" class="fade-in"></div>
+      `;
+
+      // Filter events
+      document.getElementById('btn-apply-rep-filter').onclick = async () => {
+        fromDate = document.getElementById('rep-from').value;
+        toDate = document.getElementById('rep-to').value;
+        localStorage.setItem('rep_from', fromDate);
+        localStorage.setItem('rep_to', toDate);
+        await this.generateReport(type, fromDate, toDate);
+      };
+
+      document.getElementById('btn-export-rep').onclick = async () => {
+        await this.exportReportCSV(type, fromDate, toDate);
+      };
+
+      // Generate initial state
+      await this.generateReport(type, fromDate, toDate);
+    },
+
+    async generateReport(type, from, to) {
+      const container = document.getElementById('report-output-container');
+      const S = POS.Store;
+      const H = POS.Helpers;
+
+      const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
+      const orderItems = await S.getAll('orderItems');
+      const products = await S.getAll('products');
+      const payments = await S.getAll('payments');
+
+      switch (type) {
+        case 'daily-sale':
+          this.dailySaleReport(container, orders, H);
+          break;
+        case 'product-profit':
+          this.productProfitReport(container, orders, orderItems, products, H);
+          break;
+        case 'top-selling':
+          this.rankProductsReport(container, orders, orderItems, products, true, H);
+          break;
+        case 'slow-selling':
+          this.rankProductsReport(container, orders, orderItems, products, false, H);
+          break;
+        case 'payment-method':
+          this.paymentMethodReport(container, orders, payments, H);
+          break;
+        case 'stock-value':
+          await this.stockValueReport(container, products, S, H);
+          break;
+        case 'sales-summary':
+          this.salesSummaryReport(container, orders, H);
+          break;
+        case 'overall-profit':
+          await this.overallProfitReport(container, orders, orderItems, products, S, H, from, to);
+          break;
+        default:
+          container.innerHTML = `<div class="card"><div class="card-body">Please select a valid report option from the sidebar menu.</div></div>`;
+      }
+    },
+
+    dailySaleReport(container, orders, H) {
+      const salesByDay = {};
+
+      orders.forEach(o => {
+        const day = H.formatDate(o.date);
+        if (!salesByDay[day]) {
+          salesByDay[day] = { count: 0, subtotal: 0, discount: 0, tax: 0, total: 0 };
+        }
+        const sub = parseFloat(o.subtotal) || 0;
+        const disc = parseFloat(o.discountAmount) || 0;
+        const tax = parseFloat(o.taxAmount) || 0;
+        const total = parseFloat(o.grandTotal) || 0;
+
+        salesByDay[day].count++;
+        salesByDay[day].subtotal += sub;
+        salesByDay[day].discount += disc;
+        salesByDay[day].tax += tax;
+        salesByDay[day].total += total;
+      });
+
+      let tbodyRows = '';
+      let sumCount = 0, sumSub = 0, sumDisc = 0, sumTax = 0, sumTotal = 0;
+
+      Object.entries(salesByDay).forEach(([day, d]) => {
+        sumCount += d.count;
+        sumSub += d.subtotal;
+        sumDisc += d.discount;
+        sumTax += d.tax;
+        sumTotal += d.total;
+
+        tbodyRows += `
+          <tr>
+            <td style="font-weight:600;">${day}</td>
+            <td class="text-center">${d.count}</td>
+            <td class="text-right">${H.formatCurrency(d.subtotal)}</td>
+            <td class="text-right text-danger">-${H.formatCurrency(d.discount)}</td>
+            <td class="text-right">${H.formatCurrency(d.tax)}</td>
+            <td class="text-right" style="font-weight:700; color:var(--primary);">${H.formatCurrency(d.total)}</td>
+          </tr>
+        `;
+      });
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th class="text-center">Invoices Issued</th>
+                    <th class="text-right">Subtotal</th>
+                    <th class="text-right">Discount</th>
+                    <th class="text-right">Tax</th>
+                    <th class="text-right">Total sales</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${tbodyRows || '<tr><td colspan="6" class="text-center text-muted">No sales orders found in this date range.</td></tr>'}
+                  ${tbodyRows ? `
+                    <tr class="total-row">
+                      <td>Total Summary</td>
+                      <td class="text-center">${sumCount}</td>
+                      <td class="text-right">${H.formatCurrency(sumSub)}</td>
+                      <td class="text-right text-danger">-${H.formatCurrency(sumDisc)}</td>
+                      <td class="text-right">${H.formatCurrency(sumTax)}</td>
+                      <td class="text-right" style="color:var(--primary);">${H.formatCurrency(sumTotal)}</td>
+                    </tr>
+                  ` : ''}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    productProfitReport(container, orders, orderItems, products, H) {
+      const orderIds = orders.map(o => o.id);
+      const items = orderItems.filter(i => orderIds.includes(i.orderId));
+
+      const profitByProduct = {};
+
+      items.forEach(item => {
+        const prod = products.find(p => p.id === item.productId);
+        let costPrice = parseFloat(item.costPrice) || 0;
+        if (prod) {
+          if (prod.variations && prod.variations.length > 0) {
+            const v = prod.variations.find(v => v.name === item.variationName || (prod.name + ' ' + v.name) === item.productName);
+            costPrice = v ? v.costPrice : prod.costPrice;
+          } else {
+            costPrice = prod.costPrice;
+          }
+        }
+
+        const key = item.productId + '_' + (item.variationName || '');
+        if (!profitByProduct[key]) {
+          profitByProduct[key] = {
+            name: item.productName + (item.variationName ? ` (${item.variationName})` : ''),
+            qtySold: 0,
+            revenue: 0,
+            cost: 0
+          };
+        }
+
+        const itemQty = parseInt(item.qty, 10) || 0;
+        const itemTotal = parseFloat(item.total) || 0;
+
+        profitByProduct[key].qtySold += itemQty;
+        profitByProduct[key].revenue += itemTotal;
+        profitByProduct[key].cost += (costPrice * itemQty);
+      });
+
+      const allRows = Object.values(profitByProduct);
+      let grandQty = 0, grandRevenue = 0, grandCost = 0, grandProfit = 0;
+
+      allRows.forEach(d => {
+        const profit = d.revenue - d.cost;
+        d.profit = profit;
+        d.margin = d.revenue > 0 ? (profit / d.revenue) * 100 : 0;
+
+        grandQty += d.qtySold;
+        grandRevenue += d.revenue;
+        grandCost += d.cost;
+        grandProfit += profit;
+      });
+
+      const avgMargin = grandRevenue > 0 ? (grandProfit / grandRevenue) * 100 : 0;
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700;">📊 Product Profitability Analysis</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+              <select id="pp-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                <option value="10">10</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="custom">Custom...</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Product / Variant</th>
+                    <th class="text-center" style="width: 100px;">Qty Sold</th>
+                    <th class="text-right" style="width: 130px;">Total Cost</th>
+                    <th class="text-right" style="width: 130px;">Total Sales</th>
+                    <th class="text-right" style="width: 130px;">Profit</th>
+                    <th class="text-center" style="width: 120px;">Profit Margin</th>
+                  </tr>
+                </thead>
+                <tbody id="pp-tbody"></tbody>
+                ${allRows.length > 0 ? `
+                  <tfoot>
+                    <tr class="total-row">
+                      <td>Grand Totals</td>
+                      <td class="text-center">${grandQty}</td>
+                      <td class="text-right">${H.formatCurrency(grandCost)}</td>
+                      <td class="text-right">${H.formatCurrency(grandRevenue)}</td>
+                      <td class="text-right text-success">${H.formatCurrency(grandProfit)}</td>
+                      <td class="text-center">${avgMargin.toFixed(1)}%</td>
+                    </tr>
+                  </tfoot>
+                ` : ''}
+              </table>
+            </div>
+            <div id="pp-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
+          </div>
+        </div>
+      `;
+
+      let ppPage = 1;
+      let ppLimit = 50;
+
+      const renderPPTable = () => {
+        const tbody = document.getElementById('pp-tbody');
+        const pag = document.getElementById('pp-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = allRows.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No sales items recorded in date range.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = ppLimit === 'all' ? totalItems : ppLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (ppPage > totalPages) ppPage = totalPages;
+        if (ppPage < 1) ppPage = 1;
+
+        const startIdx = (ppPage - 1) * effectiveLimit;
+        const pageItems = allRows.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(d => `
+          <tr>
+            <td style="font-weight:600;">${H.esc(d.name)}</td>
+            <td class="text-center">${d.qtySold}</td>
+            <td class="text-right">${H.formatCurrency(d.cost)}</td>
+            <td class="text-right">${H.formatCurrency(d.revenue)}</td>
+            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(d.profit)}</td>
+            <td class="text-center" style="font-weight:600;">${d.margin.toFixed(1)}%</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems} items</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-pp-prev" ${ppPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${ppPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-pp-next" ${ppPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-pp-prev');
+        const nextBtn = document.getElementById('btn-pp-next');
+        if (prevBtn) prevBtn.onclick = () => { if (ppPage > 1) { ppPage--; renderPPTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (ppPage < totalPages) { ppPage++; renderPPTable(); } };
+      };
+
+      const ppLimitSelect = document.getElementById('pp-limit-select');
+      if (ppLimitSelect) {
+        ppLimitSelect.onchange = async () => {
+          const val = ppLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of rows to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              ppLimit = num;
+              ppPage = 1;
+              renderPPTable();
+            } else {
+              ppLimitSelect.value = String(ppLimit);
+            }
+          } else if (val === 'all') {
+            ppLimit = 'all';
+            ppPage = 1;
+            renderPPTable();
+          } else {
+            ppLimit = parseInt(val, 10) || 50;
+            ppPage = 1;
+            renderPPTable();
+          }
+        };
+      }
+
+      renderPPTable();
+    },
+
+    rankProductsReport(container, orders, orderItems, products, isTopSelling, H) {
+      const orderIds = orders.map(o => o.id);
+      const items = orderItems.filter(i => orderIds.includes(i.orderId));
+
+      const totals = {};
+
+      // For slow-selling report, populate all catalog active products first so zero-sales items show at top
+      if (!isTopSelling && Array.isArray(products)) {
+        products.forEach(p => {
+          if (p.status === 'Trash' || p.deletedAt) return;
+          if (p.variations && p.variations.length > 0) {
+            p.variations.forEach(v => {
+              const key = `${p.name} (${v.name})`;
+              totals[key] = { qty: 0, amount: 0 };
+            });
+          } else {
+            totals[p.name] = { qty: 0, amount: 0 };
+          }
+        });
+      }
+
+      items.forEach(i => {
+        const key = i.productName + (i.variationName ? ` (${i.variationName})` : '');
+        if (!totals[key]) {
+          totals[key] = { qty: 0, amount: 0 };
+        }
+        totals[key].qty += (parseInt(i.qty, 10) || 0);
+        totals[key].amount += (parseFloat(i.total) || 0);
+      });
+
+      // Sort logic
+      const sorted = Object.entries(totals).sort((a, b) =>
+        isTopSelling ? b[1].qty - a[1].qty : a[1].qty - b[1].qty
+      );
+
+      const title = isTopSelling ? '🔥 Top Selling Products' : '📉 Slow Selling Products';
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700;">${title}</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+              <select id="rank-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                <option value="10">10</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="custom">Custom...</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="text-center" style="width: 80px;">Rank</th>
+                    <th>Product / Variant</th>
+                    <th class="text-center" style="width: 120px;">Qty Sold</th>
+                    <th class="text-right" style="width: 140px;">Gross Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="rank-tbody"></tbody>
+              </table>
+            </div>
+            <div id="rank-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
+          </div>
+        </div>
+      `;
+
+      let rankPage = 1;
+      let rankLimit = 50;
+
+      const renderRankTable = () => {
+        const tbody = document.getElementById('rank-tbody');
+        const pag = document.getElementById('rank-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = sorted.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No sales items recorded in date range.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = rankLimit === 'all' ? totalItems : rankLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (rankPage > totalPages) rankPage = totalPages;
+        if (rankPage < 1) rankPage = 1;
+
+        const startIdx = (rankPage - 1) * effectiveLimit;
+        const pageItems = sorted.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(([name, data], idx) => `
+          <tr>
+            <td class="text-center" style="font-weight:700;">#${startIdx + idx + 1}</td>
+            <td style="font-weight:600;">${H.esc(name)}</td>
+            <td class="text-center" style="font-weight:600;">${data.qty}</td>
+            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(data.amount)}</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems} ranked items</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-rank-prev" ${rankPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${rankPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-rank-next" ${rankPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-rank-prev');
+        const nextBtn = document.getElementById('btn-rank-next');
+        if (prevBtn) prevBtn.onclick = () => { if (rankPage > 1) { rankPage--; renderRankTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (rankPage < totalPages) { rankPage++; renderRankTable(); } };
+      };
+
+      const rankLimitSelect = document.getElementById('rank-limit-select');
+      if (rankLimitSelect) {
+        rankLimitSelect.onchange = async () => {
+          const val = rankLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of rows to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              rankLimit = num;
+              rankPage = 1;
+              renderRankTable();
+            } else {
+              rankLimitSelect.value = String(rankLimit);
+            }
+          } else if (val === 'all') {
+            rankLimit = 'all';
+            rankPage = 1;
+            renderRankTable();
+          } else {
+            rankLimit = parseInt(val, 10) || 50;
+            rankPage = 1;
+            renderRankTable();
+          }
+        };
+      }
+
+      renderRankTable();
+    },
+
+    paymentMethodReport(container, orders, payments, H) {
+      const methods = {};
+      H.paymentMethods.forEach(m => {
+        methods[m] = { txn: 0, amount: 0 };
+      });
+
+      const orderIds = orders.map(o => o.id);
+      const matchedPayments = payments.filter(p => orderIds.includes(p.orderId));
+
+      matchedPayments.forEach(p => {
+        const methodName = (p.method || 'Cash').trim();
+        if (!methods[methodName]) {
+          methods[methodName] = { txn: 0, amount: 0 };
+        }
+        methods[methodName].txn++;
+        methods[methodName].amount += (parseFloat(p.amount) || 0);
+      });
+
+      let rows = '';
+      let grandTxn = 0, grandAmount = 0;
+      Object.entries(methods).forEach(([method, d]) => {
+        if (d.amount > 0 || d.txn > 0) {
+          grandTxn += d.txn;
+          grandAmount += d.amount;
+
+          rows += `
+            <tr>
+              <td style="font-weight:600;">${method}</td>
+              <td class="text-center">${d.txn}</td>
+              <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(d.amount)}</td>
+            </tr>
+          `;
+        }
+      });
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Payment Method</th>
+                    <th class="text-center" style="width:150px;">Transactions</th>
+                    <th class="text-right" style="width:200px;">Settled Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows || '<tr><td colspan="3" class="text-center text-muted">No transaction logs recorded in date range.</td></tr>'}
+                  ${rows ? `
+                    <tr class="total-row">
+                      <td>Sum Summary</td>
+                      <td class="text-center">${grandTxn}</td>
+                      <td class="text-right text-success">${H.formatCurrency(grandAmount)}</td>
+                    </tr>
+                  ` : ''}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    stockValueReport(container, products, Store, H) {
+      let totalQty = 0, totalValCost = 0, totalValRetail = 0, totalProfitPotential = 0;
+      const stockItems = [];
+
+      products.forEach(p => {
+        const cat = Store.getById('categories', p.categoryId);
+        const catName = cat ? cat.name : 'N/A';
+
+        if (p.variations && p.variations.length > 0) {
+          p.variations.forEach(v => {
+            const stock = parseInt(v.stock, 10) || 0;
+            const costPrice = parseFloat(v.costPrice) || 0;
+            const price = parseFloat(v.price) || 0;
+            const valCost = costPrice * stock;
+            const valRetail = price * stock;
+            const potentialProfit = valRetail - valCost;
+
+            totalQty += stock;
+            totalValCost += valCost;
+            totalValRetail += valRetail;
+            totalProfitPotential += potentialProfit;
+
+            stockItems.push({
+              name: p.name,
+              varName: v.name,
+              sku: v.sku || '',
+              catName,
+              stock,
+              costPrice,
+              price,
+              valCost,
+              valRetail
+            });
+          });
+        } else {
+          const stock = parseInt(p.stock, 10) || 0;
+          const costPrice = parseFloat(p.costPrice) || 0;
+          const price = parseFloat(p.sellingPrice) || 0;
+          const valCost = costPrice * stock;
+          const valRetail = price * stock;
+          const potentialProfit = valRetail - valCost;
+
+          totalQty += stock;
+          totalValCost += valCost;
+          totalValRetail += valRetail;
+          totalProfitPotential += potentialProfit;
+
+          stockItems.push({
+            name: p.name,
+            varName: null,
+            sku: p.sku || '',
+            catName,
+            stock,
+            costPrice,
+            price,
+            valCost,
+            valRetail
+          });
+        }
+      });
+
+      container.innerHTML = `
+        <div class="stats-grid fade-in mb-2" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card blue" style="padding: 15px;">
+            <div class="stat-icon">📦</div>
+            <div class="stat-info">
+              <div class="stat-label">Total Stock Quantity</div>
+              <div class="stat-value">${totalQty} Unit(s)</div>
+            </div>
+          </div>
+          <div class="stat-card orange" style="padding: 15px;">
+            <div class="stat-icon">🪙</div>
+            <div class="stat-info">
+              <div class="stat-label">Stock Value (Cost)</div>
+              <div class="stat-value">${H.formatCurrency(totalValCost)}</div>
+            </div>
+          </div>
+          <div class="stat-card green" style="padding: 15px;">
+            <div class="stat-icon">🏷️</div>
+            <div class="stat-info">
+              <div class="stat-label">Stock Value (Retail)</div>
+              <div class="stat-value">${H.formatCurrency(totalValRetail)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700;">📦 Stock Valuation Details</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+              <select id="stock-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                <option value="10">10</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="custom">Custom...</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Product / Variation</th>
+                    <th>SKU</th>
+                    <th>Category</th>
+                    <th class="text-center">Stock</th>
+                    <th class="text-right">Cost Price</th>
+                    <th class="text-right">Retail Price</th>
+                    <th class="text-right">Value (Cost)</th>
+                    <th class="text-right">Value (Retail)</th>
+                  </tr>
+                </thead>
+                <tbody id="stock-tbody"></tbody>
+                ${stockItems.length > 0 ? `
+                  <tfoot>
+                    <tr class="total-row">
+                      <td colspan="3">Stock Summary Valuations</td>
+                      <td class="text-center">${totalQty}</td>
+                      <td colspan="2"></td>
+                      <td class="text-right">${H.formatCurrency(totalValCost)}</td>
+                      <td class="text-right text-success">${H.formatCurrency(totalValRetail)}</td>
+                    </tr>
+                  </tfoot>
+                ` : ''}
+              </table>
+            </div>
+            <div id="stock-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
+          </div>
+        </div>
+      `;
+
+      let stockPage = 1;
+      let stockLimit = 50;
+
+      const renderStockTable = () => {
+        const tbody = document.getElementById('stock-tbody');
+        const pag = document.getElementById('stock-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = stockItems.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No stock available.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = stockLimit === 'all' ? totalItems : stockLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (stockPage > totalPages) stockPage = totalPages;
+        if (stockPage < 1) stockPage = 1;
+
+        const startIdx = (stockPage - 1) * effectiveLimit;
+        const pageItems = stockItems.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(item => `
+          <tr>
+            <td style="font-weight:600;">${H.esc(item.name)} ${item.varName ? `<span class="text-muted text-sm">(${H.esc(item.varName)})</span>` : ''}</td>
+            <td>SKU: ${H.esc(item.sku)}</td>
+            <td>${H.esc(item.catName)}</td>
+            <td class="text-center">${item.stock}</td>
+            <td class="text-right">${H.formatCurrency(item.costPrice)}</td>
+            <td class="text-right">${H.formatCurrency(item.price)}</td>
+            <td class="text-right">${H.formatCurrency(item.valCost)}</td>
+            <td class="text-right text-success" style="font-weight:600;">${H.formatCurrency(item.valRetail)}</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems} stock items</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-stock-prev" ${stockPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${stockPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-stock-next" ${stockPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-stock-prev');
+        const nextBtn = document.getElementById('btn-stock-next');
+        if (prevBtn) prevBtn.onclick = () => { if (stockPage > 1) { stockPage--; renderStockTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (stockPage < totalPages) { stockPage++; renderStockTable(); } };
+      };
+
+      const stockLimitSelect = document.getElementById('stock-limit-select');
+      if (stockLimitSelect) {
+        stockLimitSelect.onchange = async () => {
+          const val = stockLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of stock items to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              stockLimit = num;
+              stockPage = 1;
+              renderStockTable();
+            } else {
+              stockLimitSelect.value = String(stockLimit);
+            }
+          } else if (val === 'all') {
+            stockLimit = 'all';
+            stockPage = 1;
+            renderStockTable();
+          } else {
+            stockLimit = parseInt(val, 10) || 50;
+            stockPage = 1;
+            renderStockTable();
+          }
+        };
+      }
+
+      renderStockTable();
+    },
+
+    salesSummaryReport(container, orders, H) {
+      let count = orders.length;
+      let totalSales = orders.reduce((s, o) => s + (parseFloat(o.grandTotal) || 0), 0);
+      let totalTax = orders.reduce((s, o) => s + (parseFloat(o.taxAmount) || 0), 0);
+      let totalDiscount = orders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
+      let totalPaid = orders.reduce((s, o) => s + (parseFloat(o.paidAmount) || 0), 0);
+      let totalDue = orders.reduce((s, o) => s + (parseFloat(o.dueAmount) || 0), 0);
+      let totalReturned = orders.reduce((s, o) => s + (parseFloat(o.returnedAmount) || 0), 0);
+      let totalSubtotal = orders.reduce((s, o) => s + (parseFloat(o.subtotal) || 0), 0);
+
+      container.innerHTML = `
+        <div class="card" style="max-width: 600px; margin: 0 auto;">
+          <div class="card-header">📊 Comprehensive Sales Summary</div>
+          <div class="card-body" style="display:flex; flex-direction:column; gap:12px;">
+            <div class="flex justify-between" style="border-bottom:1px solid var(--border-light); padding-bottom:8px;">
+              <span class="text-muted">Total Invoices Issued:</span>
+              <span style="font-weight:700;">${count}</span>
+            </div>
+            <div class="flex justify-between" style="border-bottom:1px solid var(--border-light); padding-bottom:8px;">
+              <span class="text-muted">Sub Total Gross:</span>
+              <span style="font-weight:700;">${H.formatCurrency(totalSubtotal)}</span>
+            </div>
+            <div class="flex justify-between" style="border-bottom:1px solid var(--border-light); padding-bottom:8px;">
+              <span class="text-muted">Total Discounts Allowed:</span>
+              <span style="font-weight:700; color:var(--danger)">-${H.formatCurrency(totalDiscount)}</span>
+            </div>
+            <div class="flex justify-between" style="border-bottom:1px solid var(--border-light); padding-bottom:8px;">
+              <span class="text-muted">Tax Amount Collected:</span>
+              <span style="font-weight:700;">${H.formatCurrency(totalTax)}</span>
+            </div>
+            <div class="flex justify-between" style="border-bottom:2px solid var(--border); padding-bottom:8px; margin-bottom:8px;">
+              <span style="font-weight:700;">Grand Total Sales Value:</span>
+              <span style="font-weight:800; color:var(--primary); font-size:16px;">${H.formatCurrency(totalSales)}</span>
+            </div>
+            <div class="flex justify-between text-success" style="padding-bottom:4px;">
+              <span>Total Received (Cleared):</span>
+              <span style="font-weight:700;">${H.formatCurrency(totalPaid)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    async overallProfitReport(container, orders, orderItems, products, Store, H, from, to) {
+      const totalSales = orders.reduce((s, o) => s + (parseFloat(o.grandTotal) || 0), 0);
+      let totalCostOfGoods = 0;
+      orders.forEach(order => {
+        const items = orderItems.filter(i => i.orderId === order.id);
+        items.forEach(item => {
+          const product = products.find(p => p.id === item.productId);
+          let cost = parseFloat(item.costPrice) || 0;
+          if (product) {
+            if (product.variations && product.variations.length > 0) {
+              const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
+              cost = variant ? variant.costPrice : product.costPrice;
+            } else {
+              cost = product.costPrice;
+            }
+          }
+          totalCostOfGoods += (parseFloat(cost) || 0) * (parseInt(item.qty, 10) || 0);
+        });
+      });
+
+      const totalSubtotal = orders.reduce((s, o) => s + (parseFloat(o.subtotal) || 0), 0);
+      const totalDiscount = orders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
+      const productProfit = totalSubtotal - totalCostOfGoods - totalDiscount;
+
+      const expenses = await Store.query('expenses', e => H.isDateInRange(e.date, from, to));
+      let totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+      let combinedExpensesList = expenses.map(e => ({
+        date: e.date,
+        name: e.reason || e.name,
+        amount: parseFloat(e.amount) || 0
+      }));
+
+      const settings = await Store.getSettings();
+      const isSupplierAsExpense = settings.supplier_as_expense === '1';
+
+      if (isSupplierAsExpense) {
+        const supplierPayments = await Store.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
+        const totalSP = supplierPayments.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
+        totalExpenses += totalSP;
+        supplierPayments.forEach(sp => {
+          combinedExpensesList.push({
+            date: sp.date,
+            name: `${sp.supplier_name} - ${sp.reason} (Supplier Payment)`,
+            amount: parseFloat(sp.amount) || 0
+          });
+        });
+      }
+
+      combinedExpensesList.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      const overallNetProfit = productProfit - totalExpenses;
+      const netProfitColor = overallNetProfit >= 0 ? 'text-success' : 'text-danger';
+
+      container.innerHTML = `
+        <div class="stats-grid fade-in mb-2" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="stat-card purple" style="padding: 15px;">
+            <div class="stat-icon">💰</div>
+            <div class="stat-info">
+              <div class="stat-label">Total Sales</div>
+              <div class="stat-value" style="font-size:16px;">${H.formatCurrency(totalSales)}</div>
+              <div class="stat-sub">${orders.length} Invoice(s)</div>
+            </div>
+          </div>
+          <div class="stat-card green" style="padding: 15px;">
+            <div class="stat-icon">📈</div>
+            <div class="stat-info">
+              <div class="stat-label">Product Profit</div>
+              <div class="stat-value" style="font-size:16px;">${H.formatCurrency(productProfit)}</div>
+              <div class="stat-sub">From Catalog Sales</div>
+            </div>
+          </div>
+          <div class="stat-card orange" style="padding: 15px;">
+            <div class="stat-icon">💸</div>
+            <div class="stat-info">
+              <div class="stat-label">Total Expenses ${isSupplierAsExpense ? '<span style="font-size:10px; color:#10b981;">(+Suppliers)</span>' : ''}</div>
+              <div class="stat-value" style="font-size:16px;">${H.formatCurrency(totalExpenses)}</div>
+              <div class="stat-sub">${combinedExpensesList.length} Expense logs</div>
+            </div>
+          </div>
+          <div class="stat-card blue" style="padding: 15px;">
+            <div class="stat-icon">⚖️</div>
+            <div class="stat-info">
+              <div class="stat-label">Overall Net Profit</div>
+              <div class="stat-value ${netProfitColor}" style="font-size:16px; font-weight:800;">${H.formatCurrency(overallNetProfit)}</div>
+              <div class="stat-sub">Profit minus Expenses</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2 fade-in mt-3">
+          <!-- Expenses Card with Pagination -->
+          <div class="card" id="card-expenses-breakdown">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <span style="font-weight:700;">💸 Shop Expenses Breakdown</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+                <select id="op-exp-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                  <option value="10">10</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="250">250</option>
+                  <option value="500">500</option>
+                  <option value="custom">Custom...</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Expense Name</th>
+                      <th class="text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="op-exp-tbody"></tbody>
+                </table>
+              </div>
+              <div id="op-exp-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
+            </div>
+          </div>
+
+          <!-- Invoiced Sales Card with Pagination -->
+          <div class="card" id="card-invoiced-sales">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <span style="font-weight:700;">📋 Invoiced Sales Summary</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+                <select id="op-ord-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                  <option value="10">10</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="250">250</option>
+                  <option value="500">500</option>
+                  <option value="custom">Custom...</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Invoice ID</th>
+                      <th>Customer</th>
+                      <th class="text-right">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="op-ord-tbody"></tbody>
+                </table>
+              </div>
+              <div id="op-ord-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // ── Expenses Pagination Handler ──────────────────
+      let expPage = 1;
+      let expLimit = 50;
+
+      const renderExpensesTable = () => {
+        const tbody = document.getElementById('op-exp-tbody');
+        const pag = document.getElementById('op-exp-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = combinedExpensesList.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No expenses in this period.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = expLimit === 'all' ? totalItems : expLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (expPage > totalPages) expPage = totalPages;
+        if (expPage < 1) expPage = 1;
+
+        const startIdx = (expPage - 1) * effectiveLimit;
+        const pageItems = combinedExpensesList.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(e => `
+          <tr>
+            <td>${H.formatDateTime(e.date)}</td>
+            <td>${H.esc(e.name)}</td>
+            <td class="text-right text-danger">${H.formatCurrency(e.amount)}</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems}</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-op-exp-prev" ${expPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${expPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-op-exp-next" ${expPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-op-exp-prev');
+        const nextBtn = document.getElementById('btn-op-exp-next');
+        if (prevBtn) prevBtn.onclick = () => { if (expPage > 1) { expPage--; renderExpensesTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (expPage < totalPages) { expPage++; renderExpensesTable(); } };
+      };
+
+      const expLimitSelect = document.getElementById('op-exp-limit-select');
+      if (expLimitSelect) {
+        expLimitSelect.onchange = async () => {
+          const val = expLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of expense rows to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              expLimit = num;
+              expPage = 1;
+              renderExpensesTable();
+            } else {
+              expLimitSelect.value = String(expLimit);
+            }
+          } else if (val === 'all') {
+            expLimit = 'all';
+            expPage = 1;
+            renderExpensesTable();
+          } else {
+            expLimit = parseInt(val, 10) || 50;
+            expPage = 1;
+            renderExpensesTable();
+          }
+        };
+      }
+
+      renderExpensesTable();
+
+      // ── Invoiced Sales Pagination Handler ────────────
+      let ordPage = 1;
+      let ordLimit = 50;
+
+      const renderOrdersTable = () => {
+        const tbody = document.getElementById('op-ord-tbody');
+        const pag = document.getElementById('op-ord-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = orders.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No sales orders in this period.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = ordLimit === 'all' ? totalItems : ordLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (ordPage > totalPages) ordPage = totalPages;
+        if (ordPage < 1) ordPage = 1;
+
+        const startIdx = (ordPage - 1) * effectiveLimit;
+        const pageItems = orders.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(o => `
+          <tr>
+            <td style="font-weight:700;">${o.invoiceId}</td>
+            <td>${H.esc(o.customerName)}</td>
+            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(o.grandTotal)}</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems}</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-op-ord-prev" ${ordPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${ordPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-op-ord-next" ${ordPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-op-ord-prev');
+        const nextBtn = document.getElementById('btn-op-ord-next');
+        if (prevBtn) prevBtn.onclick = () => { if (ordPage > 1) { ordPage--; renderOrdersTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (ordPage < totalPages) { ordPage++; renderOrdersTable(); } };
+      };
+
+      const ordLimitSelect = document.getElementById('op-ord-limit-select');
+      if (ordLimitSelect) {
+        ordLimitSelect.onchange = async () => {
+          const val = ordLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of sales invoice rows to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              ordLimit = num;
+              ordPage = 1;
+              renderOrdersTable();
+            } else {
+              ordLimitSelect.value = String(ordLimit);
+            }
+          } else if (val === 'all') {
+            ordLimit = 'all';
+            ordPage = 1;
+            renderOrdersTable();
+          } else {
+            ordLimit = parseInt(val, 10) || 50;
+            ordPage = 1;
+            renderOrdersTable();
+          }
+        };
+      }
+
+      renderOrdersTable();
+    },
+
+    async exportReportCSV(type, from, to) {
+      const S = POS.Store;
+      const H = POS.Helpers;
+      const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
+      const orderItems = await S.getAll('orderItems');
+      const products = await S.getAll('products');
+      const payments = await S.getAll('payments');
+      const categories = await S.getAll('categories');
+
+      let csvData = [];
+      let filename = `report_${type}`;
+
+      if (type === 'daily-sale') {
+        const salesByDay = {};
+        orders.forEach(o => {
+          const day = H.formatDate(o.date);
+          if (!salesByDay[day]) {
+            salesByDay[day] = { Date: day, Invoices: 0, Subtotal: 0, Discount: 0, Tax: 0, Total: 0 };
+          }
+          const sub = parseFloat(o.subtotal) || 0;
+          const disc = parseFloat(o.discountAmount) || 0;
+          const tax = parseFloat(o.taxAmount) || 0;
+          const total = parseFloat(o.grandTotal) || 0;
+
+          salesByDay[day].Invoices++;
+          salesByDay[day].Subtotal += sub;
+          salesByDay[day].Discount += disc;
+          salesByDay[day].Tax += tax;
+          salesByDay[day].Total += total;
+        });
+        csvData = Object.values(salesByDay);
+      } else if (type === 'product-profit') {
+        const orderIds = orders.map(o => o.id);
+        const items = orderItems.filter(i => orderIds.includes(i.orderId));
+        const profitByProduct = {};
+        items.forEach(item => {
+          const product = products.find(p => p.id === item.productId);
+          let cost = parseFloat(item.costPrice) || 0;
+          if (product) {
+            if (product.variations && product.variations.length > 0) {
+              const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
+              cost = variant ? variant.costPrice : product.costPrice;
+            } else {
+              cost = product.costPrice;
+            }
+          }
+          const itemQty = parseInt(item.qty, 10) || 0;
+          const revenue = parseFloat(item.total) || 0;
+          const totalCost = cost * itemQty;
+          const key = item.productName + (item.variationName ? ` (${item.variationName})` : '');
+          if (!profitByProduct[key]) {
+            profitByProduct[key] = { Product: key, Sold: 0, Cost: 0, Sales: 0, Profit: 0 };
+          }
+          profitByProduct[key].Sold += itemQty;
+          profitByProduct[key].Cost += totalCost;
+          profitByProduct[key].Sales += revenue;
+          profitByProduct[key].Profit += (revenue - totalCost);
+        });
+        csvData = Object.values(profitByProduct);
+      } else if (type === 'top-selling' || type === 'slow-selling') {
+        const orderIds = orders.map(o => o.id);
+        const items = orderItems.filter(i => orderIds.includes(i.orderId));
+        const totals = {};
+
+        if (type === 'slow-selling' && Array.isArray(products)) {
+          products.forEach(p => {
+            if (p.status === 'Trash' || p.deletedAt) return;
+            if (p.variations && p.variations.length > 0) {
+              p.variations.forEach(v => {
+                const key = `${p.name} (${v.name})`;
+                totals[key] = { Product: key, Sold: 0, Revenue: 0 };
+              });
+            } else {
+              totals[p.name] = { Product: p.name, Sold: 0, Revenue: 0 };
+            }
+          });
+        }
+
+        items.forEach(i => {
+          const key = i.productName + (i.variationName ? ` (${i.variationName})` : '');
+          if (!totals[key]) {
+            totals[key] = { Product: key, Sold: 0, Revenue: 0 };
+          }
+          totals[key].Sold += (parseInt(i.qty, 10) || 0);
+          totals[key].Revenue += (parseFloat(i.total) || 0);
+        });
+        csvData = Object.values(totals).sort((a, b) => type === 'top-selling' ? b.Sold - a.Sold : a.Sold - b.Sold);
+      } else if (type === 'payment-method') {
+        const methods = {};
+        H.paymentMethods.forEach(m => { methods[m] = { Method: m, Txns: 0, Amount: 0 }; });
+        const orderIds = orders.map(o => o.id);
+        const matchedPayments = payments.filter(p => orderIds.includes(p.orderId));
+        matchedPayments.forEach(p => {
+          const mName = (p.method || 'Cash').trim();
+          if (!methods[mName]) {
+            methods[mName] = { Method: mName, Txns: 0, Amount: 0 };
+          }
+          methods[mName].Txns++;
+          methods[mName].Amount += (parseFloat(p.amount) || 0);
+        });
+        csvData = Object.values(methods).filter(m => m.Amount > 0 || m.Txns > 0);
+      } else if (type === 'stock-value') {
+        products.forEach(p => {
+          const cat = categories.find(c => c.id === p.categoryId);
+          const catName = cat ? cat.name : 'Uncategorized';
+          if (p.variations && p.variations.length > 0) {
+            p.variations.forEach(v => {
+              const stock = parseInt(v.stock, 10) || 0;
+              const cost = parseFloat(v.costPrice) || 0;
+              const price = parseFloat(v.price) || 0;
+              csvData.push({
+                Product: p.name,
+                SKU: v.sku,
+                Category: catName,
+                Stock: stock,
+                Cost: cost,
+                Price: price,
+                'Total Cost Val': cost * stock,
+                'Total Retail Val': price * stock
+              });
+            });
+          } else {
+            const stock = parseInt(p.stock, 10) || 0;
+            const cost = parseFloat(p.costPrice) || 0;
+            const price = parseFloat(p.sellingPrice) || 0;
+            csvData.push({
+              Product: p.name,
+              SKU: p.sku,
+              Category: catName,
+              Stock: stock,
+              Cost: cost,
+              Price: price,
+              'Total Cost Val': cost * stock,
+              'Total Retail Val': price * stock
+            });
+          }
+        });
+      } else if (type === 'sales-summary') {
+        let totalSales = orders.reduce((s, o) => s + (parseFloat(o.grandTotal) || 0), 0);
+        let totalTax = orders.reduce((s, o) => s + (parseFloat(o.taxAmount) || 0), 0);
+        let totalDiscount = orders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
+        let totalPaid = orders.reduce((s, o) => s + (parseFloat(o.paidAmount) || 0), 0);
+        let totalDue = orders.reduce((s, o) => s + (parseFloat(o.dueAmount) || 0), 0);
+        let totalReturned = orders.reduce((s, o) => s + (parseFloat(o.returnedAmount) || 0), 0);
+        let totalSubtotal = orders.reduce((s, o) => s + (parseFloat(o.subtotal) || 0), 0);
+        csvData = [{
+          'Total Invoices': orders.length,
+          'Gross Revenue (Subtotal)': totalSubtotal,
+          'Discounts Allowed': totalDiscount,
+          'Taxes Collected': totalTax,
+          'Net Sales (Grand Total)': totalSales,
+          'Total Settled': totalPaid,
+          'Total Due': totalDue,
+          'Total Refunded': totalReturned
+        }];
+      } else if (type === 'overall-profit') {
+        const totalSales = orders.reduce((s, o) => s + (parseFloat(o.grandTotal) || 0), 0);
+        let totalCostOfGoods = 0;
+        orders.forEach(order => {
+          const items = orderItems.filter(i => i.orderId === order.id);
+          items.forEach(item => {
+            const product = products.find(p => p.id === item.productId);
+            let cost = parseFloat(item.costPrice) || 0;
+            if (product) {
+              if (product.variations && product.variations.length > 0) {
+                const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
+                cost = variant ? variant.costPrice : product.costPrice;
+              } else {
+                cost = product.costPrice;
+              }
+            }
+            totalCostOfGoods += (parseFloat(cost) || 0) * (parseInt(item.qty, 10) || 0);
+          });
+        });
+        const totalSubtotal = orders.reduce((s, o) => s + (parseFloat(o.subtotal) || 0), 0);
+        const totalDiscount = orders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
+        const productProfit = totalSubtotal - totalCostOfGoods - totalDiscount;
+
+        const expenses = await S.query('expenses', e => H.isDateInRange(e.date, from, to));
+        let totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+        let totalExpenseItems = expenses.length;
+
+        const settings = await S.getSettings();
+        if (settings.supplier_as_expense === '1') {
+          const supplierPayments = await S.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
+          totalExpenses += supplierPayments.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
+          totalExpenseItems += supplierPayments.length;
+        }
+
+        const overallNetProfit = productProfit - totalExpenses;
+
+        csvData = [{
+          'Total Sales': totalSales,
+          'Product Profit': productProfit,
+          'Total Expenses': totalExpenses,
+          'Overall Net Profit': overallNetProfit,
+          'Sales Invoices Qty': orders.length,
+          'Expense Items Qty': totalExpenseItems
+        }];
+      }
+
+      if (csvData.length === 0) {
+        H.showToast('No data to export', 'error');
+        return;
+      }
+      H.exportCSV(csvData, filename);
+    }
+  };
+
+  window.POS = window.POS || {};
+  window.POS.Reports = Reports;
+})();
