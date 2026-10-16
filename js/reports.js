@@ -218,34 +218,39 @@
         profitByProduct[key].cost += (costPrice * itemQty);
       });
 
-      let tbodyRows = '';
+      const allRows = Object.values(profitByProduct);
       let grandQty = 0, grandRevenue = 0, grandCost = 0, grandProfit = 0;
 
-      Object.values(profitByProduct).forEach(d => {
+      allRows.forEach(d => {
         const profit = d.revenue - d.cost;
-        const margin = d.revenue > 0 ? (profit / d.revenue) * 100 : 0;
+        d.profit = profit;
+        d.margin = d.revenue > 0 ? (profit / d.revenue) * 100 : 0;
 
         grandQty += d.qtySold;
         grandRevenue += d.revenue;
         grandCost += d.cost;
         grandProfit += profit;
-
-        tbodyRows += `
-          <tr>
-            <td style="font-weight:600;">${H.esc(d.name)}</td>
-            <td class="text-center">${d.qtySold}</td>
-            <td class="text-right">${H.formatCurrency(d.cost)}</td>
-            <td class="text-right">${H.formatCurrency(d.revenue)}</td>
-            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(profit)}</td>
-            <td class="text-center" style="font-weight:600;">${margin.toFixed(1)}%</td>
-          </tr>
-        `;
       });
 
       const avgMargin = grandRevenue > 0 ? (grandProfit / grandRevenue) * 100 : 0;
 
       container.innerHTML = `
         <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700;">📊 Product Profitability Analysis</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+              <select id="pp-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                <option value="10">10</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="custom">Custom...</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
           <div class="card-body">
             <div class="table-wrapper">
               <table class="data-table">
@@ -259,9 +264,9 @@
                     <th class="text-center" style="width: 120px;">Profit Margin</th>
                   </tr>
                 </thead>
-                <tbody>
-                  ${tbodyRows || '<tr><td colspan="6" class="text-center text-muted">No sales items recorded in date range.</td></tr>'}
-                  ${tbodyRows ? `
+                <tbody id="pp-tbody"></tbody>
+                ${allRows.length > 0 ? `
+                  <tfoot>
                     <tr class="total-row">
                       <td>Grand Totals</td>
                       <td class="text-center">${grandQty}</td>
@@ -270,13 +275,92 @@
                       <td class="text-right text-success">${H.formatCurrency(grandProfit)}</td>
                       <td class="text-center">${avgMargin.toFixed(1)}%</td>
                     </tr>
-                  ` : ''}
-                </tbody>
+                  </tfoot>
+                ` : ''}
               </table>
             </div>
+            <div id="pp-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
           </div>
         </div>
       `;
+
+      let ppPage = 1;
+      let ppLimit = 50;
+
+      const renderPPTable = () => {
+        const tbody = document.getElementById('pp-tbody');
+        const pag = document.getElementById('pp-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = allRows.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No sales items recorded in date range.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = ppLimit === 'all' ? totalItems : ppLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (ppPage > totalPages) ppPage = totalPages;
+        if (ppPage < 1) ppPage = 1;
+
+        const startIdx = (ppPage - 1) * effectiveLimit;
+        const pageItems = allRows.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(d => `
+          <tr>
+            <td style="font-weight:600;">${H.esc(d.name)}</td>
+            <td class="text-center">${d.qtySold}</td>
+            <td class="text-right">${H.formatCurrency(d.cost)}</td>
+            <td class="text-right">${H.formatCurrency(d.revenue)}</td>
+            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(d.profit)}</td>
+            <td class="text-center" style="font-weight:600;">${d.margin.toFixed(1)}%</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems} items</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-pp-prev" ${ppPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${ppPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-pp-next" ${ppPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-pp-prev');
+        const nextBtn = document.getElementById('btn-pp-next');
+        if (prevBtn) prevBtn.onclick = () => { if (ppPage > 1) { ppPage--; renderPPTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (ppPage < totalPages) { ppPage++; renderPPTable(); } };
+      };
+
+      const ppLimitSelect = document.getElementById('pp-limit-select');
+      if (ppLimitSelect) {
+        ppLimitSelect.onchange = async () => {
+          const val = ppLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of rows to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              ppLimit = num;
+              ppPage = 1;
+              renderPPTable();
+            } else {
+              ppLimitSelect.value = String(ppLimit);
+            }
+          } else if (val === 'all') {
+            ppLimit = 'all';
+            ppPage = 1;
+            renderPPTable();
+          } else {
+            ppLimit = parseInt(val, 10) || 50;
+            ppPage = 1;
+            renderPPTable();
+          }
+        };
+      }
+
+      renderPPTable();
     },
 
     rankProductsReport(container, orders, orderItems, products, isTopSelling, H) {
@@ -314,20 +398,25 @@
         isTopSelling ? b[1].qty - a[1].qty : a[1].qty - b[1].qty
       );
 
-      let rows = '';
-      sorted.forEach(([name, data], idx) => {
-        rows += `
-          <tr>
-            <td class="text-center" style="font-weight:700;">#${idx + 1}</td>
-            <td style="font-weight:600;">${H.esc(name)}</td>
-            <td class="text-center" style="font-weight:600;">${data.qty}</td>
-            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(data.amount)}</td>
-          </tr>
-        `;
-      });
+      const title = isTopSelling ? '🔥 Top Selling Products' : '📉 Slow Selling Products';
 
       container.innerHTML = `
         <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700;">${title}</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+              <select id="rank-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                <option value="10">10</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="custom">Custom...</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
           <div class="card-body">
             <div class="table-wrapper">
               <table class="data-table">
@@ -339,14 +428,89 @@
                     <th class="text-right" style="width: 140px;">Gross Amount</th>
                   </tr>
                 </thead>
-                <tbody>
-                  ${rows || '<tr><td colspan="4" class="text-center text-muted">No sales items recorded in date range.</td></tr>'}
-                </tbody>
+                <tbody id="rank-tbody"></tbody>
               </table>
             </div>
+            <div id="rank-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
           </div>
         </div>
       `;
+
+      let rankPage = 1;
+      let rankLimit = 50;
+
+      const renderRankTable = () => {
+        const tbody = document.getElementById('rank-tbody');
+        const pag = document.getElementById('rank-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = sorted.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No sales items recorded in date range.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = rankLimit === 'all' ? totalItems : rankLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (rankPage > totalPages) rankPage = totalPages;
+        if (rankPage < 1) rankPage = 1;
+
+        const startIdx = (rankPage - 1) * effectiveLimit;
+        const pageItems = sorted.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(([name, data], idx) => `
+          <tr>
+            <td class="text-center" style="font-weight:700;">#${startIdx + idx + 1}</td>
+            <td style="font-weight:600;">${H.esc(name)}</td>
+            <td class="text-center" style="font-weight:600;">${data.qty}</td>
+            <td class="text-right text-success" style="font-weight:700;">${H.formatCurrency(data.amount)}</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems} ranked items</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-rank-prev" ${rankPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${rankPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-rank-next" ${rankPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-rank-prev');
+        const nextBtn = document.getElementById('btn-rank-next');
+        if (prevBtn) prevBtn.onclick = () => { if (rankPage > 1) { rankPage--; renderRankTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (rankPage < totalPages) { rankPage++; renderRankTable(); } };
+      };
+
+      const rankLimitSelect = document.getElementById('rank-limit-select');
+      if (rankLimitSelect) {
+        rankLimitSelect.onchange = async () => {
+          const val = rankLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of rows to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              rankLimit = num;
+              rankPage = 1;
+              renderRankTable();
+            } else {
+              rankLimitSelect.value = String(rankLimit);
+            }
+          } else if (val === 'all') {
+            rankLimit = 'all';
+            rankPage = 1;
+            renderRankTable();
+          } else {
+            rankLimit = parseInt(val, 10) || 50;
+            rankPage = 1;
+            renderRankTable();
+          }
+        };
+      }
+
+      renderRankTable();
     },
 
     paymentMethodReport(container, orders, payments, H) {
@@ -414,8 +578,8 @@
     },
 
     stockValueReport(container, products, Store, H) {
-      let tbodyRows = '';
       let totalQty = 0, totalValCost = 0, totalValRetail = 0, totalProfitPotential = 0;
+      const stockItems = [];
 
       products.forEach(p => {
         const cat = Store.getById('categories', p.categoryId);
@@ -423,50 +587,54 @@
 
         if (p.variations && p.variations.length > 0) {
           p.variations.forEach(v => {
-            const valCost = v.costPrice * v.stock;
-            const valRetail = v.price * v.stock;
+            const stock = parseInt(v.stock, 10) || 0;
+            const costPrice = parseFloat(v.costPrice) || 0;
+            const price = parseFloat(v.price) || 0;
+            const valCost = costPrice * stock;
+            const valRetail = price * stock;
             const potentialProfit = valRetail - valCost;
 
-            totalQty += v.stock;
+            totalQty += stock;
             totalValCost += valCost;
             totalValRetail += valRetail;
             totalProfitPotential += potentialProfit;
 
-            tbodyRows += `
-              <tr>
-                <td style="font-weight:600;">${H.esc(p.name)} <span class="text-muted text-sm">(${H.esc(v.name)})</span></td>
-                <td>SKU: ${H.esc(v.sku)}</td>
-                <td>${H.esc(catName)}</td>
-                <td class="text-center">${v.stock}</td>
-                <td class="text-right">${H.formatCurrency(v.costPrice)}</td>
-                <td class="text-right">${H.formatCurrency(v.price)}</td>
-                <td class="text-right">${H.formatCurrency(valCost)}</td>
-                <td class="text-right text-success" style="font-weight:600;">${H.formatCurrency(valRetail)}</td>
-              </tr>
-            `;
+            stockItems.push({
+              name: p.name,
+              varName: v.name,
+              sku: v.sku || '',
+              catName,
+              stock,
+              costPrice,
+              price,
+              valCost,
+              valRetail
+            });
           });
         } else {
-          const valCost = p.costPrice * p.stock;
-          const valRetail = p.sellingPrice * p.stock;
+          const stock = parseInt(p.stock, 10) || 0;
+          const costPrice = parseFloat(p.costPrice) || 0;
+          const price = parseFloat(p.sellingPrice) || 0;
+          const valCost = costPrice * stock;
+          const valRetail = price * stock;
           const potentialProfit = valRetail - valCost;
 
-          totalQty += p.stock;
+          totalQty += stock;
           totalValCost += valCost;
           totalValRetail += valRetail;
           totalProfitPotential += potentialProfit;
 
-          tbodyRows += `
-            <tr>
-              <td style="font-weight:600;">${H.esc(p.name)}</td>
-              <td>SKU: ${H.esc(p.sku)}</td>
-              <td>${H.esc(catName)}</td>
-              <td class="text-center">${p.stock}</td>
-              <td class="text-right">${H.formatCurrency(p.costPrice)}</td>
-              <td class="text-right">${H.formatCurrency(p.sellingPrice)}</td>
-              <td class="text-right">${H.formatCurrency(valCost)}</td>
-              <td class="text-right text-success" style="font-weight:600;">${H.formatCurrency(valRetail)}</td>
-            </tr>
-          `;
+          stockItems.push({
+            name: p.name,
+            varName: null,
+            sku: p.sku || '',
+            catName,
+            stock,
+            costPrice,
+            price,
+            valCost,
+            valRetail
+          });
         }
       });
 
@@ -496,6 +664,21 @@
         </div>
 
         <div class="card">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700;">📦 Stock Valuation Details</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:12px; color:#64748b; font-weight:500; margin:0;">Show:</label>
+              <select id="stock-limit-select" class="form-select" style="width:auto; padding:2px 8px; font-size:12px; height:28px;">
+                <option value="10">10</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="custom">Custom...</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+          </div>
           <div class="card-body">
             <div class="table-wrapper">
               <table class="data-table">
@@ -511,9 +694,9 @@
                     <th class="text-right">Value (Retail)</th>
                   </tr>
                 </thead>
-                <tbody>
-                  ${tbodyRows || '<tr><td colspan="8" class="text-center text-muted">No stock available.</td></tr>'}
-                  ${tbodyRows ? `
+                <tbody id="stock-tbody"></tbody>
+                ${stockItems.length > 0 ? `
+                  <tfoot>
                     <tr class="total-row">
                       <td colspan="3">Stock Summary Valuations</td>
                       <td class="text-center">${totalQty}</td>
@@ -521,13 +704,94 @@
                       <td class="text-right">${H.formatCurrency(totalValCost)}</td>
                       <td class="text-right text-success">${H.formatCurrency(totalValRetail)}</td>
                     </tr>
-                  ` : ''}
-                </tbody>
+                  </tfoot>
+                ` : ''}
               </table>
             </div>
+            <div id="stock-pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:#64748b;"></div>
           </div>
         </div>
       `;
+
+      let stockPage = 1;
+      let stockLimit = 50;
+
+      const renderStockTable = () => {
+        const tbody = document.getElementById('stock-tbody');
+        const pag = document.getElementById('stock-pagination');
+        if (!tbody || !pag) return;
+
+        const totalItems = stockItems.length;
+        if (totalItems === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No stock available.</td></tr>';
+          pag.innerHTML = '';
+          return;
+        }
+
+        const effectiveLimit = stockLimit === 'all' ? totalItems : stockLimit;
+        const totalPages = Math.ceil(totalItems / effectiveLimit) || 1;
+        if (stockPage > totalPages) stockPage = totalPages;
+        if (stockPage < 1) stockPage = 1;
+
+        const startIdx = (stockPage - 1) * effectiveLimit;
+        const pageItems = stockItems.slice(startIdx, startIdx + effectiveLimit);
+
+        tbody.innerHTML = pageItems.map(item => `
+          <tr>
+            <td style="font-weight:600;">${H.esc(item.name)} ${item.varName ? `<span class="text-muted text-sm">(${H.esc(item.varName)})</span>` : ''}</td>
+            <td>SKU: ${H.esc(item.sku)}</td>
+            <td>${H.esc(item.catName)}</td>
+            <td class="text-center">${item.stock}</td>
+            <td class="text-right">${H.formatCurrency(item.costPrice)}</td>
+            <td class="text-right">${H.formatCurrency(item.price)}</td>
+            <td class="text-right">${H.formatCurrency(item.valCost)}</td>
+            <td class="text-right text-success" style="font-weight:600;">${H.formatCurrency(item.valRetail)}</td>
+          </tr>
+        `).join('');
+
+        const endIdx = Math.min(startIdx + pageItems.length, totalItems);
+        pag.innerHTML = `
+          <div>Showing ${startIdx + 1}–${endIdx} of ${totalItems} stock items</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-stock-prev" ${stockPage <= 1 ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">&laquo; Prev</button>
+            <span style="font-weight:600;">${stockPage} / ${totalPages}</span>
+            <button class="btn btn-secondary btn-sm" id="btn-stock-next" ${stockPage >= totalPages ? 'disabled' : ''} style="padding:2px 8px; font-size:11px;">Next &raquo;</button>
+          </div>
+        `;
+
+        const prevBtn = document.getElementById('btn-stock-prev');
+        const nextBtn = document.getElementById('btn-stock-next');
+        if (prevBtn) prevBtn.onclick = () => { if (stockPage > 1) { stockPage--; renderStockTable(); } };
+        if (nextBtn) nextBtn.onclick = () => { if (stockPage < totalPages) { stockPage++; renderStockTable(); } };
+      };
+
+      const stockLimitSelect = document.getElementById('stock-limit-select');
+      if (stockLimitSelect) {
+        stockLimitSelect.onchange = async () => {
+          const val = stockLimitSelect.value;
+          if (val === 'custom') {
+            const customVal = await H.prompt('Enter number of stock items to display per page:', '150');
+            const num = parseInt(customVal, 10);
+            if (num && num > 0) {
+              stockLimit = num;
+              stockPage = 1;
+              renderStockTable();
+            } else {
+              stockLimitSelect.value = String(stockLimit);
+            }
+          } else if (val === 'all') {
+            stockLimit = 'all';
+            stockPage = 1;
+            renderStockTable();
+          } else {
+            stockLimit = parseInt(val, 10) || 50;
+            stockPage = 1;
+            renderStockTable();
+          }
+        };
+      }
+
+      renderStockTable();
     },
 
     salesSummaryReport(container, orders, H) {
