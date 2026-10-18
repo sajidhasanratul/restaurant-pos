@@ -142,6 +142,32 @@
                   <span>Grand Total:</span>
                   <span class="summary-val" id="summary-total">৳0.00</span>
                 </div>
+
+                <div class="summary-row" style="margin-top:6px; padding-top:8px; border-top:1px dashed #cbd5e1;">
+                  <span style="font-weight:600; color:#475569;">Total Paid:</span>
+                  <span class="summary-val text-success" id="summary-paid" style="font-weight:700;">৳0.00</span>
+                </div>
+
+                <!-- Due Balance Field -->
+                <div class="summary-row" id="row-due-balance" style="display:none; color:#ea580c; font-weight:700; background:#fff7ed; padding:7px 10px; border-radius:6px; margin-top:6px; border:1px solid #fed7aa; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:700; color:#9a3412; font-size:12.5px;">Due Balance:</span>
+                  <span class="summary-val" id="summary-due" style="font-weight:800; color:#ea580c; font-size:15px;">৳0.00</span>
+                </div>
+
+                <!-- Change Return: Field (Placed on Order Summary Card) -->
+                <div class="summary-row" id="row-change-return" style="background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; padding:9px 12px; margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:700; color:#166534; font-size:13px; display:flex; align-items:center; gap:5px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                    Change Return:
+                  </span>
+                  <span class="summary-val" id="summary-change" style="font-size:18px; font-weight:800; color:#15803d;">৳0.00</span>
+                </div>
+
+                <!-- Place Order Action Button (Placed on Order Summary Card) -->
+                <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:15px; font-weight:800; letter-spacing:0.5px; font-size:15px; border-radius:8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); display:flex; align-items:center; justify-content:center; gap:8px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span>COMPLETE & PLACE SALE</span>
+                </button>
               </div>
             </div>
 
@@ -156,15 +182,6 @@
               <div class="payment-body">
                 <!-- Payment Slices Container -->
                 <div id="payment-rows-container"></div>
-
-                <!-- Payment Status Banner -->
-                <div id="payment-balance-banner" style="display:none; margin-top:12px; padding:10px 12px; border-radius:8px; justify-content:space-between; align-items:center; font-size:12.5px; font-weight:700;"></div>
-
-                <!-- Place Order Action Button -->
-                <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:15px; font-weight:800; letter-spacing:0.5px; font-size:15px; border-radius:8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); display:flex; align-items:center; justify-content:center; gap:8px;">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  <span>COMPLETE & PLACE SALE</span>
-                </button>
               </div>
             </div>
           </div>
@@ -1021,48 +1038,25 @@
       const taxEl = document.getElementById('summary-tax');
       const totalEl = document.getElementById('summary-total');
       const countEl = document.getElementById('summary-item-count');
+      const paidEl = document.getElementById('summary-paid');
+      const changeEl = document.getElementById('summary-change');
+      const dueRow = document.getElementById('row-due-balance');
+      const dueEl = document.getElementById('summary-due');
 
       if (subtotalEl) subtotalEl.textContent = H.formatCurrency(subtotal);
       if (discountEl) discountEl.textContent = `-${H.formatCurrency(discountAmount)}`;
       if (taxEl) taxEl.textContent = H.formatCurrency(taxAmount);
       if (totalEl) totalEl.textContent = H.formatCurrency(grandTotal);
       if (countEl) countEl.textContent = `${totalItemsCount} Item${totalItemsCount === 1 ? '' : 's'}`;
+      if (paidEl) paidEl.textContent = H.formatCurrency(totalPaid);
+      if (changeEl) changeEl.textContent = H.formatCurrency(change);
 
-      // Update Payment Status Banner
-      const balanceBanner = document.getElementById('payment-balance-banner');
-      if (balanceBanner) {
-        if (grandTotal === 0 && this.cart.length === 0) {
-          balanceBanner.style.display = 'none';
-        } else if (Math.abs(totalPaid - grandTotal) < 0.01) {
-          balanceBanner.style.display = 'flex';
-          balanceBanner.style.background = '#ecfdf5';
-          balanceBanner.style.border = '1px solid #a7f3d0';
-          balanceBanner.style.color = '#065f46';
-          balanceBanner.innerHTML = `
-            <span>Payment Status:</span>
-            <span style="display:flex; align-items:center; gap:4px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Fully Paid (${H.formatCurrency(totalPaid)})
-            </span>
-          `;
-        } else if (totalPaid > grandTotal) {
-          balanceBanner.style.display = 'flex';
-          balanceBanner.style.background = '#eff6ff';
-          balanceBanner.style.border = '1px solid #bfdbfe';
-          balanceBanner.style.color = '#1e40af';
-          balanceBanner.innerHTML = `
-            <span>Change Return:</span>
-            <span style="font-size:15px; font-weight:800; color:#2563eb;">${H.formatCurrency(change)}</span>
-          `;
+      if (dueRow && dueEl) {
+        if (due > 0 && this.cart.length > 0) {
+          dueRow.style.display = 'flex';
+          dueEl.textContent = H.formatCurrency(due);
         } else {
-          balanceBanner.style.display = 'flex';
-          balanceBanner.style.background = '#fff7ed';
-          balanceBanner.style.border = '1px solid #fed7aa';
-          balanceBanner.style.color = '#9a3412';
-          balanceBanner.innerHTML = `
-            <span>Due Balance:</span>
-            <span style="font-size:15px; font-weight:800; color:#ea580c;">${H.formatCurrency(due)}</span>
-          `;
+          dueRow.style.display = 'none';
         }
       }
     },
