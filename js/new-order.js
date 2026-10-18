@@ -4,7 +4,7 @@
   const NewOrder = {
     cart: [],
     selectedCustomer: null,
-    payments: [{ method: 'Cash', amount: 0 }],
+    payments: [{ method: 'Cash', amount: 0, lastFour: '' }],
 
     async render() {
       const mc = document.getElementById('main-content');
@@ -15,136 +15,157 @@
       this.selectedCustomer = null;
       this.payments = [{ method: 'Cash', amount: 0, lastFour: '' }];
 
+      // Ensure active payment channels with custom logos & colors are preloaded
+      await H.loadPaymentMethods();
+
       mc.innerHTML = `
-        <div class="page-header fade-in">
+        <div class="page-header fade-in" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
           <div>
-            <h2 class="page-title">New Sale</h2>
-            <p class="page-subtitle">Add customer details, search or enter custom products, and process payment.</p>
+            <h2 class="page-title" style="display:flex; align-items:center; gap:8px;">
+              <span>🛒</span> New Sales Order
+            </h2>
+            <p class="page-subtitle">Add customer details, scan barcodes or select products, and complete payment.</p>
           </div>
           <div class="page-actions">
-            <a href="/sales-list" class="btn btn-secondary btn-sm">Back to Sales List</a>
+            <a href="/sales-list" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+              Sales History
+            </a>
           </div>
         </div>
 
         <div class="order-layout fade-in">
-          <!-- Left Panel: Form & Cart -->
+          <!-- Left Panel: Form, Search & Cart -->
           <div class="flex flex-col gap-2">
             <!-- Customer & Date -->
-            <div class="card">
-              <div class="card-body form-row">
-                <div class="form-group" style="position:relative;">
-                  <label class="form-label" style="font-weight:700;">Customer Phone / Name</label>
-                  <input type="text" class="form-input" id="search-customer" placeholder="Search phone or name..." style="border: 2px solid #64748b; font-weight:500;">
+            <div class="card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+              <div class="card-body form-row" style="grid-template-columns: 2fr 1fr; gap:16px;">
+                <div class="form-group" style="position:relative; margin-bottom:0;">
+                  <label class="form-label" style="font-weight:700; font-size:12px; color:#334155;">Customer (Phone or Name)</label>
+                  <input type="text" class="form-input" id="search-customer" placeholder="Search customer phone or name..." style="border: 1.5px solid #cbd5e1; font-weight:500; border-radius:6px; height:40px;">
                   <div class="product-results" id="customer-results"></div>
                   <div id="customer-details" class="mt-1" style="display:none;"></div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" style="font-weight:700;">Sales Date</label>
-                  <input type="date" class="form-input" id="sales-date" value="${H.today()}">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-weight:700; font-size:12px; color:#334155;">Sales Date</label>
+                  <input type="date" class="form-input" id="sales-date" value="${H.today()}" style="border: 1.5px solid #cbd5e1; border-radius:6px; height:40px;">
                 </div>
               </div>
             </div>
 
-            <!-- Product Search / Custom Product -->
-            <div class="card">
+            <!-- Product Search & Cart Table -->
+            <div class="card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
               <div class="card-body">
                 <div class="product-search-wrap">
                   <div style="display: flex; gap: 8px;">
-                    <div class="search-box" style="flex: 1;">
-                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode..." style="border: 2px solid #64748b; font-weight:500;">
+                    <div class="search-box" style="flex: 1; position:relative;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode..." style="padding-left:36px; border: 1.5px solid #cbd5e1; font-weight:500; border-radius:6px; height:42px;">
                     </div>
-                    <button class="btn btn-secondary" id="btn-add-custom-prod" title="Add Custom Product" style="white-space:nowrap; font-weight:600; padding:0 14px;">+ Custom Product</button>
+                    <button class="btn btn-secondary" id="btn-add-custom-prod" title="Add Custom Item" style="white-space:nowrap; font-weight:600; padding:0 14px; height:42px; border-radius:6px; border:1.5px solid #cbd5e1;">+ Custom Item</button>
                   </div>
                   <div class="product-results" id="product-results"></div>
                 </div>
 
-                <div class="table-wrapper mt-2">
+                <div class="table-wrapper mt-3" style="border-radius:8px; border:1px solid #e2e8f0; max-height:480px; overflow-y:auto;">
                   <table class="data-table">
                     <thead>
                       <tr>
-                        <th>Product / Variation</th>
-                        <th>Price</th>
-                        <th style="width:120px;">Qty</th>
-                        <th>Total</th>
-                        <th style="width:50px;"></th>
+                        <th>Product / Variation & SKU</th>
+                        <th style="width:125px;">Price</th>
+                        <th style="width:120px;" class="text-center">Qty</th>
+                        <th style="width:120px;" class="text-right">Total</th>
+                        <th style="width:40px;"></th>
                       </tr>
                     </thead>
-                    <tbody id="cart-tbody">
-                      <tr>
-                        <td colspan="5" class="text-center text-muted">Cart is empty. Add products to start.</td>
-                      </tr>
-                    </tbody>
+                    <tbody id="cart-tbody"></tbody>
                   </table>
                 </div>
               </div>
             </div>
 
             <!-- Discount & Tax -->
-            <div class="card">
-              <div class="card-header">Discount & Tax Settings</div>
-              <div class="card-body form-row" style="grid-template-columns: repeat(4, 1fr);">
-                <div class="form-group">
-                  <label class="form-label">Discount Type</label>
-                  <select class="form-select" id="discount-type">
+            <div class="card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+              <div class="card-header" style="font-weight:700; font-size:12.5px; color:#475569; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                🏷️ Discount & Tax Settings
+              </div>
+              <div class="card-body form-row" style="grid-template-columns: repeat(4, 1fr); gap:12px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Discount Type</label>
+                  <select class="form-select" id="discount-type" style="height:36px; font-size:13px; border-radius:6px;">
                     <option value="none" selected>None</option>
                     <option value="percentage">Percentage (%)</option>
                     <option value="amount">Fixed Amount (৳)</option>
                   </select>
                 </div>
-                <div class="form-group">
-                  <label class="form-label">Discount Value</label>
-                  <input type="number" class="form-input" id="discount-value" value="0" min="0" disabled>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Discount Value</label>
+                  <input type="number" class="form-input" id="discount-value" value="0" min="0" disabled style="height:36px; font-size:13px; border-radius:6px;">
                 </div>
-                <div class="form-group">
-                  <label class="form-label">Promo Coupon</label>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Promo Coupon</label>
                   <div style="display:flex; gap:4px;">
-                    <input type="text" class="form-input" id="coupon-code" placeholder="e.g. SAVE10" style="text-transform:uppercase;">
-                    <button class="btn btn-secondary" id="btn-apply-coupon" style="padding:0 12px; font-size:12px; font-weight:700;">Apply</button>
+                    <input type="text" class="form-input" id="coupon-code" placeholder="e.g. SAVE10" style="text-transform:uppercase; height:36px; font-size:12px; border-radius:6px;">
+                    <button class="btn btn-secondary" id="btn-apply-coupon" style="padding:0 10px; font-size:11px; font-weight:700; height:36px; border-radius:6px;">Apply</button>
                   </div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label">Tax (%)</label>
-                  <input type="number" class="form-input" id="tax-percent" value="0" min="0">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Tax (%)</label>
+                  <input type="number" class="form-input" id="tax-percent" value="0" min="0" style="height:36px; font-size:13px; border-radius:6px;">
                 </div>
-              </div>
-            </div>
-
-            <!-- Multi Payment Options -->
-            <div class="card">
-              <div class="card-header flex justify-between items-center">
-                <span>Payment Information</span>
-                <button class="btn btn-secondary btn-sm" id="btn-add-payment">+ Add Split Payment</button>
-              </div>
-              <div class="card-body">
-                <div id="payment-rows-container"></div>
               </div>
             </div>
           </div>
 
-          <!-- Right Panel: Order Summary & Place Order -->
-          <div class="order-summary flex flex-col gap-2">
-            <div class="summary-header">Order Summary</div>
-            <div class="summary-body">
-              <div class="summary-row">
-                <span>Sub Total:</span>
-                <span class="summary-val" id="summary-subtotal">৳0.00</span>
+          <!-- Right Panel: Order Summary & Payment Down the Summary -->
+          <div class="order-summary-column flex flex-col gap-3">
+            <!-- 1. Order Summary Card -->
+            <div class="order-summary-card shadow-sm">
+              <div class="summary-header">
+                <span style="display:flex; align-items:center; gap:6px;">📋 Order Summary</span>
+                <span id="summary-item-count" style="font-size:11px; font-weight:600; background:rgba(255,255,255,0.18); padding:2px 8px; border-radius:10px;">0 Items</span>
               </div>
-              <div class="summary-row">
-                <span>Discount:</span>
-                <span class="summary-val text-danger" id="summary-discount">-৳0.00</span>
+              <div class="summary-body">
+                <div class="summary-row">
+                  <span>Sub Total:</span>
+                  <span class="summary-val" id="summary-subtotal">৳0.00</span>
+                </div>
+                <div class="summary-row">
+                  <span>Discount:</span>
+                  <span class="summary-val text-danger" id="summary-discount">-৳0.00</span>
+                </div>
+                <div class="summary-row">
+                  <span>Tax:</span>
+                  <span class="summary-val" id="summary-tax">৳0.00</span>
+                </div>
+                <div class="summary-row total">
+                  <span>Grand Total:</span>
+                  <span class="summary-val" id="summary-total">৳0.00</span>
+                </div>
               </div>
-              <div class="summary-row">
-                <span>Tax:</span>
-                <span class="summary-val" id="summary-tax">৳0.00</span>
-              </div>
-              <div class="summary-row total">
-                <span>Grand Total:</span>
-                <span class="summary-val" id="summary-total">৳0.00</span>
-              </div>
+            </div>
 
-              <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:16px; font-weight:700; letter-spacing:0.5px;">
-                PLACE ORDER
-              </button>
+            <!-- 2. Payment Information Card (Down the Order Summary) -->
+            <div class="payment-info-card shadow-sm">
+              <div class="payment-header">
+                <span style="display:flex; align-items:center; gap:6px;">💳 Payment Details</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-add-payment" style="font-size:11px; padding:3px 8px; font-weight:600; border-radius:6px; background:#fff;">
+                  + Split Pay
+                </button>
+              </div>
+              <div class="payment-body">
+                <!-- Payment Slices Container -->
+                <div id="payment-rows-container"></div>
+
+                <!-- Payment Status Banner -->
+                <div id="payment-balance-banner" style="display:none; margin-top:12px; padding:10px 12px; border-radius:8px; justify-content:space-between; align-items:center; font-size:12.5px; font-weight:700;"></div>
+
+                <!-- Place Order Action Button -->
+                <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:15px; font-weight:800; letter-spacing:0.5px; font-size:15px; border-radius:8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); display:flex; align-items:center; justify-content:center; gap:8px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span>COMPLETE & PLACE SALE</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -177,7 +198,7 @@
 
         custResults.innerHTML = '';
         if (matches.length === 0) {
-          custResults.innerHTML = `<div class="product-result-item" style="color:var(--text-secondary)">No customers found. Click to add new.</div>`;
+          custResults.innerHTML = `<div class="product-result-item" style="color:var(--text-secondary); cursor:pointer;">No customers found. Click to add new customer.</div>`;
           custResults.onclick = () => this.showAddCustomerModal(query);
         } else {
           matches.forEach(c => {
@@ -185,15 +206,14 @@
             custResults.innerHTML += `
               <div class="product-result-item" data-id="${c.id}">
                 <div>
-                  <span class="pr-name">${H.esc(c.name)}</span>
-                  <span class="pr-sku" style="margin-left: 8px;">${H.esc(c.phone)}</span>
+                  <span class="pr-name" style="font-weight:600;">${H.esc(c.name)}</span>
+                  <span class="pr-sku" style="margin-left: 8px; color:#64748b;">${H.esc(c.phone)}</span>
                 </div>
                 ${c.label ? `<span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px;">${c.label}</span>` : ''}
               </div>
             `;
           });
 
-          // Click handler
           custResults.onclick = async (ev) => {
             const item = ev.target.closest('.product-result-item');
             if (!item) return;
@@ -208,7 +228,7 @@
         custResults.classList.add('open');
       }, 200));
 
-      // Close dropdowns on outside click (only if elements exist in current view)
+      // Close dropdowns on outside click
       document.addEventListener('click', (e) => {
         const custEl = document.getElementById('customer-results');
         const prodEl = document.getElementById('product-results');
@@ -216,7 +236,6 @@
         if (prodEl && !e.target.closest('#search-product')) prodEl.classList.remove('open');
       });
 
-      // ── Product Search ──────────────────────────────
       // ── Product Search (Server-Side MySQL, 300ms Debounce, AbortController) ──
       const searchProd = document.getElementById('search-product');
       const prodResults = document.getElementById('product-results');
@@ -231,10 +250,7 @@
           return;
         }
 
-        // Abort previous in-flight search request
-        if (searchAbortController) {
-          searchAbortController.abort();
-        }
+        if (searchAbortController) searchAbortController.abort();
         searchAbortController = new AbortController();
 
         try {
@@ -254,8 +270,8 @@
                   productId: p.id,
                   name: p.name + ` (${v.name})`,
                   rawName: p.name,
-                  sku: v.sku || p.sku,
-                  barcode: v.barcode || p.barcode,
+                  sku: v.sku || p.sku || '',
+                  barcode: v.barcode || p.barcode || '',
                   generic: p.generic || '',
                   strength: p.strength || '',
                   category: p.category || '',
@@ -271,8 +287,8 @@
                 productId: p.id,
                 name: p.name,
                 rawName: p.name,
-                sku: p.sku,
-                barcode: p.barcode,
+                sku: p.sku || '',
+                barcode: p.barcode || '',
                 generic: p.generic || '',
                 strength: p.strength || '',
                 category: p.category || '',
@@ -286,12 +302,12 @@
 
           prodResults.innerHTML = '';
           if (matches.length === 0) {
-            prodResults.innerHTML = `<div class="product-result-item text-muted" style="padding:12px; text-align:center;">No products found.</div>`;
+            prodResults.innerHTML = `<div class="product-result-item text-muted" style="padding:12px; text-align:center;">No products found matching "${H.esc(query)}".</div>`;
           } else {
             matches.forEach(m => {
               const imgHtml = m.image 
                 ? `<img src="${m.image}" style="width:36px; height:36px; object-fit:cover; border-radius:var(--radius-sm); margin-right:10px;">`
-                : `<div style="width:36px; height:36px; border-radius:var(--radius-sm); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; color:#64748b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg></div>`;
+                : `<div style="width:36px; height:36px; border-radius:var(--radius-sm); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; color:#64748b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg></div>`;
 
               prodResults.innerHTML += `
                 <div class="product-result-item" data-id="${m.id}" data-var="${H.esc(m.variationName)}" data-sku="${H.esc(m.sku)}" data-price="${m.price}" data-stock="${m.stock}" data-name="${H.esc(m.name)}" data-image="${m.image || ''}" style="display:flex; align-items:center;">
@@ -305,7 +321,7 @@
                     ${m.generic ? `<div style="font-size:11px; color:#475569; margin-top:2px; font-weight:500;">${H.esc(m.generic)}</div>` : ''}
                     <div class="pr-sku" style="font-size:11px; color:#64748b; margin-top:1px;">SKU: ${H.esc(m.sku)} | Stock: ${m.stock}</div>
                   </div>
-                  <div class="pr-price">${H.formatCurrency(m.price)}</div>
+                  <div class="pr-price" style="font-weight:700; color:#059669;">${H.formatCurrency(m.price)}</div>
                 </div>
               `;
             });
@@ -318,6 +334,7 @@
                 productId: ds.id,
                 productName: ds.name,
                 variationName: ds.var,
+                sku: ds.sku || '',
                 unitPrice: parseFloat(ds.price),
                 qty: 1,
                 image: ds.image,
@@ -330,12 +347,12 @@
           }
           prodResults.classList.add('open');
         } catch (err) {
-          if (err.name === 'AbortError') return; // Expected when user is typing quickly
+          if (err.name === 'AbortError') return;
           console.error('Product search error:', err);
         }
       }, 300));
 
-      // Barcode Enter keypress lookup & Scan Button setup
+      // Barcode Enter keypress lookup
       searchProd.onkeydown = async (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -355,6 +372,7 @@
                 productId: it.productId || it.id,
                 productName: it.productName || it.name,
                 variationName: it.variationName || '',
+                sku: it.sku || '',
                 unitPrice: parseFloat(it.price || 0),
                 qty: 1,
                 image: it.image || '',
@@ -366,7 +384,6 @@
               H.showToast(`Scanned: ${matchedItem.productName} ${matchedItem.variationName ? `(${matchedItem.variationName})` : ''}`, 'success');
               this.playBeepSound();
             } else {
-              // If not exact match, trigger normal filter search immediately
               searchProd.dispatchEvent(new Event('input'));
             }
           } catch (err) {
@@ -417,14 +434,14 @@
         }
       };
 
-      // ── Add Payment Split ────────────────────────────
+      // ── Add Payment Split Button ─────────────────────
       document.getElementById('btn-add-payment').onclick = () => {
         this.payments.push({ method: 'Cash', amount: 0, lastFour: '' });
         this.renderPayments();
         this.recalculate();
       };
 
-      // ── Place Order ──────────────────────────────────
+      // ── Place Order Button ───────────────────────────
       document.getElementById('btn-place-order').onclick = () => this.placeOrder();
     },
 
@@ -440,18 +457,22 @@
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label" style="font-weight:700;">Product Name</label>
-              <input type="text" class="form-input" id="custom-prod-name" placeholder="Enter product name..." value="" style="border: 2px solid #64748b;">
+              <label class="form-label" style="font-weight:700;">Product Name *</label>
+              <input type="text" class="form-input" id="custom-prod-name" placeholder="Enter product name..." value="" style="border: 1.5px solid #cbd5e1;">
             </div>
-            <div class="form-row">
+            <div class="form-row" style="grid-template-columns: 1fr 1fr; gap:12px;">
               <div class="form-group">
-                <label class="form-label" style="font-weight:700;">Unit Price (৳)</label>
-                <input type="number" class="form-input" id="custom-prod-price" placeholder="0.00" value="" min="0" step="0.01" style="border: 2px solid #64748b;">
+                <label class="form-label" style="font-weight:700;">Unit Price (৳) *</label>
+                <input type="number" class="form-input" id="custom-prod-price" placeholder="0.00" value="" min="0" step="0.01" style="border: 1.5px solid #cbd5e1;">
               </div>
               <div class="form-group">
                 <label class="form-label" style="font-weight:700;">Quantity</label>
-                <input type="number" class="form-input" id="custom-prod-qty" value="1" min="1" style="border: 2px solid #64748b;">
+                <input type="number" class="form-input" id="custom-prod-qty" value="1" min="1" style="border: 1.5px solid #cbd5e1;">
               </div>
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+              <label class="form-label" style="font-weight:700;">SKU Number (Optional)</label>
+              <input type="text" class="form-input" id="custom-prod-sku" placeholder="e.g. CUST-01" style="border: 1.5px solid #cbd5e1;">
             </div>
           </div>
           <div class="modal-footer">
@@ -465,6 +486,7 @@
       const nameInput = overlay.querySelector('#custom-prod-name');
       const priceInput = overlay.querySelector('#custom-prod-price');
       const qtyInput = overlay.querySelector('#custom-prod-qty');
+      const skuInput = overlay.querySelector('#custom-prod-sku');
       setTimeout(() => nameInput.focus(), 80);
 
       const close = () => overlay.remove();
@@ -480,11 +502,13 @@
         }
         const pPrice = parseFloat(priceInput.value) || 0;
         const pQty = parseInt(qtyInput.value) || 1;
+        const pSku = skuInput.value.trim() || 'CUSTOM';
 
         this.addToCart({
           productId: 'custom_' + Date.now().toString(36),
           productName: pName,
           variationName: '',
+          sku: pSku,
           unitPrice: pPrice,
           qty: pQty,
           image: '',
@@ -513,15 +537,17 @@
         searchInput.value = `${c.name} (${c.phone})`;
         const labelStyle = c.label ? `background:${H.labelColors[c.label] || '#64748b'};` : '';
         det.innerHTML = `
-          <div style="display:flex; align-items:center; gap:8px; background:var(--bg); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--border)">
-            <span>${H.esc(c.name)} | Label: <span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px;">${c.label}</span></span>
-            ${c.customDiscount > 0 ? `<span class="text-success" style="font-weight:700;">(Auto Discount: ${c.customDiscount}%)</span>` : ''}
-            <button class="btn btn-secondary btn-sm" id="btn-clear-customer" style="padding:2px 8px; margin-left:auto;">Clear</button>
+          <div style="display:flex; align-items:center; gap:8px; background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0;">
+            <div style="flex:1;">
+              <span style="font-weight:700; color:#1e293b;">${H.esc(c.name)}</span>
+              ${c.label ? `<span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px; margin-left:6px;">${c.label}</span>` : ''}
+              ${c.customDiscount > 0 ? `<span class="text-success" style="font-weight:700; margin-left:6px; font-size:12px;">(Auto Discount: ${c.customDiscount}%)</span>` : ''}
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-clear-customer" style="padding:2px 8px; font-size:11px;">Change</button>
           </div>
         `;
         det.style.display = 'block';
 
-        // Auto apply custom customer discount if applicable
         if (c.customDiscount > 0) {
           const discType = document.getElementById('discount-type');
           const discVal = document.getElementById('discount-value');
@@ -557,11 +583,11 @@
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">Full Name</label>
+              <label class="form-label">Full Name *</label>
               <input type="text" class="form-input" id="cust-modal-name" required>
             </div>
             <div class="form-group">
-              <label class="form-label">Phone Number</label>
+              <label class="form-label">Phone Number *</label>
               <input type="text" class="form-input" id="cust-modal-phone" value="${H.esc(prefilledPhone)}">
             </div>
             <div class="form-group">
@@ -609,16 +635,18 @@
     },
 
     addToCart(item) {
-      // Check if item already exists in cart
       const existing = this.cart.find(i => i.productId === item.productId && i.variationName === item.variationName);
       if (existing) {
         if (existing.qty < item.stock) {
           existing.qty++;
         } else {
-          POS.Helpers.showToast('Insufficient stock!', 'warning');
+          POS.Helpers.showToast('Insufficient stock available!', 'warning');
         }
       } else {
-        this.cart.push(item);
+        this.cart.push({
+          ...item,
+          sku: item.sku || ''
+        });
       }
       this.renderCart();
       this.recalculate();
@@ -630,21 +658,43 @@
       tbody.innerHTML = '';
 
       if (this.cart.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Cart is empty. Add products to start.</td></tr>`;
+        tbody.innerHTML = `
+          <tr id="empty-cart-row">
+            <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
+              <div style="width:48px; height:48px; margin:0 auto 10px auto; border-radius:50%; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+              </div>
+              <div style="font-weight:700; color:#334155; font-size:14px; margin-bottom:4px;">Your Cart is Empty</div>
+              <div style="font-size:12px; color:#94a3b8;">Scan barcode or type in the search bar above to add products to sale.</div>
+            </td>
+          </tr>
+        `;
         return;
       }
 
       this.cart.forEach((item, index) => {
         const thumbHtml = item.image 
-          ? `<img src="${item.image}" style="width:30px; height:30px; object-fit:cover; border-radius:var(--radius-xs); margin-right:8px;">`
-          : `<div style="width:30px; height:30px; border-radius:var(--radius-xs); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:8px; font-size:11px; font-weight:700; color:#64748b;">${item.isCustom ? 'C' : 'P'}</div>`;
+          ? `<img src="${item.image}" style="width:34px; height:34px; object-fit:cover; border-radius:6px; margin-right:10px; flex-shrink:0;">`
+          : `<div style="width:34px; height:34px; border-radius:6px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; font-size:11px; font-weight:700; color:#64748b; flex-shrink:0;">${item.isCustom ? 'C' : 'P'}</div>`;
+
+        const skuHtml = item.sku 
+          ? `<span style="display:inline-block; font-size:11px; color:#475569; font-family:monospace; background:#f1f5f9; padding:1px 6px; border-radius:4px; border:1px solid #e2e8f0; margin-top:2px;">SKU: ${H.esc(item.sku)}</span>`
+          : `<span style="font-size:11px; color:#94a3b8; font-style:italic; margin-top:2px;">No SKU</span>`;
 
         const nameDisplayHtml = item.isCustom
-          ? `<input type="text" class="form-input input-custom-name" value="${H.esc(item.productName)}" placeholder="Custom product name..." style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">`
+          ? `
+            <div style="flex:1; min-width:0;">
+              <input type="text" class="form-input input-custom-name" value="${H.esc(item.productName)}" placeholder="Custom product name..." style="padding:4px 8px; height:28px; width:100%; font-size:12.5px; font-weight:600; border-radius:4px;">
+              <div style="margin-top:2px;">${skuHtml}</div>
+            </div>
+          `
           : `
-            <div>
-              <div class="cart-item-name">${H.esc(item.productName)}</div>
-              ${item.variationName ? `<div class="cart-item-variant">${H.esc(item.variationName)}</div>` : ''}
+            <div style="flex:1; min-width:0;">
+              <div class="cart-item-name" style="font-weight:600; font-size:13.5px; color:#1e293b; line-height:1.3;">
+                ${H.esc(item.productName)}
+                ${item.variationName ? `<span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:11px; padding:1px 6px; border-radius:4px; font-weight:600; margin-left:4px;">(${H.esc(item.variationName)})</span>` : ''}
+              </div>
+              <div style="margin-top:2px;">${skuHtml}</div>
             </div>
           `;
 
@@ -653,27 +703,27 @@
             <td>
               <div style="display:flex; align-items:center;">
                 ${thumbHtml}
-                <div style="flex:1;">
-                  ${nameDisplayHtml}
-                </div>
+                ${nameDisplayHtml}
               </div>
             </td>
             <td>
-              <div style="display:flex; align-items:center; gap:4px; max-width:110px;">
-                <span>৳</span>
-                <input type="number" class="input-price form-input" value="${item.unitPrice || ''}" placeholder="0.00" min="0" step="0.01" style="padding:4px 6px; height:28px; width:100%; font-size:12px; font-weight:600;">
+              <div style="display:flex; align-items:center; gap:4px; max-width:115px;">
+                <span style="font-weight:700; color:#64748b; font-size:13px;">৳</span>
+                <input type="number" class="input-price form-input" value="${item.unitPrice || ''}" placeholder="0.00" min="0" step="0.01" style="padding:4px 6px; height:30px; width:100%; font-size:13px; font-weight:700; border-radius:4px;">
               </div>
             </td>
-            <td>
-              <div class="qty-control">
-                <button class="btn-qty-dec">-</button>
-                <input type="number" class="input-qty" value="${item.qty}" min="1" max="${item.stock}">
-                <button class="btn-qty-inc">+</button>
+            <td class="text-center">
+              <div class="qty-control" style="margin:0 auto; width:fit-content; border-radius:6px;">
+                <button class="btn-qty-dec" style="width:28px; height:28px;">-</button>
+                <input type="number" class="input-qty" value="${item.qty}" min="1" max="${item.stock}" style="width:36px; height:28px; font-weight:700;">
+                <button class="btn-qty-inc" style="width:28px; height:28px;">+</button>
               </div>
             </td>
-            <td style="font-weight:700;">${H.formatCurrency(item.unitPrice * item.qty)}</td>
-            <td>
-              <button class="btn btn-secondary btn-sm btn-qty-remove" style="padding:2px 8px; color:var(--danger); border-color:#fee2e2; background:#fef2f2; font-weight:700;" title="Remove Item">&times;</button>
+            <td class="text-right" style="font-weight:800; font-size:13.5px; color:#0f172a;">${H.formatCurrency(item.unitPrice * item.qty)}</td>
+            <td class="text-center">
+              <button class="btn btn-secondary btn-sm btn-qty-remove" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:#ef4444; border-color:#fee2e2; background:#fef2f2; border-radius:6px;" title="Remove Item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </td>
           </tr>
         `;
@@ -681,7 +731,7 @@
 
       // Bind events
       tbody.querySelectorAll('.cart-item-row').forEach(row => {
-        const index = parseInt(row.dataset.index);
+        const index = parseInt(row.dataset.index, 10);
         const item = this.cart[index];
 
         const customNameInput = row.querySelector('.input-custom-name');
@@ -710,7 +760,7 @@
         };
 
         row.querySelector('.input-qty').onchange = (e) => {
-          let val = parseInt(e.target.value) || 1;
+          let val = parseInt(e.target.value, 10) || 1;
           if (val < 1) val = 1;
           if (val > item.stock) {
             val = item.stock;
@@ -725,8 +775,6 @@
           let val = parseFloat(e.target.value) || 0;
           if (val < 0) val = 0;
           item.unitPrice = val;
-          // Re-render and recalculate without clearing input focus if possible,
-          // but calling renderCart() is simple and correct
           this.renderCart();
           this.recalculate();
         };
@@ -742,89 +790,168 @@
     renderPayments() {
       const H = POS.Helpers;
       const container = document.getElementById('payment-rows-container');
+      if (!container) return;
       container.innerHTML = '';
 
+      const allMethods = (H.paymentMethods && H.paymentMethods.length > 0)
+        ? H.paymentMethods
+        : ['Cash', 'Card', 'bKash', 'Nagad', 'Rocket', 'Bank Transfer', 'Other'];
+
       this.payments.forEach((p, idx) => {
+        const isCash = (p.method || 'Cash').toLowerCase() === 'cash';
+
+        const buttonsHtml = allMethods.map(m => {
+          const isSelected = (p.method === m);
+          const icon = H.getPaymentMethodIcon(m, 22);
+          return `
+            <button type="button" 
+                    class="btn-pay-method ${isSelected ? 'active' : ''}" 
+                    data-method="${H.esc(m)}" 
+                    data-row="${idx}">
+              <div class="pay-icon">${icon}</div>
+              <span class="pay-name">${H.esc(m)}</span>
+            </button>
+          `;
+        }).join('');
+
         container.innerHTML += `
-          <div class="payment-row" data-index="${idx}">
-            <div class="form-group">
-              <label class="form-label">Payment Method</label>
-              <select class="form-select payment-method-select">
-                ${H.paymentMethods.map(m => `<option value="${m}" ${p.method === m ? 'selected' : ''}>${m}</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Last 4 Digits</label>
-              <input type="text" class="form-input payment-lastfour-input" value="${p.lastFour || ''}" maxlength="4" placeholder="e.g. 1234">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Amount (৳)</label>
-              <input type="number" class="form-input payment-amount-input" value="${p.amount}" min="0">
-            </div>
+          <div class="payment-slice-card" data-index="${idx}" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:10px;">
             ${this.payments.length > 1 ? `
-              <button class="btn-remove-payment">🗑️</button>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
+                <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">Split Payment #${idx + 1}</span>
+                <button type="button" class="btn-remove-payment" style="background:none; border:none; color:#ef4444; font-size:11px; font-weight:700; cursor:pointer; padding:0; display:flex; align-items:center; gap:3px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  Remove
+                </button>
+              </div>
+            ` : `
+              <div style="font-size:11.5px; font-weight:700; color:#475569; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                <span>Payment Method</span>
+                <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:10px; padding:1px 6px; border-radius:4px; font-weight:700;">${H.esc(p.method)}</span>
+              </div>
+            `}
+
+            <!-- Method Selection Grid (All buttons with logos - NO dropdown) -->
+            <div class="pay-methods-grid">
+              ${buttonsHtml}
+            </div>
+
+            <!-- Amount & Details Row -->
+            <div style="display:flex; gap:8px; align-items:flex-end;">
+              <div class="form-group" style="flex:1; margin-bottom:0;">
+                <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">
+                  Amount Paid (৳)
+                </label>
+                <div style="position:relative;">
+                  <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#64748b;">৳</span>
+                  <input type="number" 
+                         class="form-input payment-amount-input" 
+                         value="${p.amount !== undefined ? p.amount : ''}" 
+                         min="0" 
+                         step="0.01" 
+                         placeholder="0.00"
+                         style="padding-left:26px; font-weight:700; font-size:14px; color:#0f172a; border-radius:6px; background:#fff; height:38px;">
+                </div>
+              </div>
+
+              ${!isCash ? `
+                <div class="form-group" style="width:115px; margin-bottom:0;">
+                  <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">
+                    Last 4 / Trx
+                  </label>
+                  <input type="text" 
+                         class="form-input payment-lastfour-input" 
+                         value="${H.esc(p.lastFour || '')}" 
+                         maxlength="15" 
+                         placeholder="e.g. 1234"
+                         style="font-size:12px; font-weight:600; text-align:center; border-radius:6px; background:#fff; height:38px;">
+                </div>
+              ` : ''}
+            </div>
+
+            ${isCash ? `
+              <!-- Quick Cash Chips -->
+              <div class="quick-cash-chips">
+                <span style="font-size:10px; font-weight:700; color:#94a3b8; align-self:center; margin-right:2px;">Quick:</span>
+                <button type="button" class="btn-cash-chip btn-chip-exact" data-row="${idx}">Exact</button>
+                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="50">+50</button>
+                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="100">+100</button>
+                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="500">+500</button>
+                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="1000">+1000</button>
+              </div>
             ` : ''}
           </div>
         `;
       });
 
-      // Bind input events
-      container.querySelectorAll('.payment-row').forEach(row => {
-        const idx = parseInt(row.dataset.index);
-
-        row.querySelector('.payment-method-select').onchange = (e) => {
-          this.payments[idx].method = e.target.value;
-        };
-
-        row.querySelector('.payment-lastfour-input').oninput = (e) => {
-          this.payments[idx].lastFour = e.target.value.trim();
-        };
-
-        row.querySelector('.payment-amount-input').oninput = (e) => {
-          const val = parseFloat(e.target.value) || 0;
-          this.payments[idx].amount = val;
-
-          // Auto-balance remaining payment amount across other split row
-          if (this.payments.length > 1) {
-            const subtotal = this.cart.reduce((s, i) => s + (i.unitPrice * i.qty), 0);
-            const discType = document.getElementById('discount-type').value;
-            const discVal = parseFloat(document.getElementById('discount-value').value) || 0;
-            let discountAmount = 0;
-            if (discType === 'percentage') {
-              discountAmount = subtotal * (discVal / 100);
-            } else if (discType === 'amount') {
-              discountAmount = discVal;
-            }
-            if (discountAmount > subtotal) discountAmount = subtotal;
-            const taxPercent = parseFloat(document.getElementById('tax-percent').value) || 0;
-            const taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
-            const grandTotal = subtotal - discountAmount + taxAmount;
-
-            let balancingIdx = this.payments.length - 1;
-            if (idx === balancingIdx) {
-              balancingIdx = 0;
-            }
-
-            let sumOthers = 0;
-            this.payments.forEach((p, pIdx) => {
-              if (pIdx !== balancingIdx) {
-                sumOthers += p.amount;
-              }
-            });
-
-            let balancedAmount = grandTotal - sumOthers;
-            if (balancedAmount < 0) balancedAmount = 0;
-            this.payments[balancingIdx].amount = balancedAmount;
-
-            const balancedInput = container.querySelector(`.payment-row[data-index="${balancingIdx}"] .payment-amount-input`);
-            if (balancedInput) {
-              balancedInput.value = balancedAmount.toFixed(2);
-            }
+      // Bind button clicks for method selection
+      container.querySelectorAll('.btn-pay-method').forEach(btn => {
+        btn.onclick = () => {
+          const rowIdx = parseInt(btn.dataset.row, 10);
+          const chosenMethod = btn.dataset.method;
+          if (this.payments[rowIdx]) {
+            this.payments[rowIdx].method = chosenMethod;
+            this.renderPayments();
+            this.recalculate();
           }
+        };
+      });
+
+      // Bind quick cash chips
+      container.querySelectorAll('.btn-chip-exact').forEach(btn => {
+        btn.onclick = () => {
+          const rowIdx = parseInt(btn.dataset.row, 10);
+          const subtotal = this.cart.reduce((s, i) => s + (i.unitPrice * i.qty), 0);
+          const discType = document.getElementById('discount-type').value;
+          const discVal = parseFloat(document.getElementById('discount-value').value) || 0;
+          let discAmt = discType === 'percentage' ? subtotal * (discVal / 100) : (discType === 'amount' ? discVal : 0);
+          if (discAmt > subtotal) discAmt = subtotal;
+          const taxPct = parseFloat(document.getElementById('tax-percent').value) || 0;
+          const grandTotal = subtotal - discAmt + ((subtotal - discAmt) * (taxPct / 100));
+
+          if (this.payments.length === 1) {
+            this.payments[0].amount = grandTotal;
+          } else {
+            let others = 0;
+            this.payments.forEach((p, pIdx) => { if (pIdx !== rowIdx) others += p.amount; });
+            this.payments[rowIdx].amount = Math.max(0, grandTotal - others);
+          }
+          this.renderPayments();
           this.recalculate();
         };
+      });
 
-        const removeBtn = row.querySelector('.btn-remove-payment');
+      container.querySelectorAll('.btn-chip-add').forEach(btn => {
+        btn.onclick = () => {
+          const rowIdx = parseInt(btn.dataset.row, 10);
+          const addVal = parseFloat(btn.dataset.add) || 0;
+          this.payments[rowIdx].amount = (parseFloat(this.payments[rowIdx].amount) || 0) + addVal;
+          this.renderPayments();
+          this.recalculate();
+        };
+      });
+
+      // Bind amount inputs
+      container.querySelectorAll('.payment-slice-card').forEach(card => {
+        const idx = parseInt(card.dataset.index, 10);
+
+        const amountInput = card.querySelector('.payment-amount-input');
+        if (amountInput) {
+          amountInput.oninput = (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            this.payments[idx].amount = val;
+            this.recalculate(false);
+          };
+        }
+
+        const lastFourInput = card.querySelector('.payment-lastfour-input');
+        if (lastFourInput) {
+          lastFourInput.oninput = (e) => {
+            this.payments[idx].lastFour = e.target.value.trim();
+          };
+        }
+
+        const removeBtn = card.querySelector('.btn-remove-payment');
         if (removeBtn) {
           removeBtn.onclick = () => {
             this.payments.splice(idx, 1);
@@ -835,13 +962,15 @@
       });
     },
 
-    recalculate() {
+    recalculate(updateSingleInput = true) {
       const H = POS.Helpers;
 
       // 1. Calculate Subtotal
       let subtotal = 0;
+      let totalItemsCount = 0;
       this.cart.forEach(item => {
         subtotal += (item.unitPrice * item.qty);
+        totalItemsCount += item.qty;
       });
 
       // 2. Calculate Discount
@@ -855,7 +984,6 @@
         discountAmount = discVal;
       }
 
-      // Keep discount <= subtotal
       if (discountAmount > subtotal) discountAmount = subtotal;
 
       // 3. Calculate Tax
@@ -865,15 +993,17 @@
       // 4. Grand Total
       const grandTotal = subtotal - discountAmount + taxAmount;
 
-      // 5. Default single payment row amount to grandTotal
-      if (this.payments.length === 1) {
+      // 5. Default single payment row amount to grandTotal when appropriate
+      if (this.payments.length === 1 && updateSingleInput) {
         this.payments[0].amount = grandTotal;
         const pInput = document.querySelector('.payment-amount-input');
-        if (pInput) pInput.value = grandTotal.toFixed(2);
+        if (pInput && document.activeElement !== pInput) {
+          pInput.value = grandTotal > 0 ? grandTotal.toFixed(2) : '0.00';
+        }
       }
 
       // 6. Total Paid sum
-      const totalPaid = this.payments.reduce((s, p) => s + p.amount, 0);
+      const totalPaid = this.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
 
       // 7. Due & Change
       let due = 0;
@@ -886,10 +1016,55 @@
       }
 
       // Update Summary Fields
-      document.getElementById('summary-subtotal').textContent = H.formatCurrency(subtotal);
-      document.getElementById('summary-discount').textContent = `-${H.formatCurrency(discountAmount)}`;
-      document.getElementById('summary-tax').textContent = H.formatCurrency(taxAmount);
-      document.getElementById('summary-total').textContent = H.formatCurrency(grandTotal);
+      const subtotalEl = document.getElementById('summary-subtotal');
+      const discountEl = document.getElementById('summary-discount');
+      const taxEl = document.getElementById('summary-tax');
+      const totalEl = document.getElementById('summary-total');
+      const countEl = document.getElementById('summary-item-count');
+
+      if (subtotalEl) subtotalEl.textContent = H.formatCurrency(subtotal);
+      if (discountEl) discountEl.textContent = `-${H.formatCurrency(discountAmount)}`;
+      if (taxEl) taxEl.textContent = H.formatCurrency(taxAmount);
+      if (totalEl) totalEl.textContent = H.formatCurrency(grandTotal);
+      if (countEl) countEl.textContent = `${totalItemsCount} Item${totalItemsCount === 1 ? '' : 's'}`;
+
+      // Update Payment Status Banner
+      const balanceBanner = document.getElementById('payment-balance-banner');
+      if (balanceBanner) {
+        if (grandTotal === 0 && this.cart.length === 0) {
+          balanceBanner.style.display = 'none';
+        } else if (Math.abs(totalPaid - grandTotal) < 0.01) {
+          balanceBanner.style.display = 'flex';
+          balanceBanner.style.background = '#ecfdf5';
+          balanceBanner.style.border = '1px solid #a7f3d0';
+          balanceBanner.style.color = '#065f46';
+          balanceBanner.innerHTML = `
+            <span>Payment Status:</span>
+            <span style="display:flex; align-items:center; gap:4px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Fully Paid (${H.formatCurrency(totalPaid)})
+            </span>
+          `;
+        } else if (totalPaid > grandTotal) {
+          balanceBanner.style.display = 'flex';
+          balanceBanner.style.background = '#eff6ff';
+          balanceBanner.style.border = '1px solid #bfdbfe';
+          balanceBanner.style.color = '#1e40af';
+          balanceBanner.innerHTML = `
+            <span>Change Return:</span>
+            <span style="font-size:15px; font-weight:800; color:#2563eb;">${H.formatCurrency(change)}</span>
+          `;
+        } else {
+          balanceBanner.style.display = 'flex';
+          balanceBanner.style.background = '#fff7ed';
+          balanceBanner.style.border = '1px solid #fed7aa';
+          balanceBanner.style.color = '#9a3412';
+          balanceBanner.innerHTML = `
+            <span>Due Balance:</span>
+            <span style="font-size:15px; font-weight:800; color:#ea580c;">${H.formatCurrency(due)}</span>
+          `;
+        }
+      }
     },
 
     async placeOrder() {
@@ -917,7 +1092,8 @@
       const taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
       const grandTotal = subtotal - discountAmount + taxAmount;
 
-      const totalPaid = this.payments.reduce((s, p) => s + p.amount, 0);
+      const totalPaid = this.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+      const dueAmount = Math.max(0, grandTotal - totalPaid);
 
       const invoiceId = await S.getNextId('INV-');
       const orderId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
@@ -942,9 +1118,9 @@
         taxAmount,
         grandTotal,
         paidAmount: totalPaid,
-        dueAmount: 0,
+        dueAmount,
         returnedAmount: 0,
-        status: 'completed'
+        status: dueAmount > 0 ? 'due' : 'completed'
       };
 
       const orderItemsList = this.cart.map(item => ({
@@ -952,17 +1128,18 @@
         orderId,
         productId: item.productId,
         productName: item.productName,
-        variationName: item.variationName,
+        variationName: item.variationName || null,
         qty: item.qty,
         unitPrice: item.unitPrice,
-        total: item.unitPrice * item.qty
+        total: item.unitPrice * item.qty,
+        costPrice: parseFloat(item.costPrice) || 0.00
       }));
 
       const orderPaymentsList = this.payments.map(p => ({
         id: 'pay_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
         orderId,
         method: p.method,
-        amount: p.amount,
+        amount: parseFloat(p.amount) || 0,
         lastFour: p.lastFour || null
       }));
 
@@ -975,7 +1152,7 @@
         }
         POS.Router.navigate('/sales-list');
       } else {
-        H.showToast('Failed to place/update order: ' + result.error, 'error');
+        H.showToast('Failed to place order: ' + result.error, 'error');
       }
     },
 
@@ -998,9 +1175,14 @@
         gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
 
         oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.1);
+        setTimeout(() => {
+          try {
+            oscillator.stop();
+            audioCtx.close();
+          } catch(e) {}
+        }, 80);
       } catch (err) {
-        console.warn('Web Audio API beep failed:', err);
+        // AudioContext not allowed or sound unavailable
       }
     }
   };
