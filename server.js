@@ -30,31 +30,8 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// ── MySQL Connection Pool ─────────────────────────
-let pool;
-
-const getPool = () => {
-  if (!pool) {
-    pool = mysql.createPool({
-      ...config.db,
-      dateStrings: true,
-      waitForConnections: true,
-      connectionLimit: 10,
-      maxIdle: 10,
-      idleTimeout: 60000,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 10000
-    });
-  }
-  return pool;
-};
-
-// Helper query executor
-const dbQuery = async (sql, params = []) => {
-  const connectionPool = getPool();
-  const [rows] = await connectionPool.execute(sql, params);
-  return rows;
-};
+// ── Dual Database Adapter (MySQL + SQLite Fallback) ──
+const { dbQuery, getPool, isMySQL } = require('./db');
 
 // Helper to safely format date strings into MySQL DATETIME ('YYYY-MM-DD HH:MM:SS') in Bangladesh GMT+6 Time
 const getBangladeshDateTimeString = (dateVal = new Date()) => {
@@ -472,6 +449,20 @@ const initDB = async () => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // Create expired_wastes table
+  await dbQuery(`CREATE TABLE IF NOT EXISTS expired_wastes (
+    id VARCHAR(50) PRIMARY KEY,
+    itemName VARCHAR(255) NOT NULL,
+    quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+    costPrice DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    totalCost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    supplierName VARCHAR(255) DEFAULT '',
+    compensationAmount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    note TEXT,
+    date DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   // Create gallery tables
   await dbQuery(`CREATE TABLE IF NOT EXISTS gallery_folders (
     id VARCHAR(50) PRIMARY KEY,
@@ -489,12 +480,58 @@ const initDB = async () => {
   )`);
 
   try {
-    const gfCount = await dbQuery(`SELECT COUNT(*) as count FROM gallery_folders`);
-    if (gfCount[0].count === 0) {
-      await dbQuery(`INSERT INTO gallery_folders (id, name) VALUES ('default', 'Default Folder')`);
+    const requiredFolders = [
+      ['default', 'General'],
+      ['folder_items', 'Items'],
+      ['folder_categories', 'Categories'],
+      ['folder_payment_methods', 'Payment Methods'],
+      ['folder_expenses', 'Expenses'],
+      ['folder_ingredient_costs', 'Ingredient Costs'],
+      ['folder_suppliers', 'Suppliers'],
+      ['folder_store_invoices', 'Store & Invoices'],
+      ['folder_expired_wastes', 'Expired & Waste']
+    ];
+    for (const [fid, fname] of requiredFolders) {
+      await dbQuery(`INSERT IGNORE INTO gallery_folders (id, name) VALUES (?, ?)`, [fid, fname]);
     }
   } catch (gfErr) {
-    console.warn('Warning seeding default gallery folder:', gfErr.message);
+    console.warn('Warning seeding gallery folders:', gfErr.message);
+  }
+
+  // Create restaurant_tables table
+  await dbQuery(`CREATE TABLE IF NOT EXISTS restaurant_tables (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    zone VARCHAR(100) DEFAULT 'Main Dining',
+    seats INT DEFAULT 4,
+    sort_order INT DEFAULT 1,
+    status VARCHAR(50) DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  try {
+    const tblCount = await dbQuery(`SELECT COUNT(*) as count FROM restaurant_tables`);
+    if (tblCount[0].count === 0) {
+      const defaultTables = [
+        ['tbl_01', 'Table 01', 'Main Dining', 4, 1, 'active'],
+        ['tbl_02', 'Table 02', 'Main Dining', 2, 2, 'active'],
+        ['tbl_03', 'Table 03', 'Main Dining', 4, 3, 'active'],
+        ['tbl_04', 'Table 04', 'Main Dining', 4, 4, 'active'],
+        ['tbl_05', 'Table 05', 'Main Dining', 6, 5, 'active'],
+        ['tbl_06', 'Table 06', 'Main Dining', 6, 6, 'active'],
+        ['tbl_07', 'Table 07', 'Main Dining', 2, 7, 'active'],
+        ['tbl_08', 'Table 08', 'Main Dining', 4, 8, 'active'],
+        ['tbl_patio1', 'Patio 01', 'Outdoor Patio', 4, 9, 'active'],
+        ['tbl_patio2', 'Patio 02', 'Outdoor Patio', 4, 10, 'active'],
+        ['tbl_vip1', 'VIP 01', 'VIP Lounge', 8, 11, 'active'],
+        ['tbl_vip2', 'VIP 02', 'VIP Lounge', 8, 12, 'active']
+      ];
+      for (const t of defaultTables) {
+        await dbQuery(`INSERT INTO restaurant_tables (id, name, zone, seats, sort_order, status) VALUES (?, ?, ?, ?, ?, ?)`, t);
+      }
+    }
+  } catch (tblErr) {
+    console.warn('Warning seeding restaurant tables:', tblErr.message);
   }
 
   // Seed default coupons if empty
@@ -597,6 +634,100 @@ const initDB = async () => {
     console.warn('Migration error for lastFour in payments:', migErr.message);
   }
 
+  // Create ingredient_categories and ingredient_costs tables
+  await dbQuery(`CREATE TABLE IF NOT EXISTS ingredient_categories (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL
+  )`);
+
+  await dbQuery(`CREATE TABLE IF NOT EXISTS ingredient_costs (
+    id VARCHAR(50) PRIMARY KEY,
+    supplier_name VARCHAR(255) DEFAULT '',
+    reason VARCHAR(255) DEFAULT '',
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(100),
+    amount DECIMAL(10,2) NOT NULL,
+    paid_amount DECIMAL(10,2) DEFAULT 0.00,
+    date DATETIME NOT NULL,
+    payment_date DATE NULL DEFAULT NULL,
+    status VARCHAR(50) DEFAULT 'Paid',
+    image LONGTEXT,
+    note TEXT
+  )`);
+
+  // Seed default ingredient categories if empty
+  try {
+    const ingCatsCount = await dbQuery(`SELECT COUNT(*) as count FROM ingredient_categories`);
+    if (ingCatsCount[0].count === 0) {
+      const defaultIngCats = [
+        ['ing_cat_1', 'Fresh Produce & Vegetables'],
+        ['ing_cat_2', 'Meat, Beef & Poultry'],
+        ['ing_cat_3', 'Seafood & Fish'],
+        ['ing_cat_4', 'Dairy, Cheese & Milk'],
+        ['ing_cat_5', 'Bakery & Burger Buns'],
+        ['ing_cat_6', 'Spices, Herbs & Seasoning'],
+        ['ing_cat_7', 'Oils, Mayo & Sauces'],
+        ['ing_cat_8', 'Takeaway Packaging & Boxes'],
+        ['ing_cat_9', 'Beverage Syrups & Coffee Beans'],
+        ['ing_cat_10', 'Kitchen Supplies & Cleaning']
+      ];
+      for (const cat of defaultIngCats) {
+        await dbQuery(`INSERT INTO ingredient_categories (id, name) VALUES (?, ?)`, cat);
+      }
+    }
+  } catch (ingCatErr) {
+    console.warn('Warning seeding ingredient categories:', ingCatErr.message);
+  }
+
+  // Seed sample ingredient costs if empty
+  try {
+    const ingCostCount = await dbQuery(`SELECT COUNT(*) as count FROM ingredient_costs`);
+    if (ingCostCount[0].count === 0) {
+      const todayStr = getBangladeshDateTimeString(new Date());
+      const sampleIngredients = [
+        ['ing_1', 'Brioche Bakery Co.', 'Fresh Brioche Burger Buns (200 pcs)', 'Brioche Buns', 'Bakery & Burger Buns', 45.00, 45.00, todayStr, 'Paid'],
+        ['ing_2', 'Prime Choice Meats', 'Grass-Fed Ground Beef Patties (15 kg)', 'Beef Patties', 'Meat, Beef & Poultry', 125.00, 125.00, todayStr, 'Paid'],
+        ['ing_3', 'FarmFresh Poultry', 'Fresh Chicken Breast & Wings (20 kg)', 'Chicken Breast & Wings', 'Meat, Beef & Poultry', 85.00, 85.00, todayStr, 'Paid'],
+        ['ing_4', 'Valley Dairy Ltd.', 'Real Cheddar Cheese Slices (10 packs)', 'Cheddar Cheese', 'Dairy, Cheese & Milk', 38.50, 38.50, todayStr, 'Paid'],
+        ['ing_5', 'Green Valley Organics', 'Crispy Iceberg Lettuce & Ripe Tomatoes', 'Lettuce & Tomatoes', 'Fresh Produce & Vegetables', 26.00, 26.00, todayStr, 'Paid'],
+        ['ing_6', 'Gourmet Sauces Inc.', 'Signature Smoky BBQ & Chipotle Mayo (10 L)', 'Signature Sauces', 'Oils, Mayo & Sauces', 34.00, 34.00, todayStr, 'Paid'],
+        ['ing_7', 'EcoPack Supplies', 'Food Grade Burger Boxes & Cups (500 pcs)', 'Takeaway Boxes & Cups', 'Takeaway Packaging & Boxes', 55.00, 55.00, todayStr, 'Paid']
+      ];
+      for (const row of sampleIngredients) {
+        await dbQuery(`INSERT INTO ingredient_costs (id, supplier_name, reason, name, category, amount, paid_amount, date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, row);
+      }
+    }
+  } catch (ingCostErr) {
+    console.warn('Warning seeding ingredient costs:', ingCostErr.message);
+  }
+
+  // Auto-migration: ensure orderType and tableName exist on orders
+  try {
+    const oCols = await dbQuery(`SHOW COLUMNS FROM orders`);
+    const oColNames = new Set((oCols || []).map(c => c.Field));
+    if (!oColNames.has('orderType')) {
+      await dbQuery(`ALTER TABLE orders ADD COLUMN orderType VARCHAR(50) DEFAULT 'Dine In'`);
+    }
+    if (!oColNames.has('tableName')) {
+      await dbQuery(`ALTER TABLE orders ADD COLUMN tableName VARCHAR(50) DEFAULT 'Table 01'`);
+    }
+    if (!oColNames.has('tokenNo')) {
+      await dbQuery(`ALTER TABLE orders ADD COLUMN tokenNo INT DEFAULT 1`);
+    }
+  } catch (err) { /* ignore */ }
+
+  // Auto-migration: ensure image and icon exist on categories
+  try {
+    const cCols = await dbQuery(`SHOW COLUMNS FROM categories`);
+    const cColNames = new Set((cCols || []).map(c => c.Field));
+    if (!cColNames.has('image')) {
+      await dbQuery(`ALTER TABLE categories ADD COLUMN image LONGTEXT`);
+    }
+    if (!cColNames.has('icon')) {
+      await dbQuery(`ALTER TABLE categories ADD COLUMN icon VARCHAR(100)`);
+    }
+  } catch (err) { /* ignore */ }
+
   // Auto-cleanup: Permanently delete trashed products older than 30 days ONLY if status is Trash
   try {
     await dbQuery(`DELETE FROM products WHERE status = 'Trash' AND deletedAt IS NOT NULL AND deletedAt < DATE_SUB(NOW(), INTERVAL 30 DAY)`);
@@ -626,74 +757,85 @@ const initDB = async () => {
     if (pmCount[0].count === 0) {
       const defaults = [
         ['pm_cash', 'Cash', '', '#10B981', 'active', 1],
-        ['pm_card', 'Card', '', '#3B82F6', 'active', 2],
-        ['pm_bkash', 'bKash', '', '#E2136E', 'active', 3],
-        ['pm_nagad', 'Nagad', '', '#F7941D', 'active', 4],
-        ['pm_rocket', 'Rocket', '', '#8C3494', 'active', 5],
-        ['pm_bank', 'Bank Transfer', '', '#1E40AF', 'active', 6],
-        ['pm_other', 'Other', '', '#64748B', 'active', 7]
+        ['pm_card', 'Credit/Debit Card', '', '#3B82F6', 'active', 2],
+        ['pm_mobile', 'Mobile Pay', '', '#E05A2B', 'active', 3],
+        ['pm_other', 'Gift / Other', '', '#64748B', 'active', 4]
       ];
       for (const pm of defaults) {
         await dbQuery(`INSERT INTO payment_methods (id, name, icon, color, status, sort_order) VALUES (?, ?, ?, ?, ?, ?)`, pm);
       }
-      console.log('Database Initialization: Seeded default payment methods.');
     }
   } catch (pmSeedErr) {
     console.warn('Warning seeding payment methods:', pmSeedErr.message);
   }
-
-  // Verify and log payments table schema on startup
-  try {
-    const columns = await dbQuery(`DESCRIBE payments`);
-    console.log('=== PAYMENTS SCHEMA DIAGNOSTICS ===');
-    console.log(columns);
-    console.log('===================================');
-  } catch (schemaErr) {
-    console.warn('Could not query payments table structure:', schemaErr.message);
-  }
 };
 
 const seedCatalog = async () => {
-  console.log('Seeding initial products catalog...');
+  console.log('Seeding restaurant products and categories catalog...');
   
   const cats = [
-    ['cat-1', 'Clothing'],
-    ['cat-2', 'Electronics'],
-    ['cat-3', 'Food & Beverages'],
-    ['cat-4', 'Accessories'],
-    ['cat-5', 'Home & Living'],
-    ['cat-6', 'Beauty & Health']
+    ['cat_burger', 'Burger'],
+    ['cat_chicken', 'Fried Chicken'],
+    ['cat_drink', 'Drink'],
+    ['cat_coffee', 'Coffee'],
+    ['cat_dessert', 'Dessert'],
+    ['cat_sides', 'Sides & Fries']
   ];
   for (const c of cats) {
     await dbQuery(`INSERT INTO categories (id, name) VALUES (?, ?)`, c);
   }
 
-  // Add sample product
-  await dbQuery(`INSERT INTO products (id, name, sku, barcode, categoryId, costPrice, sellingPrice, stock, alertQty) VALUES 
-    ('p1', 'Classic T-Shirt', 'TSH-001', '8901234567890', 'cat-1', 200.00, 350.00, 120, 10),
-    ('p2', 'Denim Jeans', 'JNS-001', '8901234568001', 'cat-1', 800.00, 1500.00, 60, 5),
-    ('p3', 'Wireless Earbuds', 'EAR-001', '8901234569001', 'cat-2', 600.00, 1200.00, 40, 5)`);
+  // Restaurant Menu items exactly matching the ClaPos tablet reference picture
+  const restaurantItems = [
+    ['p_deluxe_crispy', 'Deluxe Crispy Burger', 'BUR-001', '8901001', 'cat_burger', 0, 4.99, 99999, 0, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&auto=format&fit=crop&q=80', 'Crispy golden chicken filet with melted cheddar, fresh lettuce & house sauce', 'Publish', 20],
+    ['p_classic_crispy', 'Classic Crispy Burger', 'BUR-002', '8901002', 'cat_burger', 0, 4.75, 99999, 0, 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=500&auto=format&fit=crop&q=80', 'Hand-breaded crunchy crispy filet with pickles & mayo', 'Publish', 19],
+    ['p_special_crispy', 'Special Crispy Burger', 'BUR-003', '8901003', 'cat_burger', 0, 5.75, 99999, 0, 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=500&auto=format&fit=crop&q=80', 'Crispy fried filet with melted pepper jack cheese & spicy relish', 'Publish', 18],
+    ['p_special_burger', 'Special Burger', 'BUR-004', '8901004', 'cat_burger', 0, 4.49, 99999, 0, 'https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=500&auto=format&fit=crop&q=80', 'Signature seasoned beef patty with caramelized onions & secret glaze', 'Publish', 17],
+    ['p_spicy_chicken', 'Spicy Chicken Burger', 'BUR-005', '8901005', 'cat_burger', 0, 5.49, 99999, 0, 'https://images.unsplash.com/photo-1625813506062-0aeb1d7a094b?w=500&auto=format&fit=crop&q=80', 'Fiery Nashville style chicken with jalapeños & creamy coleslaw', 'Publish', 16],
+    ['p_cheeseburger', 'Cheeseburger', 'BUR-006', '8901006', 'cat_burger', 0, 4.20, 99999, 0, 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=500&auto=format&fit=crop&q=80', 'Juicy smashed beef patty with double American cheddar & mustard relish', 'Publish', 15],
+    ['p_combo_drums', 'Combo Drumsticks', 'CHK-001', '8902001', 'cat_chicken', 0, 7.50, 99999, 0, 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&auto=format&fit=crop&q=80', '4 pcs golden crisp chicken drumsticks with french fries & dip', 'Publish', 14],
+    ['p_double_cheese', 'Double Cheeseburger', 'BUR-007', '8901007', 'cat_burger', 0, 7.25, 99999, 0, 'https://images.unsplash.com/photo-1583032015879-bf728634ff94?w=500&auto=format&fit=crop&q=80', 'Two 100% Angus beef patties, double aged cheddar & special burger sauce', 'Publish', 13],
+    ['p_coca_cola', 'Coca Cola', 'DRK-001', '8903001', 'cat_drink', 0, 2.00, 99999, 0, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80', 'Chilled ice cold Coca Cola (330ml can)', 'Publish', 12],
+    ['p_cheese_fries', 'Classic Cheese Fries', 'SID-001', '8904001', 'cat_sides', 0, 4.99, 99999, 0, 'https://images.unsplash.com/photo-1576107232684-1279f3908594?w=500&auto=format&fit=crop&q=80', 'Crispy shoestring fries drenched in warm melted cheddar cheese', 'Publish', 11],
+    ['p_cheese_wings', '3 Cheese Wings', 'CHK-002', '8902002', 'cat_chicken', 0, 3.49, 99999, 0, 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=500&auto=format&fit=crop&q=80', '3 pcs jumbo chicken wings tossed in rich three-cheese coating', 'Publish', 10],
+    ['p_sprite', 'Sprite', 'DRK-002', '8903002', 'cat_drink', 0, 2.00, 99999, 0, 'https://images.unsplash.com/photo-1625772299848-391b6a87d7b3?w=500&auto=format&fit=crop&q=80', 'Crisp, refreshing lemon-lime Sprite (330ml can)', 'Publish', 9],
+    ['p_choco_shake', 'Chocolate Milkshake', 'DRK-003', '8903003', 'cat_drink', 0, 3.50, 99999, 0, 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=500&auto=format&fit=crop&q=80', 'Thick creamy Belgian chocolate shake topped with whipped cream', 'Publish', 8],
+    ['p_3_drumsticks', '3 Drumstick', 'CHK-003', '8902003', 'cat_chicken', 0, 4.75, 99999, 0, 'https://images.unsplash.com/photo-1527477321005-4d45d724b8c4?w=500&auto=format&fit=crop&q=80', '3 pcs signature spicy crunchy fried chicken drumsticks', 'Publish', 7],
+    ['p_cappuccino', 'Cappuccino', 'COF-001', '8905001', 'cat_coffee', 0, 3.25, 99999, 0, 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=500&auto=format&fit=crop&q=80', 'Rich espresso steamed with velvety silky milk foam & cocoa dusting', 'Publish', 6],
+    ['p_vanilla_sundae', 'Vanilla Sundae', 'DES-001', '8906001', 'cat_dessert', 0, 3.50, 99999, 0, 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=500&auto=format&fit=crop&q=80', 'Creamy soft vanilla bean ice cream with warm fudge drizzle', 'Publish', 5],
+    ['p_bbq_bacon', 'BBQ Bacon Burger', 'BUR-008', '8901008', 'cat_burger', 0, 6.49, 99999, 0, 'https://images.unsplash.com/photo-1553979459-d2229ba7433b?w=500&auto=format&fit=crop&q=80', 'Charbroiled beef patty with crispy smoked bacon strips & sweet BBQ sauce', 'Publish', 4],
+    ['p_onion_rings', 'Crispy Onion Rings', 'SID-002', '8904002', 'cat_sides', 0, 3.00, 99999, 0, 'https://images.unsplash.com/photo-1639024471287-035186f55480?w=500&auto=format&fit=crop&q=80', 'Beer-battered golden crisp sweet onion rings with dip', 'Publish', 3],
+    ['p_iced_latte', 'Iced Caramel Latte', 'COF-002', '8905002', 'cat_coffee', 0, 4.00, 99999, 0, 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=500&auto=format&fit=crop&q=80', 'Espresso over chilled milk, ice and buttery caramel ribbon', 'Publish', 2],
+    ['p_choco_brownie', 'Warm Molten Brownie', 'DES-002', '8906002', 'cat_dessert', 0, 4.50, 99999, 0, 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=500&auto=format&fit=crop&q=80', 'Warm decadent chocolate brownie served with vanilla ice cream', 'Publish', 1]
+  ];
 
-  await dbQuery(`INSERT INTO variations (id, productId, name, sku, barcode, price, costPrice, stock) VALUES 
-    ('v1a', 'p1', 'S - White', 'TSH-001-SW', '8901234567891', 350.00, 200.00, 30),
-    ('v1b', 'p1', 'M - White', 'TSH-001-MW', '8901234567892', 350.00, 200.00, 30),
-    ('v2a', 'p2', '30 - Blue', 'JNS-30B', '8901234568002', 1500.00, 800.00, 20),
-    ('v2b', 'p2', '32 - Blue', 'JNS-32B', '8901234568003', 1500.00, 800.00, 20)`);
+  for (const item of restaurantItems) {
+    await dbQuery(`INSERT INTO products (id, name, sku, barcode, categoryId, costPrice, sellingPrice, stock, alertQty, image, tag, status, priority) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, item);
+  }
 
-  await dbQuery(`INSERT INTO customers (id, name, phone, email, label, customDiscount, address) VALUES 
-    ('cust-1', 'Rahim Ahmed', '01712345678', 'rahim@email.com', 'VIP', 5.00, 'Dhaka, Bangladesh'),
-    ('cust-2', 'Fatima Begum', '01898765432', 'fatima@email.com', 'Elite', 10.00, 'Chittagong, Bangladesh')`);
+  // Update default restaurant settings
+  await dbQuery(`INSERT INTO settings (key_name, val) VALUES 
+    ('store_name', 'ZenPos Gourmet Bistro'),
+    ('store_address', 'Gulshan-2, Dhaka, Bangladesh'),
+    ('store_phone', '+880 1711-000000'),
+    ('store_website', 'www.zenpos.restaurant'),
+    ('invoice_note', 'Thank you for dining with us! Please visit again.')
+    ON DUPLICATE KEY UPDATE val = VALUES(val)`);
 
-  console.log('Seeding finished.');
+  await dbQuery(`UPDATE settings SET val = 'ZenPos Gourmet Bistro' WHERE key_name = 'store_name' AND val LIKE '%ClaPos%'`).catch(() => {});
+  await dbQuery(`UPDATE settings SET val = 'www.zenpos.restaurant' WHERE key_name = 'store_website' AND val LIKE '%clapos%'`).catch(() => {});
+
+  console.log('Restaurant Catalog seeding finished.');
 };
 
 initDB().catch(console.error);
 
 // ── Authentication Middleware & Module Permissions ───
 const ALL_MODULES = [
-  'pos', 'sales_list', 'custom_item_prices', 'sales_return', 'return_list',
-  'products', 'bulk_stock', 'inventory_details', 'label_printer',
-  'dashboard', 'expenses', 'suppliers', 'reports',
+  'pos', 'sales_list',
+  'products', 'tables',
+  'dashboard', 'expenses', 'ingredient_costs', 'suppliers', 'reports',
   'gallery', 'customers', 'coupons', 'invoice_settings',
   'payment_methods', 'report_settings', 'users'
 ];
@@ -702,14 +844,14 @@ const getDefaultPermissions = (role) => {
   if (role === 'admin') return ['*'];
   if (role === 'manager') {
     return [
-      'dashboard', 'pos', 'sales_list', 'custom_item_prices', 'sales_return', 'return_list',
-      'products', 'bulk_stock', 'inventory_details',
-      'expenses', 'suppliers', 'label_printer', 'customers', 'invoice_settings',
+      'dashboard', 'pos', 'sales_list',
+      'products', 'tables',
+      'expenses', 'ingredient_costs', 'suppliers', 'customers', 'invoice_settings',
       'payment_methods', 'gallery', 'report_settings'
     ];
   }
   if (role === 'cashier') {
-    return ['pos', 'sales_list', 'custom_item_prices', 'sales_return', 'return_list', 'products', 'bulk_stock', 'gallery'];
+    return ['pos', 'sales_list', 'products', 'gallery'];
   }
   return [];
 };
@@ -945,8 +1087,8 @@ app.put('/api/settings', verifyRole(['admin', 'manager']), async (req, res) => {
     console.log(settings);
     console.log('--------------------------------');
     for (const [key, val] of Object.entries(settings)) {
-      if (val !== undefined) {
-        await dbQuery(`INSERT INTO settings (key_name, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val = ?`, [key, String(val), String(val)]);
+      if (val !== undefined && val !== null) {
+        await dbQuery(`INSERT INTO settings (key_name, val) VALUES (?, ?) ON DUPLICATE KEY UPDATE val = VALUES(val)`, [key, String(val)]);
       }
     }
     res.json({ success: true });
@@ -1096,6 +1238,235 @@ app.delete('/api/expenses/:id', verifyRole(['admin', 'manager']), async (req, re
   try {
     const eid = req.params.id;
     await dbQuery(`DELETE FROM expenses WHERE id = ?`, [eid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Ingredient Cost Endpoints (Restaurant Culinary Supplies) ──
+app.get('/api/ingredient-categories', async (req, res) => {
+  try {
+    const rows = await dbQuery(`SELECT id, name FROM ingredient_categories ORDER BY name`);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ingredient-categories', async (req, res) => {
+  try {
+    const { id, name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Category name is required' });
+    }
+    const cleanId = id || ('ing_cat_' + Math.random().toString(36).substr(2, 9));
+    await dbQuery(`INSERT INTO ingredient_categories (id, name) VALUES (?, ?)`, [cleanId, name.trim()]);
+    res.json({ success: true, id: cleanId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/ingredient-categories/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    await dbQuery(`DELETE FROM ingredient_categories WHERE id = ?`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ingredient-costs', async (req, res) => {
+  try {
+    const rows = await dbQuery(`
+      SELECT 
+        id, 
+        COALESCE(supplier_name, '') as supplier_name,
+        COALESCE(reason, name, '') as reason,
+        name,
+        category, 
+        amount, 
+        COALESCE(paid_amount, CASE WHEN status='Paid' THEN amount ELSE 0 END) as paid_amount,
+        DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, 
+        DATE_FORMAT(payment_date, '%Y-%m-%d') as payment_date,
+        status, 
+        image, 
+        note 
+      FROM ingredient_costs 
+      ORDER BY date DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ingredient-costs', async (req, res) => {
+  try {
+    const { id, supplier_name, reason, name, category, amount, paid_amount, date, payment_date, status, image, note } = req.body;
+    const finalReason = reason || name || '';
+    const finalName = name || reason || '';
+    if (!finalReason || !date || amount === undefined) {
+      return res.status(400).json({ error: 'Missing ingredient cost fields' });
+    }
+    const formattedDate = formatToMySQLDateTime(date);
+    const formattedPaymentDate = payment_date ? formatToMySQLDateOnly(payment_date) : null;
+    const finalPaid = paid_amount !== undefined && paid_amount !== null ? parseFloat(paid_amount) : (status === 'Paid' ? parseFloat(amount) : 0);
+    const finalStatus = status || (finalPaid >= parseFloat(amount) ? 'Paid' : (finalPaid > 0 ? 'Partial' : 'Unpaid'));
+
+    await dbQuery(
+      `INSERT INTO ingredient_costs (id, supplier_name, reason, name, category, amount, paid_amount, date, payment_date, status, image, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id || 'ing_' + Math.random().toString(36).substr(2, 9),
+        supplier_name || '',
+        finalReason,
+        finalName,
+        category || 'General',
+        parseFloat(amount) || 0,
+        finalPaid,
+        formattedDate,
+        formattedPaymentDate,
+        finalStatus,
+        image || '',
+        note || ''
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/ingredient-costs/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const iid = req.params.id;
+    const { supplier_name, reason, name, category, amount, paid_amount, date, payment_date, status, image, note } = req.body;
+    const finalReason = reason || name || '';
+    const finalName = name || reason || '';
+    if (!finalReason || !date || amount === undefined) {
+      return res.status(400).json({ error: 'Missing ingredient cost fields' });
+    }
+    const formattedDate = formatToMySQLDateTime(date);
+    const formattedPaymentDate = payment_date ? formatToMySQLDateOnly(payment_date) : null;
+    const finalPaid = paid_amount !== undefined && paid_amount !== null ? parseFloat(paid_amount) : (status === 'Paid' ? parseFloat(amount) : 0);
+    const finalStatus = status || (finalPaid >= parseFloat(amount) ? 'Paid' : (finalPaid > 0 ? 'Partial' : 'Unpaid'));
+
+    await dbQuery(`
+      UPDATE ingredient_costs 
+      SET supplier_name = ?, reason = ?, name = ?, category = ?, amount = ?, paid_amount = ?, date = ?, payment_date = ?, status = ?, image = ?, note = ?
+      WHERE id = ?
+    `, [
+      supplier_name || '',
+      finalReason,
+      finalName,
+      category || 'General',
+      parseFloat(amount) || 0,
+      finalPaid,
+      formattedDate,
+      formattedPaymentDate,
+      finalStatus,
+      image || '',
+      note || '',
+      iid
+    ]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/ingredient-costs/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    await dbQuery(`DELETE FROM ingredient_costs WHERE id = ?`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Expired & Waste Endpoints ────────────────────────────────
+app.get('/api/expired-wastes', async (req, res) => {
+  try {
+    const rows = await dbQuery(`
+      SELECT 
+        id, 
+        itemName, 
+        quantity, 
+        costPrice, 
+        totalCost, 
+        COALESCE(supplierName, '') as supplierName, 
+        COALESCE(compensationAmount, 0) as compensationAmount, 
+        COALESCE(note, '') as note, 
+        DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, 
+        created_at 
+      FROM expired_wastes 
+      ORDER BY date DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/expired-wastes', async (req, res) => {
+  try {
+    const { id, itemName, quantity, costPrice, supplierName, compensationAmount, note, date } = req.body;
+    if (!itemName || quantity === undefined || costPrice === undefined) {
+      return res.status(400).json({ error: 'Item name, quantity and cost price are required' });
+    }
+    const finalId = id || ('ew-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
+    const qty = parseFloat(quantity) || 0;
+    const cost = parseFloat(costPrice) || 0;
+    const total = qty * cost;
+    const comp = parseFloat(compensationAmount) || 0;
+    const formattedDate = date ? formatToMySQLDateTime(date) : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await dbQuery(`
+      INSERT INTO expired_wastes (id, itemName, quantity, costPrice, totalCost, supplierName, compensationAmount, note, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [finalId, itemName, qty, cost, total, supplierName || '', comp, note || '', formattedDate]);
+
+    res.json({ success: true, id: finalId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/expired-wastes/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const { itemName, quantity, costPrice, supplierName, compensationAmount, note, date } = req.body;
+    if (!itemName || quantity === undefined || costPrice === undefined) {
+      return res.status(400).json({ error: 'Item name, quantity and cost price are required' });
+    }
+    const qty = parseFloat(quantity) || 0;
+    const cost = parseFloat(costPrice) || 0;
+    const total = qty * cost;
+    const comp = parseFloat(compensationAmount) || 0;
+    const formattedDate = date ? formatToMySQLDateTime(date) : null;
+
+    let updateSql = `
+      UPDATE expired_wastes 
+      SET itemName = ?, quantity = ?, costPrice = ?, totalCost = ?, supplierName = ?, compensationAmount = ?, note = ?
+    `;
+    const params = [itemName, qty, cost, total, supplierName || '', comp, note || ''];
+    if (formattedDate) {
+      updateSql += `, date = ?`;
+      params.push(formattedDate);
+    }
+    updateSql += ` WHERE id = ?`;
+    params.push(req.params.id);
+
+    await dbQuery(updateSql, params);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/expired-wastes/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    await dbQuery(`DELETE FROM expired_wastes WHERE id = ?`, [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1496,8 +1867,22 @@ app.get('/api/categories', async (req, res) => {
 
 app.post('/api/categories', verifyRole(['admin', 'manager']), async (req, res) => {
   try {
-    const { id, name } = req.body;
-    await dbQuery(`INSERT INTO categories (id, name) VALUES (?, ?)`, [id, name]);
+    const { id, name, icon, image } = req.body;
+    await dbQuery(`INSERT INTO categories (id, name, icon, image) VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), icon = VALUES(icon), image = VALUES(image)`,
+      [id, name, icon || null, image || null]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/categories/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const cid = req.params.id;
+    const { name, icon, image } = req.body;
+    await dbQuery(`UPDATE categories SET name = ?, icon = ?, image = ? WHERE id = ?`,
+      [name, icon || null, image || null, cid]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1508,6 +1893,52 @@ app.delete('/api/categories/:id', verifyRole(['admin', 'manager']), async (req, 
   try {
     const cid = req.params.id;
     await dbQuery(`DELETE FROM categories WHERE id = ?`, [cid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Restaurant Dining Tables Management ───────────────────
+app.get('/api/tables', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const rows = await dbQuery(`SELECT * FROM restaurant_tables ORDER BY sort_order ASC, name ASC`);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tables', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const { id, name, zone, seats, sort_order, status } = req.body;
+    const tid = id || ('tbl_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4));
+    await dbQuery(`INSERT INTO restaurant_tables (id, name, zone, seats, sort_order, status) VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), zone = VALUES(zone), seats = VALUES(seats), sort_order = VALUES(sort_order), status = VALUES(status)`,
+      [tid, name, zone || 'Main Dining', parseInt(seats) || 4, parseInt(sort_order) || 1, status || 'active']);
+    res.json({ success: true, table: { id: tid, name, zone, seats, sort_order, status } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/tables/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const tid = req.params.id;
+    const { name, zone, seats, sort_order, status } = req.body;
+    await dbQuery(`UPDATE restaurant_tables SET name = ?, zone = ?, seats = ?, sort_order = ?, status = ? WHERE id = ?`,
+      [name, zone || 'Main Dining', parseInt(seats) || 4, parseInt(sort_order) || 1, status || 'active', tid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/tables/:id', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const tid = req.params.id;
+    await dbQuery(`DELETE FROM restaurant_tables WHERE id = ?`, [tid]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1585,11 +2016,11 @@ app.get('/api/products', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     const isPaginated = req.query.page !== undefined || req.query.limit !== undefined || req.query.paginate === 'true';
-
     if (isPaginated) {
       const page = Math.max(parseInt(req.query.page) || 1, 1);
-      const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 2000);
-      const offset = (page - 1) * limit;
+      const isAll = req.query.limit === 'all';
+      const limit = isAll ? 100000 : Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100000);
+      const offset = isAll ? 0 : (page - 1) * limit;
 
       const tab = req.query.tab || req.query.status || 'all';
       const search = (req.query.search || req.query.q || '').toString().trim();
@@ -2005,10 +2436,12 @@ app.delete('/api/products/:id', verifyRole(['admin', 'manager']), async (req, re
       await dbQuery(`DELETE FROM products WHERE id = ?`, [pid]);
       await dbQuery(`DELETE FROM variations WHERE productId = ?`, [pid]);
     } else {
-      await dbQuery(`UPDATE products SET deletedAt = NOW() WHERE id = ?`, [pid]);
+      const nowVal = getBangladeshDateTimeString(new Date());
+      await dbQuery(`UPDATE products SET status = 'Trash', deletedAt = ? WHERE id = ?`, [nowVal, pid]);
     }
     res.json({ success: true });
   } catch (err) {
+    console.error('Error moving product to trash:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2016,9 +2449,10 @@ app.delete('/api/products/:id', verifyRole(['admin', 'manager']), async (req, re
 app.post('/api/products/:id/restore', verifyRole(['admin', 'manager']), async (req, res) => {
   try {
     const pid = req.params.id;
-    await dbQuery(`UPDATE products SET deletedAt = NULL WHERE id = ?`, [pid]);
+    await dbQuery(`UPDATE products SET status = 'Publish', deletedAt = NULL WHERE id = ?`, [pid]);
     res.json({ success: true });
   } catch (err) {
+    console.error('Error restoring product:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2183,10 +2617,23 @@ app.delete('/api/customers/:id', verifyRole(['admin', 'manager', 'cashier']), as
 app.get('/api/orders', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const rows = await dbQuery(`SELECT id, invoiceId, customerId, customerName, customerPhone, DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, subtotal, discountType, discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status FROM orders ORDER BY date DESC`);
+    const rows = await dbQuery(`SELECT id, invoiceId, customerId, customerName, customerPhone, DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, subtotal, discountType, discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, COALESCE(orderType, 'Dine In') as orderType, COALESCE(tableName, 'Table 01') as tableName, COALESCE(tokenNo, 1) as tokenNo FROM orders ORDER BY date DESC`);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Daily Resetting Token Number
+app.get('/api/next-token', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const today = getBangladeshDateOnlyString(new Date());
+    const rows = await dbQuery(`SELECT COALESCE(MAX(tokenNo), 0) + 1 AS nextToken FROM orders WHERE DATE(date) = ?`, [today]);
+    const nextToken = (rows && rows[0] && rows[0].nextToken) ? Number(rows[0].nextToken) : 1;
+    res.json({ tokenNo: nextToken });
+  } catch (err) {
+    res.json({ tokenNo: 1 });
   }
 });
 
@@ -2366,26 +2813,28 @@ app.post('/api/orders', async (req, res) => {
     // Convert date string to MySQL DATETIME format (YYYY-MM-DD HH:MM:SS)
     const formattedDate = formatToMySQLDateTime(order.date);
 
+    // Calculate daily resetting token number (resets every midnight)
+    const orderDatePrefix = formattedDate ? formattedDate.substring(0, 10) : new Date().toISOString().substring(0, 10);
+    const [tokenRows] = await connection.execute(
+      `SELECT COALESCE(MAX(tokenNo), 0) + 1 AS nextToken FROM orders WHERE DATE(date) = ?`,
+      [orderDatePrefix]
+    );
+    const nextToken = (tokenRows && tokenRows[0] && tokenRows[0].nextToken) ? Number(tokenRows[0].nextToken) : 1;
+
     await connection.execute(`INSERT INTO orders (
       id, invoiceId, customerId, customerName, customerPhone, date, subtotal, discountType, 
-      discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order.id, order.invoiceId, order.customerId, order.customerName, order.customerPhone, formattedDate, order.subtotal,
+      discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, orderType, tableName, tokenNo
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order.id, order.invoiceId, order.customerId || null, order.customerName || 'Walk-in Guest', order.customerPhone || '', formattedDate, order.subtotal,
       order.discountType, order.discountValue, order.discountAmount, order.taxPercent, order.taxAmount, order.grandTotal,
-      order.paidAmount, order.dueAmount, order.returnedAmount, order.status]);
+      order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken]);
 
     for (const item of items) {
       await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [item.id, order.id, item.productId, item.productName, item.variationName, item.qty, item.unitPrice, item.total, parseFloat(item.costPrice) || 0.00]);
+        [item.id, order.id, item.productId, item.productName, item.variationName || '', item.qty, item.unitPrice, item.total, parseFloat(item.costPrice) || 0.00]);
 
-      if (item.productId && !item.productId.startsWith('custom_')) {
-        if (item.variationName) {
-          await connection.execute(`UPDATE variations SET stock = stock - ? WHERE productId = ? AND name = ?`,
-            [item.qty, item.productId, item.variationName]);
-        }
-        await connection.execute(`UPDATE products SET stock = stock - ? WHERE id = ?`, [item.qty, item.productId]);
-      }
+      // Stock tracking completely removed for restaurant POS
     }
 
     for (const p of payments) {
@@ -2396,7 +2845,7 @@ app.post('/api/orders', async (req, res) => {
     await connection.execute(`UPDATE counters SET val = val + 1 WHERE key_name = 'invoice'`);
 
     await connection.commit();
-    res.json({ success: true });
+    res.json({ success: true, tokenNo: nextToken, invoiceId: order.invoiceId });
   } catch (err) {
     await connection.rollback();
     res.status(500).json({ error: err.message });

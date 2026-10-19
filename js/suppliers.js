@@ -330,11 +330,9 @@
                   <button type="button" class="btn btn-secondary btn-sm" id="btn-pick-gallery-sp" style="font-weight:600; display:flex; align-items:center; gap:6px;">
                     🖼️ Choose from Gallery
                   </button>
-                  <span style="font-size:12px; color:#64748b;">or</span>
-                  <label class="btn btn-secondary btn-sm" style="margin:0; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:6px;">
-                    💻 Upload from Device
-                    <input type="file" id="modal-sp-file" accept="image/*" style="display:none;">
-                  </label>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-upload-device-sp" style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                    📤 Upload from Device
+                  </button>
                 </div>
                 <div id="modal-sp-preview-wrapper" style="position:relative; display:${imageBase64 ? 'inline-block' : 'none'}; width:fit-content;">
                   <img id="modal-sp-preview" src="${imageBase64}" style="max-width:100%; max-height:130px; border-radius:6px; object-fit:contain; border:1px solid var(--border); background:#fafafa; display:block;">
@@ -398,16 +396,35 @@
       };
 
       // Image upload handling
-      const fileInput = modalOverlay.querySelector('#modal-sp-file');
       const imgPreview = modalOverlay.querySelector('#modal-sp-preview');
       const imgWrapper = modalOverlay.querySelector('#modal-sp-preview-wrapper');
       const btnRemoveImg = modalOverlay.querySelector('#btn-remove-sp-img');
       const btnPickGallery = modalOverlay.querySelector('#btn-pick-gallery-sp');
+      const btnUploadDevice = modalOverlay.querySelector('#btn-upload-device-sp');
 
       if (btnPickGallery) {
         btnPickGallery.onclick = () => {
           H.openMediaPicker({
             title: 'Choose Receipt Image from Gallery',
+            folderName: 'Suppliers',
+            folderId: 'folder_suppliers',
+            activeTab: 'gallery',
+            onSelect: (url) => {
+              imageBase64 = url;
+              imgPreview.src = url;
+              imgWrapper.style.display = 'inline-block';
+            }
+          });
+        };
+      }
+
+      if (btnUploadDevice) {
+        btnUploadDevice.onclick = () => {
+          H.openMediaPicker({
+            title: 'Upload Receipt Image from Device',
+            folderName: 'Suppliers',
+            folderId: 'folder_suppliers',
+            activeTab: 'upload',
             onSelect: (url) => {
               imageBase64 = url;
               imgPreview.src = url;
@@ -422,22 +439,8 @@
           imageBase64 = '';
           imgPreview.src = '';
           imgWrapper.style.display = 'none';
-          fileInput.value = '';
         };
       }
-
-      fileInput.onchange = (ev) => {
-        const file = ev.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (re) => {
-            imageBase64 = re.target.result;
-            imgPreview.src = imageBase64;
-            imgWrapper.style.display = 'inline-block';
-          };
-          reader.readAsDataURL(file);
-        }
-      };
 
       modalOverlay.querySelector('#btn-sp-save').onclick = async () => {
         const supplierName = document.getElementById('modal-sp-name').value.trim();

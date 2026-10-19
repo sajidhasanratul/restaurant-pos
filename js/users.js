@@ -3,54 +3,48 @@
 
   const SYSTEM_FUNCTIONS = [
     {
-      group: 'Sales & POS Operation',
+      group: 'Sales & Order Operations',
       items: [
-        { key: 'pos', label: 'POS / New Order', desc: 'Create sales and checkout orders' },
-        { key: 'sales_list', label: 'Sales List', desc: 'View past sales orders and print invoices' },
-        { key: 'custom_item_prices', label: 'Custom Item Price', desc: 'Adjust custom price per item' },
-        { key: 'sales_return', label: 'Process Return', desc: 'Refund and accept returned items' },
-        { key: 'return_list', label: 'Return Records', desc: 'View customer return transaction log' }
+        { key: 'pos', label: 'POS / New Order', desc: 'Create restaurant orders and process transactions' },
+        { key: 'sales_list', label: 'Sales List', desc: 'View past orders, token numbers, and invoices' }
       ]
     },
     {
-      group: 'Inventory & Catalog',
+      group: 'Menu & Dishes',
       items: [
-        { key: 'products', label: 'Products Catalog', desc: 'View, add and edit products & variations' },
-        { key: 'bulk_stock', label: 'Bulk Stock Update', desc: 'Quickly adjust stock across items' },
-        { key: 'inventory_details', label: 'Inventory Details', desc: 'Comprehensive stock valuation and margin matrix' },
-        { key: 'label_printer', label: 'Barcode Printer', desc: 'Generate and print barcode/QR labels' }
+        { key: 'products', label: 'Menu Items', desc: 'View, add and edit restaurant menu dishes and categories' }
       ]
     },
     {
-      group: 'Finance & Management',
+      group: 'Finance & Kitchen Costs',
       items: [
         { key: 'dashboard', label: 'Executive Dashboard', desc: 'View sales KPIs, charts, and metrics' },
-        { key: 'expenses', label: 'Shop Expenses', desc: 'Record bills, utilities and operational expenses' },
-        { key: 'suppliers', label: 'Suppliers & Payments', desc: 'Manage suppliers and payment records' },
-        { key: 'reports', label: 'Analytical Reports', desc: 'Access all business reports and profit analytics' }
+        { key: 'ingredient_costs', label: 'Ingredient Costs', desc: 'Record raw kitchen ingredients, meats, and produce' },
+        { key: 'expenses', label: 'Restaurant Expenses', desc: 'Record utilities, rent, and operational costs' },
+        { key: 'suppliers', label: 'Suppliers & Payments', desc: 'Manage food vendors and payment records' },
+        { key: 'reports', label: 'Analytical Reports', desc: 'Access sales reports and profit analytics' }
       ]
     },
     {
       group: 'Operations & Settings',
       items: [
-        { key: 'gallery', label: 'Image Gallery', desc: 'Upload, organize and manage image assets' },
-        { key: 'customers', label: 'Customers', desc: 'Customer directory and member tiers' },
+        { key: 'gallery', label: 'Image Gallery', desc: 'Upload, organize and manage dish photo assets' },
+        { key: 'customers', label: 'Customers', desc: 'Customer directory and dining records' },
         { key: 'coupons', label: 'Manage Coupons', desc: 'Configure promotional discount codes' },
         { key: 'invoice_settings', label: 'Invoice & Print Settings', desc: 'Store header, receipts, paper formats' },
         { key: 'payment_methods', label: 'Payment Methods', desc: 'Configure cash, card, and digital wallets' },
-        { key: 'report_settings', label: 'Report Settings', desc: 'Configure profit calculation methods' },
+        { key: 'report_settings', label: 'Report Settings', desc: 'Configure reporting settings' },
         { key: 'users', label: 'Admin Control (Users)', desc: 'Grant employee access privileges and create accounts' }
       ]
     }
   ];
 
   const ROLE_DEFAULTS = {
-    cashier: ['pos', 'sales_list', 'custom_item_prices', 'sales_return', 'return_list', 'products', 'bulk_stock', 'gallery'],
+    cashier: ['pos', 'sales_list', 'products', 'gallery'],
     manager: [
-      'dashboard', 'pos', 'sales_list', 'custom_item_prices', 'sales_return', 'return_list',
-      'products', 'bulk_stock', 'inventory_details',
-      'expenses', 'suppliers', 'label_printer', 'customers', 'invoice_settings',
-      'payment_methods', 'gallery', 'report_settings'
+      'dashboard', 'pos', 'sales_list', 'products', 'ingredient_costs',
+      'expenses', 'suppliers', 'customers', 'invoice_settings',
+      'payment_methods', 'gallery', 'report_settings', 'reports'
     ],
     admin: ['*']
   };

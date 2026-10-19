@@ -25,19 +25,23 @@
       R.register('/new-order',         () => safeRender('NewOrder'));
       R.register('/edit-order/:id',    (p) => safeRender('EditOrder', p.id));
       R.register('/sales-list',        () => safeRender('SalesList'));
-      R.register('/sales-return',      () => safeRender('SalesReturn'));
-      R.register('/return-list',       () => safeRender('ReturnList'));
-      R.register('/custom-item-price', () => safeRender('CustomItemPrice'));
+      R.register('/sales-return',      () => R.navigate('/sales-list'));
+      R.register('/return-list',       () => R.navigate('/sales-list'));
+      R.register('/custom-item-price', () => R.navigate('/sales-list'));
       R.register('/payment-methods',   () => safeRender('PaymentMethods'));
+      R.register('/tables',            () => safeRender('Tables'));
       R.register('/invoice-settings',  () => this.renderInvoiceSettings());
       R.register('/reports/:type',     (p) => safeRender('Reports', p.type));
       R.register('/products',          () => safeRender('Products'));
-      R.register('/inventory-details', () => safeRender('InventoryDetails'));
-      R.register('/bulk-scan',         () => safeRender('BulkScan'));
+      R.register('/inventory-details', () => R.navigate('/products'));
+      R.register('/bulk-scan',         () => R.navigate('/products'));
+      R.register('/label-printer',     () => R.navigate('/products'));
       R.register('/gallery',           () => safeRender('Gallery'));
       R.register('/customers',         () => safeRender('Customers'));
       R.register('/expenses',          () => safeRender('Expenses'));
+      R.register('/ingredient-costs',  () => safeRender('IngredientCosts'));
       R.register('/suppliers',         () => safeRender('Suppliers'));
+      R.register('/expired-wastes',    () => safeRender('ExpiredWastes'));
       R.register('/report-settings',   () => safeRender('ReportSettings'));
       R.register('/coupons',           () => {
         const u = S.getCurrentUser();
@@ -131,32 +135,23 @@
         setDisplay('nav-grp-dashboard', H.hasPermission('dashboard', user));
         setDisplay('nav-grp-new-order', H.hasPermission('pos', user) || H.hasPermission('new-order', user));
 
-        // Sales sub-items
-        const canSalesList = H.hasPermission('sales_list', user);
-        const canSalesReturn = H.hasPermission('sales_return', user);
-        const canReturnList = H.hasPermission('return_list', user);
-        const canCustomPrice = H.hasPermission('custom_item_prices', user);
-        setElDisplay('a.sub-item[href="/sales-list"]', canSalesList);
-        setElDisplay('a.sub-item[href="/sales-return"]', canSalesReturn);
-        setElDisplay('a.sub-item[href="/return-list"]', canReturnList);
-        setElDisplay('a.sub-item[href="/custom-item-price"]', canCustomPrice);
-        const canAnySales = canSalesList || canSalesReturn || canReturnList || canCustomPrice;
-        setDisplay('nav-grp-sales', canAnySales);
+        // Direct nav items
+        setDisplay('nav-grp-sales-list', H.hasPermission('sales_list', user) || H.hasPermission('sales', user));
+        setDisplay('nav-grp-items', H.hasPermission('products', user) || H.hasPermission('inventory', user));
+        // Operation Expenses sub-items
+        const canIngredientCosts = H.hasPermission('ingredient_costs', user) || H.hasPermission('expenses', user);
+        const canExpenses = H.hasPermission('expenses', user);
+        const canSuppliers = H.hasPermission('suppliers', user);
+        const canExpiredWastes = H.hasPermission('expired_wastes', user) || H.hasPermission('expenses', user);
 
-        // Inventory sub-items
-        const canProducts = H.hasPermission('products', user);
-        const canBulkScan = H.hasPermission('bulk_stock', user);
-        const canInvDetails = H.hasPermission('inventory_details', user);
-        const canLabelPrinter = H.hasPermission('label_printer', user);
-        setElDisplay('a.sub-item[href="/products"]', canProducts);
-        setElDisplay('a.sub-item[href="/bulk-scan"]', canBulkScan);
-        setElDisplay('a.sub-item[href="/inventory-details"]', canInvDetails);
-        setElDisplay('a.sub-item[href="/label-printer"]', canLabelPrinter);
-        const canAnyInventory = canProducts || canBulkScan || canInvDetails || canLabelPrinter;
-        setDisplay('nav-grp-inventory', canAnyInventory);
+        setDisplay('nav-sub-ingredient-costs', canIngredientCosts);
+        setDisplay('nav-sub-expenses', canExpenses);
+        setDisplay('nav-sub-suppliers', canSuppliers);
+        setDisplay('nav-sub-expired-wastes', canExpiredWastes);
 
-        setDisplay('nav-grp-expenses', H.hasPermission('expenses', user));
-        setDisplay('nav-grp-suppliers', H.hasPermission('suppliers', user));
+        const canAnyOpExpenses = canIngredientCosts || canExpenses || canSuppliers || canExpiredWastes;
+        setDisplay('nav-grp-operation-expenses', canAnyOpExpenses);
+
         setDisplay('nav-grp-reports', H.hasPermission('reports', user));
         setDisplay('nav-grp-coupons', H.hasPermission('coupons', user));
         setDisplay('nav-grp-customers', H.hasPermission('customers', user));
@@ -165,16 +160,18 @@
         const canInvoiceSettings = H.hasPermission('invoice_settings', user);
         const canUsers = H.hasPermission('users', user);
         const canPaymentMethods = H.hasPermission('payment_methods', user);
+        const canTables = H.hasPermission('tables', user);
         const canReportSettings = H.hasPermission('report_settings', user);
         const canGallery = H.hasPermission('gallery', user);
 
         setDisplay('nav-invoice-settings', canInvoiceSettings);
         setDisplay('nav-admin-control', canUsers);
         setDisplay('nav-payment-methods', canPaymentMethods);
+        setDisplay('nav-tables', canTables);
         setDisplay('nav-report-settings', canReportSettings);
         setDisplay('nav-gallery', canGallery);
 
-        const canAnySettings = canInvoiceSettings || canUsers || canPaymentMethods || canReportSettings || canGallery;
+        const canAnySettings = canInvoiceSettings || canUsers || canPaymentMethods || canTables || canReportSettings || canGallery;
         setDisplay('nav-grp-settings', canAnySettings);
       }
 
@@ -359,329 +356,401 @@
         mc.innerHTML = `
           <div class="page-header">
             <div>
-              <h2 class="page-title">⚙️ System & Printing Settings</h2>
-              <p class="page-subtitle">Configure printed store receipt templates, paper invoices, and default barcode label designs.</p>
+              <h2 class="page-title">⚙️ Thermal Receipt & Store Settings</h2>
+              <p class="page-subtitle">Configure restaurant branding, store info, and minimal thermal receipt styles. Optimized for thermal printers with zero heavy black ink.</p>
             </div>
           </div>
           
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1150px; align-items:start;" class="fade-in">
+          <div style="display:grid; grid-template-columns:1.15fr 0.85fr; gap:24px; max-width:1180px; align-items:start;" class="fade-in">
             
-            <!-- Left Card: Invoice & Receipt Settings -->
-            <div class="card">
-              <div class="card-header">
-                <h3>🧾 Invoice & Receipt Configurations</h3>
-              </div>
-              <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
-                <div class="form-group">
-                  <label class="form-label">Store Logo</label>
-                  <div style="display:flex; gap:12px; align-items:center; background:#f8fafc; padding:10px; border:1px solid var(--border); border-radius:var(--radius-sm);">
-                    <div id="set-logo-preview" style="width:60px; height:60px; border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; overflow:hidden; background:#fff;">
-                      <span style="font-size:20px; color:#cbd5e1;">Logo</span>
+            <!-- Left Column: Settings Form -->
+            <div style="display:flex; flex-direction:column; gap:20px;">
+              
+              <!-- Card 1: Restaurant Identity -->
+              <div class="card">
+                <div class="card-header">
+                  <h3>🏪 Restaurant Branding & Store Info</h3>
+                </div>
+                <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
+                  <div class="form-group">
+                    <label class="form-label" style="font-weight:700;">Store / Brand Logo</label>
+                    <div style="display:flex; gap:14px; align-items:center; background:#f8fafc; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm);">
+                      <div id="set-logo-preview" style="width:70px; height:70px; border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; overflow:hidden; background:#fff; flex-shrink:0;">
+                        <span style="font-size:20px; color:#cbd5e1;">Logo</span>
+                      </div>
+                      <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                          <button type="button" class="btn btn-secondary btn-sm" id="btn-pick-logo-gallery" style="font-weight:600;">
+                            🖼️ Choose from Gallery
+                          </button>
+                          <button type="button" class="btn btn-secondary btn-sm" id="btn-upload-logo-device" style="font-weight:600;">
+                            📤 Upload from Device
+                          </button>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                          <input type="text" class="form-input" id="set-logo-url" placeholder="Or paste image URL / Base64..." style="height:28px; font-size:11px; flex:1;">
+                          <button type="button" class="btn btn-secondary btn-xs" id="btn-clear-logo" style="color:#ef4444;" title="Remove Logo">✕ Clear</button>
+                        </div>
+                      </div>
                     </div>
-                    <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
-                      <input type="file" id="set-logo-file" accept="image/*" style="font-size:11px;">
-                      <input type="text" class="form-input" id="set-logo-url" placeholder="Or paste image URL..." style="height:28px; font-size:11px;">
-                    </div>
                   </div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Store / Company Name</label>
-                  <input type="text" class="form-input" id="set-store-name" value="Fetching...">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Show Store Name on Invoices / Receipts</label>
-                  <select class="form-select" id="set-invoice-show-store-name">
-                    <option value="1">Show</option>
-                    <option value="0">Hide</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Store Address</label>
-                  <input type="text" class="form-input" id="set-store-address" value="Fetching...">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Contact / Phone Number</label>
-                  <input type="text" class="form-input" id="set-store-phone" value="Fetching...">
-                </div>
-                 <div class="form-group">
-                  <label class="form-label">Store Website URL</label>
-                  <input type="text" class="form-input" id="set-store-website" placeholder="e.g. www.myshop.com">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Invoice / Receipt Footer Note</label>
-                  <textarea class="form-input" id="set-invoice-note" rows="2" style="resize:vertical;" placeholder="e.g. Thank you for shopping with us!"></textarea>
-                </div>
-                <div class="form-group" style="display:flex; gap:10px;">
-                  <div style="flex:1;">
-                    <label class="form-label">Thermal Width (mm)</label>
-                    <input type="number" class="form-input" id="set-receipt-width" placeholder="e.g. 80" min="40" max="150">
+                  
+                  <div class="form-group">
+                    <label class="form-label">Store / Restaurant Name</label>
+                    <input type="text" class="form-input" id="set-store-name" placeholder="e.g. ZenPos Restaurant">
                   </div>
-                  <div style="flex:1;">
-                    <label class="form-label">Paper Width (px)</label>
-                    <input type="number" class="form-input" id="set-invoice-width" placeholder="e.g. 800" min="300" max="1500">
+                  
+                  <div class="form-group">
+                    <label class="form-label">Show Store Name on Thermal Receipts</label>
+                    <select class="form-select" id="set-invoice-show-store-name">
+                      <option value="1">Show</option>
+                      <option value="0">Hide</option>
+                    </select>
                   </div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Default Print Format</label>
-                  <select class="form-select" id="set-print-type">
-                    <option value="receipt">Thermal Receipt (80mm)</option>
-                    <option value="invoice">Paper Invoice (A4/A5)</option>
-                  </select>
-                </div>
-                <div class="form-group" id="group-invoice-style">
-                  <label class="form-label">Paper Invoice Theme</label>
-                  <select class="form-select" id="set-invoice-style">
-                    <option value="theme-modern">Modern Minimalist</option>
-                    <option value="theme-classic">Classic Business</option>
-                    <option value="theme-compact">Compact Invoice</option>
-                  </select>
-                </div>
-                <div class="form-group" id="group-receipt-style">
-                  <label class="form-label">Thermal Receipt Theme</label>
-                  <select class="form-select" id="set-receipt-style">
-                    <option value="style-1">Style 1: Standard Minimalist</option>
-                    <option value="style-2">Style 2: Classic Bordered</option>
-                    <option value="style-3">Style 3: Modern Elegant (Centered)</option>
-                  </select>
+                  
+                  <div class="form-group">
+                    <label class="form-label">Restaurant Address</label>
+                    <input type="text" class="form-input" id="set-store-address" placeholder="e.g. 14 Gourmet Avenue, Dhaka">
+                  </div>
+                  
+                  <div class="form-group">
+                    <label class="form-label">Contact / Phone Number</label>
+                    <input type="text" class="form-input" id="set-store-phone" placeholder="e.g. +880 1712-345678">
+                  </div>
+                  
+                  <div class="form-group">
+                    <label class="form-label">Store Website / Social URL</label>
+                    <input type="text" class="form-input" id="set-store-website" placeholder="e.g. www.zenposbistro.com">
+                  </div>
+                  
+                  <div class="form-group">
+                    <label class="form-label">Receipt Footer Note / Greeting</label>
+                    <textarea class="form-input" id="set-invoice-note" rows="2" style="resize:vertical;" placeholder="e.g. Thank you for dining with us! Please come again."></textarea>
+                  </div>
                 </div>
               </div>
+
+              <!-- Card 2: Thermal Printer & Minimal Styles -->
+              <div class="card">
+                <div class="card-header">
+                  <h3>🖨️ Thermal Receipt Settings & Minimal Design</h3>
+                </div>
+                <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
+                  <div class="form-group">
+                    <label class="form-label">Minimal Receipt Theme (Zero Heavy Black Ink)</label>
+                    <select class="form-select" id="set-receipt-style">
+                      <option value="style-minimal-dashed">Minimalist Dashed (Clean Dashed Dividers, High Contrast)</option>
+                      <option value="style-minimal-clean">Clean Monospace (Crisp Typewriter Font, Sharp & Fast)</option>
+                      <option value="style-minimal-centered">Minimal Centered (Boutique Cafe & Bistro Vibe)</option>
+                      <option value="style-minimal-compact">Ultra Compact (Paper-Saver, Short Roll Length)</option>
+                      <option value="style-1">Standard Minimalist</option>
+                      <option value="style-2">Classic Bordered</option>
+                      <option value="style-3">Tabular Grid</option>
+                    </select>
+                    <small style="color:#64748b; font-size:11.5px; margin-top:4px; display:block;">All themes use clean high-contrast lines and dashed separators to prevent thermal printer head overheating.</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Thermal Paper Roll Width</label>
+                    <select class="form-select" id="set-receipt-width">
+                      <option value="80">80mm (Standard Desktop POS Thermal)</option>
+                      <option value="58">58mm (Compact Mobile / Bluetooth Thermal)</option>
+                      <option value="76">76mm (Specialty Roll)</option>
+                    </select>
+                  </div>
+
+                  <button class="btn btn-primary" id="btn-save-settings" style="padding:14px; font-weight:700; width:100%; font-size:15px; margin-top:8px;">
+                    💾 Save Thermal Settings
+                  </button>
+                </div>
+              </div>
+
             </div>
 
-            <!-- Right Card: Barcode Label Settings -->
-            <div class="card">
-              <div class="card-header">
-                <h3>🏷️ Barcode Label Template Defaults</h3>
+            <!-- Right Column: Live Thermal Receipt Preview -->
+            <div class="card" style="position:sticky; top:20px;">
+              <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3>👁️ Live Receipt Preview</h3>
+                <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">Thermal 80mm/58mm</span>
               </div>
-              <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">
-                <div class="form-group">
-                  <label class="form-label">Default Design Template</label>
-                  <select class="form-select" id="set-label-template">
-                    <option value="standard">Standard Retail</option>
-                    <option value="clothing">Clothing / Tag Label</option>
-                    <option value="barcode_only">Barcode Only Sticker</option>
-                    <option value="price_tag">Price Tag Sticker</option>
-                    <option value="premium">Premium Brand Tag</option>
-                    <option value="shelf">Shelf / Bin Label</option>
-                    <option value="sale_discount">Sale / Promo Tag</option>
-                    <option value="qr_only">QR Code Sticker</option>
-                    <option value="warehouse">Warehouse Label</option>
-                    <option value="small_sticker">Small Sticker (Compact)</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Default Dimensions Preset</label>
-                  <select class="form-select" id="set-label-preset">
-                    <option value="40x25">40 × 25 mm</option>
-                    <option value="50x30">50 × 30 mm</option>
-                    <option value="58x40">58 × 40 mm</option>
-                    <option value="70x50">70 × 50 mm</option>
-                    <option value="80x50">80 × 50 mm</option>
-                    <option value="100x50">100 × 50 mm</option>
-                    <option value="custom">Custom Size (mm)</option>
-                  </select>
-                </div>
-                <div class="form-group" id="set-lbl-custom-dims" style="display:none; gap:10px;">
-                  <div style="flex:1;">
-                    <label class="form-label">Width (mm)</label>
-                    <input type="number" class="form-input" id="set-label-width" value="50" min="10" max="250">
+              <div class="card-body" style="background:#f1f5f9; padding:20px; display:flex; justify-content:center;">
+                <!-- Simulated Thermal Paper Roll -->
+                <div id="thermal-preview-container" style="background:#fff; width:100%; max-width:320px; padding:18px 16px; border:1px solid #e2e8f0; border-radius:4px; box-shadow:0 4px 14px rgba(0,0,0,0.06); font-family:monospace; font-size:12px; color:#000; line-height:1.35;">
+                  
+                  <div style="text-align:center; margin-bottom:8px;">
+                    <div id="prev-logo-box" style="margin-bottom:6px; display:none;">
+                      <img id="prev-logo-img" src="" style="max-width:55px; max-height:55px; object-fit:contain; margin:0 auto; display:block;">
+                    </div>
+                    <div id="prev-store-name" style="font-size:15px; font-weight:800; line-height:1.2;">ZenPos Restaurant</div>
+                    <div id="prev-store-address" style="font-size:11px; color:#333; margin-top:2px;">14 Gourmet Avenue, Food District</div>
+                    <div id="prev-store-phone" style="font-size:11px; color:#333;">Tel: +880 1712-345678</div>
+                    <div id="prev-store-website" style="font-size:10.5px; color:#555;">www.zenposbistro.com</div>
+                    
+                    <!-- Clean minimal token with dashed border — NO solid black -->
+                    <div id="prev-token-banner" style="font-size:18px; font-weight:900; border:1.5px dashed #000; background:transparent; color:#000; padding:4px 0; margin:8px 0; letter-spacing:1px;">
+                      TOKEN #01
+                    </div>
+                    
+                    <div><span style="display:inline-block; border:1px dashed #000; background:transparent; color:#000; font-weight:800; padding:2px 8px; border-radius:3px; font-size:11px;">DINE IN • TABLE 02</span></div>
                   </div>
-                  <div style="flex:1;">
-                    <label class="form-label">Height (mm)</label>
-                    <input type="number" class="form-input" id="set-label-height" value="30" min="10" max="250">
-                  </div>
-                </div>
 
-                <div style="border-top:1px solid #edf2f7; padding-top:10px;">
-                  <h4 style="margin:0 0 10px 0; font-size:12px; color:var(--text-dark);">Visibility Toggles:</h4>
-                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px;">
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-store" checked> Show Store Name
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-name" checked> Show Product Name
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-barcode" checked> Show Barcode
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-human-readable" checked> Show Barcode Text
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-qr"> Show QR Code
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-sku" checked> Show SKU
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-price" checked> Show Price
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                      <input type="checkbox" id="set-chk-label-show-attribs"> Show Size & Color
-                    </label>
-                  </div>
-                </div>
+                  <div style="border-top:1px dashed #000; margin:8px 0;"></div>
 
-                <button class="btn btn-primary" id="btn-save-settings" style="padding:14px; font-weight:700; margin-top:10px;" disabled>
-                  💾 Save All Configurations
-                </button>
+                  <div style="font-size:11px; line-height:1.4; margin-bottom:6px;">
+                    <div><strong>Invoice:</strong> INV-20261019-001</div>
+                    <div><strong>Date:</strong> 19 Oct 2026, 04:00 AM</div>
+                    <div><strong>Guest:</strong> Walk-in Guest</div>
+                  </div>
+
+                  <div style="border-top:1px dashed #000; margin:8px 0;"></div>
+
+                  <!-- Sample Items -->
+                  <div id="prev-items-table">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; border-bottom:1px dashed #000; padding-bottom:3px; margin-bottom:4px;">
+                      <span>Item</span>
+                      <span style="width:30px; text-align:center;">Qty</span>
+                      <span style="width:60px; text-align:right;">Price</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dotted #ccc;">
+                      <span style="flex:1;">Gourmet Burger</span>
+                      <span style="width:30px; text-align:center;">1</span>
+                      <span style="width:60px; text-align:right;">৳280.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dotted #ccc;">
+                      <span style="flex:1;">Mint Lemonade</span>
+                      <span style="width:30px; text-align:center;">2</span>
+                      <span style="width:60px; text-align:right;">৳180.00</span>
+                    </div>
+                  </div>
+
+                  <div style="border-top:1px dashed #000; margin:8px 0;"></div>
+
+                  <!-- Totals -->
+                  <div style="font-size:11.5px; line-height:1.4;">
+                    <div style="display:flex; justify-content:space-between;">
+                      <span>Subtotal:</span>
+                      <span>৳460.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                      <span>Vat / Tax (5%):</span>
+                      <span>৳23.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:13.5px; font-weight:800; border-top:1px dashed #000; padding-top:4px; margin-top:4px;">
+                      <span>TOTAL:</span>
+                      <span>৳483.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:2px;">
+                      <span>Paid (Cash):</span>
+                      <span>৳500.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                      <span>Change Return:</span>
+                      <span>৳17.00</span>
+                    </div>
+                  </div>
+
+                  <div style="border-top:1px dashed #000; margin:8px 0;"></div>
+
+                  <div style="text-align:center; font-size:11px; margin-top:6px;">
+                    <div id="prev-note" style="font-style:italic; margin-bottom:4px;">Thank you for dining with us!</div>
+                    <div style="font-size:10px; color:#555;">Software by ZenPos</div>
+                  </div>
+
+                </div>
               </div>
             </div>
 
           </div>
         `;
 
-        const settings = await S.getSettings();
-        console.log('--- SYSTEM SETTINGS LOADED ---');
-        console.log(settings);
-        console.log('------------------------------');
+        const settings = (await S.getSettings()) || {};
         
         let activeLogo = settings.invoice_logo || '';
         const logoPreview = document.getElementById('set-logo-preview');
         const logoUrlInput = document.getElementById('set-logo-url');
-        const logoFileInput = document.getElementById('set-logo-file');
+        const btnPickGallery = document.getElementById('btn-pick-logo-gallery');
+        const btnUploadDevice = document.getElementById('btn-upload-logo-device');
+        const btnClearLogo = document.getElementById('btn-clear-logo');
         
+        // Preview DOM Elements
+        const prevLogoBox = document.getElementById('prev-logo-box');
+        const prevLogoImg = document.getElementById('prev-logo-img');
+        const prevStoreName = document.getElementById('prev-store-name');
+        const prevStoreAddress = document.getElementById('prev-store-address');
+        const prevStorePhone = document.getElementById('prev-store-phone');
+        const prevStoreWebsite = document.getElementById('prev-store-website');
+        const prevNote = document.getElementById('prev-note');
+        const prevContainer = document.getElementById('thermal-preview-container');
+
         const updateLogoPreview = (src) => {
           if (src) {
             logoPreview.innerHTML = `<img src="${src}" style="width:100%; height:100%; object-fit:contain;">`;
+            if (prevLogoBox && prevLogoImg) {
+              prevLogoImg.src = src;
+              prevLogoBox.style.display = 'block';
+            }
           } else {
             logoPreview.innerHTML = `<span style="font-size:16px; color:#cbd5e1;">Logo</span>`;
+            if (prevLogoBox) prevLogoBox.style.display = 'none';
           }
         };
-        
+
+        const updateLivePreview = () => {
+          const name = document.getElementById('set-store-name').value.trim();
+          const showName = document.getElementById('set-invoice-show-store-name').value !== '0';
+          const addr = document.getElementById('set-store-address').value.trim();
+          const phone = document.getElementById('set-store-phone').value.trim();
+          const web = document.getElementById('set-store-website').value.trim();
+          const note = document.getElementById('set-invoice-note').value.trim();
+          const widthVal = document.getElementById('set-receipt-width').value;
+          const styleVal = document.getElementById('set-receipt-style').value;
+
+          if (prevStoreName) {
+            prevStoreName.style.display = showName ? 'block' : 'none';
+            prevStoreName.textContent = name || 'ZenPos Restaurant';
+          }
+          if (prevStoreAddress) prevStoreAddress.textContent = addr || '';
+          if (prevStorePhone) prevStorePhone.textContent = phone ? `Tel: ${phone}` : '';
+          if (prevStoreWebsite) prevStoreWebsite.textContent = web || '';
+          if (prevNote) prevNote.textContent = note || 'Thank you for dining with us! Please come again.';
+          
+          if (prevContainer) {
+            if (widthVal === '58') {
+              prevContainer.style.maxWidth = '250px';
+              prevContainer.style.fontSize = '11px';
+            } else {
+              prevContainer.style.maxWidth = '320px';
+              prevContainer.style.fontSize = '12px';
+            }
+
+            if (styleVal === 'style-minimal-clean' || styleVal === 'style-2') {
+              prevContainer.style.fontFamily = '"Courier New", Courier, monospace';
+            } else if (styleVal === 'style-minimal-centered') {
+              prevContainer.style.fontFamily = 'Inter, sans-serif';
+            } else {
+              prevContainer.style.fontFamily = 'monospace, sans-serif';
+            }
+          }
+        };
+
         updateLogoPreview(activeLogo);
-        if (activeLogo && !activeLogo.startsWith('data:')) {
+        if (activeLogo) {
           logoUrlInput.value = activeLogo;
         }
 
-        logoFileInput.onchange = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            activeLogo = reader.result;
-            updateLogoPreview(activeLogo);
-            logoUrlInput.value = '';
+        if (btnPickGallery) {
+          btnPickGallery.onclick = () => {
+            H.openMediaPicker({
+              title: 'Choose Store Logo from Gallery',
+              folderName: 'Store & Invoices',
+              folderId: 'folder_store_invoices',
+              activeTab: 'gallery',
+              onSelect: (url) => {
+                activeLogo = url;
+                updateLogoPreview(activeLogo);
+                logoUrlInput.value = url;
+                updateLivePreview();
+              }
+            });
           };
-          reader.readAsDataURL(file);
-        };
+        }
+
+        if (btnUploadDevice) {
+          btnUploadDevice.onclick = () => {
+            H.openMediaPicker({
+              title: 'Upload Store Logo from Device',
+              folderName: 'Store & Invoices',
+              folderId: 'folder_store_invoices',
+              activeTab: 'upload',
+              onSelect: (url) => {
+                activeLogo = url;
+                updateLogoPreview(activeLogo);
+                logoUrlInput.value = url;
+                updateLivePreview();
+              }
+            });
+          };
+        }
+
+        if (btnClearLogo) {
+          btnClearLogo.onclick = () => {
+            activeLogo = '';
+            updateLogoPreview('');
+            logoUrlInput.value = '';
+            updateLivePreview();
+          };
+        }
 
         logoUrlInput.oninput = (e) => {
           activeLogo = e.target.value.trim();
           updateLogoPreview(activeLogo);
+          updateLivePreview();
         };
 
-        document.getElementById('set-store-name').value = settings.store_name || '';
+        // Populate Form Values
+        document.getElementById('set-store-name').value = settings.store_name || 'ZenPos Restaurant';
         document.getElementById('set-invoice-show-store-name').value = settings.invoice_show_store_name || '1';
         document.getElementById('set-store-address').value = settings.store_address || '';
         document.getElementById('set-store-phone').value = settings.store_phone || '';
         document.getElementById('set-store-website').value = settings.store_website || '';
-        document.getElementById('set-invoice-note').value = settings.invoice_note || '';
+        document.getElementById('set-invoice-note').value = settings.invoice_note || 'Thank you for dining with us! Please come again.';
         document.getElementById('set-receipt-width').value = settings.receipt_width || '80';
-        document.getElementById('set-invoice-width').value = settings.invoice_width || '800';
-        document.getElementById('set-print-type').value = settings.default_print_type || 'receipt';
-        document.getElementById('set-invoice-style').value = settings.invoice_style || 'theme-modern';
-        document.getElementById('set-receipt-style').value = settings.receipt_style || 'style-1';
-        
-        // Barcode Label settings mapping
-        document.getElementById('set-label-template').value = settings.label_template || 'standard';
-        document.getElementById('set-label-preset').value = settings.label_preset || '50x30';
-        document.getElementById('set-label-width').value = settings.label_width || '50';
-        document.getElementById('set-label-height').value = settings.label_height || '30';
-        document.getElementById('set-chk-label-show-store').checked = settings.label_show_store !== '0';
-        document.getElementById('set-chk-label-show-name').checked = settings.label_show_name !== '0';
-        document.getElementById('set-chk-label-show-barcode').checked = settings.label_show_barcode !== '0';
-        document.getElementById('set-chk-label-show-human-readable').checked = settings.label_show_human_readable !== '0';
-        document.getElementById('set-chk-label-show-qr').checked = settings.label_show_qr === '1';
-        document.getElementById('set-chk-label-show-sku').checked = settings.label_show_sku !== '0';
-        document.getElementById('set-chk-label-show-price').checked = settings.label_show_price !== '0';
-        document.getElementById('set-chk-label-show-attribs').checked = settings.label_show_attribs === '1';
+        document.getElementById('set-receipt-style').value = settings.receipt_style || 'style-minimal-dashed';
 
-        // Preset dropdown toggle
-        const handlePresetChange = () => {
-          const val = document.getElementById('set-label-preset').value;
-          const customDims = document.getElementById('set-lbl-custom-dims');
-          if (val === 'custom') {
-            customDims.style.display = 'flex';
-          } else {
-            customDims.style.display = 'none';
-            const [w, h] = val.split('x');
-            document.getElementById('set-label-width').value = w;
-            document.getElementById('set-label-height').value = h;
-          }
-        };
-        document.getElementById('set-label-preset').onchange = handlePresetChange;
-        handlePresetChange();
+        // Connect real-time preview listeners
+        ['set-store-name', 'set-store-address', 'set-store-phone', 'set-store-website', 'set-invoice-note'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('input', updateLivePreview);
+        });
+        ['set-invoice-show-store-name', 'set-receipt-width', 'set-receipt-style'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('change', updateLivePreview);
+        });
+
+        updateLivePreview();
 
         const saveBtn = document.getElementById('btn-save-settings');
         saveBtn.disabled = false;
 
         saveBtn.onclick = async () => {
-          const store_name = document.getElementById('set-store-name').value.trim();
+          const store_name = document.getElementById('set-store-name').value.trim() || 'ZenPos Restaurant';
           const invoice_show_store_name = document.getElementById('set-invoice-show-store-name').value;
           const store_address = document.getElementById('set-store-address').value.trim();
           const store_phone = document.getElementById('set-store-phone').value.trim();
           const store_website = document.getElementById('set-store-website').value.trim();
           const invoice_note = document.getElementById('set-invoice-note').value.trim();
-          const receipt_width = document.getElementById('set-receipt-width').value.trim();
-          const invoice_width = document.getElementById('set-invoice-width').value.trim();
-          const default_print_type = document.getElementById('set-print-type').value;
-          const invoice_style = document.getElementById('set-invoice-style').value;
+          const receipt_width = document.getElementById('set-receipt-width').value.trim() || '80';
           const receipt_style = document.getElementById('set-receipt-style').value;
-
-          const label_template = document.getElementById('set-label-template').value;
-          const label_preset = document.getElementById('set-label-preset').value;
-          const label_width = document.getElementById('set-label-width').value;
-          const label_height = document.getElementById('set-label-height').value;
-          const label_show_store = document.getElementById('set-chk-label-show-store').checked ? '1' : '0';
-          const label_show_name = document.getElementById('set-chk-label-show-name').checked ? '1' : '0';
-          const label_show_barcode = document.getElementById('set-chk-label-show-barcode').checked ? '1' : '0';
-          const label_show_human_readable = document.getElementById('set-chk-label-show-human-readable').checked ? '1' : '0';
-          const label_show_qr = document.getElementById('set-chk-label-show-qr').checked ? '1' : '0';
-          const label_show_sku = document.getElementById('set-chk-label-show-sku').checked ? '1' : '0';
-          const label_show_price = document.getElementById('set-chk-label-show-price').checked ? '1' : '0';
-          const label_show_attribs = document.getElementById('set-chk-label-show-attribs').checked ? '1' : '0';
-
-          if (!store_name || !store_address || !store_phone) {
-            H.showToast('Please fill out all settings fields.', 'error');
-            return;
-          }
 
           saveBtn.disabled = true;
           saveBtn.innerText = 'Saving...';
 
-          const res = await S.updateSettings({ 
-            store_name, 
-            invoice_show_store_name,
-            store_address, 
-            store_phone, 
-            store_website,
-            invoice_note,
-            invoice_logo: activeLogo,
-            receipt_width,
-            invoice_width,
-            invoice_style, 
-            default_print_type, 
-            receipt_style,
-            label_template,
-            label_preset,
-            label_width,
-            label_height,
-            label_show_store,
-            label_show_name,
-            label_show_barcode,
-            label_show_human_readable,
-            label_show_qr,
-            label_show_sku,
-            label_show_price,
-            label_show_attribs
-          });
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = '💾 Save All Configurations';
+          try {
+            const res = await S.updateSettings({ 
+              store_name, 
+              invoice_show_store_name,
+              store_address, 
+              store_phone, 
+              store_website,
+              invoice_note,
+              invoice_logo: activeLogo,
+              receipt_width,
+              receipt_style,
+              default_print_type: 'receipt'
+            });
 
-          if (res.success) {
-            H.showToast('All configurations saved successfully!');
-          } else {
-            H.showToast('Could not save settings: ' + res.error, 'error');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '💾 Save Thermal Settings';
+
+            if (res && res.success) {
+              H.showToast('Thermal receipt settings saved successfully!');
+            } else {
+              H.showToast('Could not save settings: ' + ((res && res.error) || 'Failed to update database'), 'error');
+            }
+          } catch (err) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '💾 Save Thermal Settings';
+            H.showToast('Error saving settings: ' + err.message, 'error');
           }
         };
     }

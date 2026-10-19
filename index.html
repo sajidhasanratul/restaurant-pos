@@ -6,15 +6,15 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta name="description" content="Professional Retail POS System – Manage sales, inventory, customers, and reports with ease.">
-  <title>ZenPos — Point of Sale System</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237C3AED' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7'/><path d='M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8'/><path d='M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4'/><path d='M2 7h20'/></svg>">
+  <meta name="description" content="ZenPos — Professional Restaurant POS System. Streamlined order taking, kitchen workflow, and ingredient tracking.">
+  <title>ZenPos — Restaurant Point of Sale System</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2310B981'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="css/style.css?v=2.4">
-  <link rel="stylesheet" href="css/responsive.css?v=2.4">
+  <link rel="stylesheet" href="css/style.css?v=3.0">
+  <link rel="stylesheet" href="css/responsive.css?v=3.0">
 </head>
 <body>
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
@@ -23,10 +23,10 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="logo">
-        <span class="logo-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C4B5FD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></svg>
+        <span class="logo-icon" style="background:linear-gradient(135deg, #10B981, #059669); border-radius:8px; display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; color:#fff; font-weight:900; font-size:16px; box-shadow:0 2px 8px rgba(16,185,129,0.35);">
+          ZP
         </span>
-        <h1 class="logo-text">ZenPos</h1>
+        <h1 class="logo-text" style="font-weight:900; font-size:20px; letter-spacing:-0.5px; color:#ffffff;">Zen<span style="color:#10B981;">Pos</span></h1>
       </div>
     </div>
 
@@ -51,61 +51,44 @@
         </a>
       </div>
 
-      <!-- 3. Sales Operations -->
-      <div class="nav-group" id="nav-grp-sales">
-        <div class="nav-group-header" data-group="sales">
+      <!-- 3. Sales List -->
+      <div id="nav-grp-sales-list">
+        <a href="/sales-list" class="nav-item" data-page="sales-list">
           <span class="nav-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
           </span>
-          <span class="nav-text">Sales Operations</span>
-          <span class="nav-arrow">&#9656;</span>
-        </div>
-        <div class="nav-group-items">
-          <a href="/sales-list"   class="nav-item sub-item" data-page="sales-list">Sales List</a>
-          <a href="/sales-return" class="nav-item sub-item" data-page="sales-return">Process Return</a>
-          <a href="/return-list"  class="nav-item sub-item" data-page="return-list">Return Records</a>
-          <a href="/custom-item-price" class="nav-item sub-item" data-page="custom-item-price">Custom Item Price</a>
-        </div>
+          <span class="nav-text">Sales List</span>
+        </a>
       </div>
 
-      <!-- 4. Inventory (Dropdown) -->
-      <div class="nav-group" id="nav-grp-inventory">
-        <div class="nav-group-header" data-group="inventory">
+      <!-- 4. Items (Menu Dishes) -->
+      <div id="nav-grp-items">
+        <a href="/products" class="nav-item" data-page="products">
           <span class="nav-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg>
           </span>
-          <span class="nav-text">Inventory</span>
+          <span class="nav-text">Items</span>
+        </a>
+      </div>
+
+      <!-- 5. Operation Expenses (Dropdown Group) -->
+      <div class="nav-group" id="nav-grp-operation-expenses">
+        <div class="nav-group-header" data-group="operation-expenses">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+          </span>
+          <span class="nav-text">Operation Expenses</span>
           <span class="nav-arrow">&#9656;</span>
         </div>
         <div class="nav-group-items">
-          <a href="/products"          class="nav-item sub-item" data-page="products">Products</a>
-          <a href="/bulk-scan"         class="nav-item sub-item" data-page="bulk-scan">Bulk Stock Update</a>
-          <a href="/inventory-details" class="nav-item sub-item" data-page="inventory-details">Inventory Details</a>
-          <a href="/label-printer"     class="nav-item sub-item" data-page="label-printer">Label Printer</a>
+          <a href="/ingredient-costs" class="nav-item sub-item" id="nav-sub-ingredient-costs" data-page="ingredient-costs">Ingredient Cost</a>
+          <a href="/expenses" class="nav-item sub-item" id="nav-sub-expenses" data-page="expenses">Expenses</a>
+          <a href="/suppliers" class="nav-item sub-item" id="nav-sub-suppliers" data-page="suppliers">Suppliers</a>
+          <a href="/expired-wastes" class="nav-item sub-item" id="nav-sub-expired-wastes" data-page="expired-wastes">Expired & Waste</a>
         </div>
       </div>
 
-      <!-- 5. Expenses -->
-      <div id="nav-grp-expenses">
-        <a href="/expenses" class="nav-item" data-page="expenses">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-          </span>
-          <span class="nav-text">Expenses</span>
-        </a>
-      </div>
-
-      <!-- 6. Suppliers -->
-      <div id="nav-grp-suppliers">
-        <a href="/suppliers" class="nav-item" data-page="suppliers">
-          <span class="nav-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
-          </span>
-          <span class="nav-text">Suppliers</span>
-        </a>
-      </div>
-
-      <!-- 7. Analytical Reports -->
+      <!-- 8. Analytical Reports -->
       <div class="nav-group" id="nav-grp-reports">
         <div class="nav-group-header" data-group="reports">
           <span class="nav-icon">
@@ -120,7 +103,6 @@
           <a href="/reports/top-selling"     class="nav-item sub-item" data-page="reports">Top Selling Products</a>
           <a href="/reports/slow-selling"    class="nav-item sub-item" data-page="reports">Slow Selling Products</a>
           <a href="/reports/payment-method"  class="nav-item sub-item" data-page="reports">Payment Method Report</a>
-          <a href="/reports/stock-value"     class="nav-item sub-item" data-page="reports">Stock Value Report</a>
           <a href="/reports/sales-summary"   class="nav-item sub-item" data-page="reports">Sales Summary Report</a>
           <a href="/reports/overall-profit"  class="nav-item sub-item" data-page="reports">Overall Profit Report</a>
         </div>
@@ -132,7 +114,7 @@
           <span class="nav-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
           </span>
-          <span class="nav-text">Manage Coupons</span>
+          <span class="nav-text">Coupon and Tax</span>
         </a>
       </div>
 
@@ -161,6 +143,7 @@
           <a href="/invoice-settings" class="nav-item sub-item" id="nav-invoice-settings" data-page="invoice-settings">Invoice Settings</a>
           <a href="/users" class="nav-item sub-item" id="nav-admin-control" data-page="users">Admin Control</a>
           <a href="/payment-methods" class="nav-item sub-item" id="nav-payment-methods" data-page="payment-methods">Payment Method</a>
+          <a href="/tables" class="nav-item sub-item" id="nav-tables" data-page="tables">Available Tables</a>
           <a href="/report-settings" class="nav-item sub-item" id="nav-report-settings" data-page="report-settings">Report Settings</a>
           <a href="/gallery" class="nav-item sub-item" id="nav-gallery" data-page="gallery">Gallery</a>
         </div>
@@ -207,30 +190,27 @@
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="js/data/store.js?v=2.7"></script>
-  <script src="js/utils/helpers.js?v=2.7"></script>
-  <script src="js/router.js?v=2.7"></script>
-  <script src="js/dashboard.js?v=2.7"></script>
-  <script src="js/new-order.js?v=2.7"></script>
-  <script src="js/edit-order.js?v=2.7"></script>
-  <script src="js/sales-list.js?v=2.7"></script>
-  <script src="js/sales-return.js?v=2.7"></script>
-  <script src="js/return-list.js?v=2.7"></script>
-  <script src="js/custom-item-price.js?v=2.7"></script>
-  <script src="js/payment-methods.js?v=2.7"></script>
-  <script src="js/reports.js?v=2.7"></script>
-  <script src="js/products.js?v=2.7"></script>
-  <script src="js/inventory-details.js?v=2.7"></script>
-  <script src="js/bulk-scan.js?v=2.7"></script>
-  <script src="js/gallery.js?v=2.7"></script>
-  <script src="js/customers.js?v=2.7"></script>
-  <script src="js/users.js?v=2.7"></script>
-  <script src="js/expenses.js?v=2.7"></script>
-  <script src="js/suppliers.js?v=2.7"></script>
-  <script src="js/report-settings.js?v=2.7"></script>
-  <script src="js/coupons.js?v=2.7"></script>
-  <script src="js/label-printer.js?v=2.7"></script>
-  <script src="js/app.js?v=2.7"></script>
+  <script src="js/data/store.js?v=3.2"></script>
+  <script src="js/utils/helpers.js?v=3.2"></script>
+  <script src="js/router.js?v=3.2"></script>
+  <script src="js/dashboard.js?v=3.2"></script>
+  <script src="js/new-order.js?v=3.2"></script>
+  <script src="js/edit-order.js?v=3.2"></script>
+  <script src="js/sales-list.js?v=3.2"></script>
+  <script src="js/payment-methods.js?v=3.2"></script>
+  <script src="js/reports.js?v=3.2"></script>
+  <script src="js/products.js?v=3.2"></script>
+  <script src="js/gallery.js?v=3.2"></script>
+  <script src="js/customers.js?v=3.2"></script>
+  <script src="js/users.js?v=3.2"></script>
+  <script src="js/expenses.js?v=3.2"></script>
+  <script src="js/ingredient-costs.js?v=3.2"></script>
+  <script src="js/expired-wastes.js?v=3.2"></script>
+  <script src="js/suppliers.js?v=3.2"></script>
+  <script src="js/report-settings.js?v=3.2"></script>
+  <script src="js/coupons.js?v=3.2"></script>
+  <script src="js/tables.js?v=3.2"></script>
+  <script src="js/app.js?v=3.2"></script>
   <div class="modal-overlay" id="global-modal-overlay"></div>
 </body>
 </html>

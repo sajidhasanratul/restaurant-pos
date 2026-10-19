@@ -273,70 +273,134 @@
             border-collapse: collapse;
           }
           
-          /* Style 1: Standard Minimalist (Default) */
-          .thermal-receipt.style-1 hr {
+          /* Style 1 / style-minimal-dashed: Clean Minimalist Dashed (Zero solid fills, ideal for thermal) */
+          .thermal-receipt.style-1 hr,
+          .thermal-receipt.style-minimal-dashed hr {
             border: none;
             border-top: 1px dashed #000;
             margin: 8px 0;
           }
-          .thermal-receipt.style-1 .totals {
+          .thermal-receipt.style-1 .totals,
+          .thermal-receipt.style-minimal-dashed .totals {
             margin-top: 8px;
             border-top: 1px dashed #000;
             padding-top: 6px;
           }
-          .thermal-receipt.style-1 .totals p {
+          .thermal-receipt.style-1 .totals p,
+          .thermal-receipt.style-minimal-dashed .totals p {
             margin: 3px 0;
             display: flex;
             justify-content: space-between;
           }
           
-          /* Style 2: Classic Bordered (Courier Monospace / Retro Cash Register) */
-          .thermal-receipt.style-2 {
+          /* Style 2 / style-minimal-clean: Clean Monospace Minimal (Crisp typewriter layout) */
+          .thermal-receipt.style-2,
+          .thermal-receipt.style-minimal-clean {
             font-family: 'Courier New', Courier, monospace !important;
-            border: 1px solid #000;
-            padding: 8px;
+            padding: 4px;
             color: #000;
           }
-          .thermal-receipt.style-2 * {
+          .thermal-receipt.style-2 *,
+          .thermal-receipt.style-minimal-clean * {
             font-family: 'Courier New', Courier, monospace !important;
             color: #000 !important;
           }
-          .thermal-receipt.style-2 hr {
+          .thermal-receipt.style-2 hr,
+          .thermal-receipt.style-minimal-clean hr {
             border: none;
-            border-top: 1px solid #000 !important;
-            margin: 8px 0;
+            border-top: 1px dashed #000 !important;
+            margin: 7px 0;
           }
-          .thermal-receipt.style-2 .receipt-item-row {
-            border-bottom: 1px solid #000 !important;
-            padding: 5px 0 !important;
+          .thermal-receipt.style-2 .receipt-item-row,
+          .thermal-receipt.style-minimal-clean .receipt-item-row {
+            border-bottom: 1px dotted #555 !important;
+            padding: 4px 0 !important;
           }
-          .thermal-receipt.style-2 .receipt-item-name {
+          .thermal-receipt.style-2 .receipt-item-name,
+          .thermal-receipt.style-minimal-clean .receipt-item-name {
             font-weight: bold !important;
           }
-          .thermal-receipt.style-2 .totals {
+          .thermal-receipt.style-2 .totals,
+          .thermal-receipt.style-minimal-clean .totals {
             margin-top: 8px;
-            border-top: 1px solid #000 !important;
-            padding-top: 6px;
+            border-top: 1px dashed #000 !important;
+            padding-top: 5px;
           }
-          .thermal-receipt.style-2 .totals p {
-            margin: 4px 0;
+          .thermal-receipt.style-2 .totals p,
+          .thermal-receipt.style-minimal-clean .totals p {
+            margin: 3px 0;
             display: flex;
             justify-content: space-between;
           }
 
-          /* Style 3: Modern Elegant (Centered & Premium Shaded Totals) */
+          /* style-minimal-centered: Modern Minimal Centered (Boutique Cafe Vibe) */
+          .thermal-receipt.style-minimal-centered {
+            font-family: 'Inter', sans-serif;
+            color: #000;
+            text-align: center;
+          }
+          .thermal-receipt.style-minimal-centered hr {
+            border: none;
+            border-top: 1px dashed #000 !important;
+            margin: 8px 0;
+          }
+          .thermal-receipt.style-minimal-centered .receipt-item-row {
+            border-bottom: 1px dotted #aaa !important;
+            padding: 5px 0 !important;
+            text-align: left;
+          }
+          .thermal-receipt.style-minimal-centered .totals {
+            margin-top: 8px;
+            border-top: 1.5px dashed #000;
+            padding-top: 6px;
+            text-align: left;
+          }
+          .thermal-receipt.style-minimal-centered .totals p {
+            margin: 3px 0;
+            display: flex;
+            justify-content: space-between;
+          }
+
+          /* style-minimal-compact: Space Saver Fast Thermal */
+          .thermal-receipt.style-minimal-compact {
+            font-family: monospace, sans-serif;
+            font-size: 11px !important;
+            line-height: 1.25;
+            color: #000;
+          }
+          .thermal-receipt.style-minimal-compact hr {
+            border: none;
+            border-top: 1px dashed #000;
+            margin: 5px 0;
+          }
+          .thermal-receipt.style-minimal-compact .receipt-item-row {
+            padding: 2px 0 !important;
+            border-bottom: 1px dotted #ccc !important;
+          }
+          .thermal-receipt.style-minimal-compact .totals {
+            margin-top: 5px;
+            border-top: 1px dashed #000;
+            padding-top: 4px;
+          }
+          .thermal-receipt.style-minimal-compact .totals p {
+            margin: 2px 0;
+            display: flex;
+            justify-content: space-between;
+          }
+
+          /* Style 3: Modern Tabular Grid */
           .thermal-receipt.style-3 {
             font-family: 'Inter', sans-serif;
             color: #1e293b;
           }
           .thermal-receipt.style-3 hr {
             border: none;
-            border-top: 1px double #475569 !important;
-            margin: 10px 0;
+            border-top: 1px dashed #000 !important;
+            margin: 8px 0;
           }
           .thermal-receipt.style-3 .receipt-item-row {
             border-bottom: 1px solid #e2e8f0 !important;
-            padding: 6px 0 !important;
+            padding: 5px 0 !important;
           }
           .thermal-receipt.style-3 .receipt-item-name {
             color: #0f172a !important;
@@ -344,17 +408,15 @@
           }
           .thermal-receipt.style-3 .receipt-item-details {
             color: #64748b !important;
-            margin-top: 3px !important;
+            margin-top: 2px !important;
           }
           .thermal-receipt.style-3 .totals {
-            margin-top: 10px;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc !important;
-            padding: 8px;
-            border-radius: 6px;
+            margin-top: 8px;
+            border-top: 1px dashed #000;
+            padding-top: 6px;
           }
           .thermal-receipt.style-3 .totals p {
-            margin: 4px 0;
+            margin: 3px 0;
             display: flex;
             justify-content: space-between;
           }
@@ -626,8 +688,12 @@
             </div>
             <hr>
             <div style="font-size: 8pt; line-height: 1.4; margin-bottom: 6px;">
-              <div><strong>Invoice ID:</strong> ${order.invoiceId}</div>
-              <div><strong>Customer:</strong> ${this.esc(order.customerName)} (${this.esc(order.customerPhone)})</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span><strong>Invoice:</strong> ${order.invoiceId}</span>
+                <span style="font-size:11pt; font-weight:900; border:1.5px dashed #000; color:#000; background:transparent; padding:2px 8px; border-radius:3px;">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</span>
+              </div>
+              ${order.tableName ? `<div><strong>Table / Service:</strong> <span style="font-weight:700;">${this.esc(order.tableName)}</span> (${this.esc(order.orderType || 'Dine In')})</div>` : ''}
+              <div><strong>Customer:</strong> ${this.esc(order.customerName || 'Walk-in Guest')}${order.customerPhone ? ` (${this.esc(order.customerPhone)})` : ''}</div>
               <div><strong>Date:</strong> ${this.formatDateTime(order.date)}</div>
             </div>
             <hr>
@@ -687,6 +753,7 @@
               </div>
               <div class="invoice-meta">
                 <h1>RETAIL INVOICE</h1>
+                <div style="display:inline-block; font-size:14px; font-weight:900; background:#000; color:#fff; padding:3px 12px; border-radius:4px; margin:4px 0 8px;">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</div>
                 <p><strong>Invoice ID:</strong> ${order.invoiceId}</p>
                 <p><strong>Sales Date:</strong> ${this.formatDateTime(order.date)}</p>
               </div>
@@ -771,6 +838,113 @@
       this.printHTML(printContent, `Invoice ${order.invoiceId}`, settings);
     },
 
+    printKitchenToken(order, items, settings = {}) {
+      const tokenNum = String(order.tokenNo || 1).padStart(2, '0');
+      const tableInfo = order.tableName || order.tableNumber || (order.orderType === 'dine_in' ? 'Dine In' : (order.orderType || 'Express / Takeaway'));
+      const html = `
+        <div class="thermal-receipt" style="max-width: 80mm; margin: 0 auto; font-family: 'Inter', sans-serif; color: #000; padding: 4px;">
+          <div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 8px;">
+            <div style="font-size: 15pt; font-weight: 900; letter-spacing: 1px;">*** KITCHEN ORDER TICKET ***</div>
+            <div style="font-size: 9pt; font-weight: 700; margin-top: 2px; text-transform: uppercase;">ZenPos — Kitchen Preparation Slip</div>
+            <div style="margin: 8px auto 4px auto; border: 2px dashed #000; background: transparent; color: #000; display: inline-block; padding: 6px 18px; border-radius: 6px; font-size: 22pt; font-weight: 900; letter-spacing: 2px;">
+              TOKEN #${tokenNum}
+            </div>
+          </div>
+          <div style="font-size: 9pt; line-height: 1.5; margin-bottom: 8px; border-bottom: 1px dashed #000; padding-bottom: 6px;">
+            <div><strong>Table / Service:</strong> <span style="font-size: 11pt; font-weight: 800;">${this.esc(tableInfo)}</span></div>
+            <div><strong>Invoice ID:</strong> ${this.esc(order.invoiceId)}</div>
+            <div><strong>Order Time:</strong> ${this.formatDateTime(order.date || new Date())}</div>
+            ${order.notes ? `<div><strong>Kitchen Note:</strong> <em>${this.esc(order.notes)}</em></div>` : ''}
+          </div>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+            <thead>
+              <tr style="border-bottom: 2px solid #000;">
+                <th style="text-align: left; padding: 4px 0; font-size: 10pt; font-weight: 800;">Item Name</th>
+                <th style="text-align: right; padding: 4px 0; font-size: 10pt; font-weight: 800; width: 50px;">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(item => `
+                <tr style="border-bottom: 1px dashed #999;">
+                  <td style="padding: 6px 0; font-size: 11pt; font-weight: 700;">
+                    ${this.esc(item.productName)}
+                    ${item.variationName ? `<div style="font-size: 9pt; font-weight: normal; color: #333;">(${this.esc(item.variationName)})</div>` : ''}
+                    ${item.notes ? `<div style="font-size: 8.5pt; font-style: italic; color: #555;">Note: ${this.esc(item.notes)}</div>` : ''}
+                  </td>
+                  <td style="text-align: right; padding: 6px 0; font-size: 13pt; font-weight: 900; vertical-align: top;">
+                    x${item.qty}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div style="text-align: center; border-top: 2px dashed #000; padding-top: 6px; font-size: 8pt; font-weight: 700;">
+            *** KITCHEN ORDER TICKET (KOT) ***
+          </div>
+        </div>
+      `;
+      this.printHTML(html, `KOT Token #${tokenNum}`, { default_print_type: 'receipt' });
+    },
+
+    /* ── Modal Dialog Manager ───────────────────────── */
+    showModal(html) {
+      let overlay = document.getElementById('global-modal-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'global-modal-overlay';
+        overlay.className = 'modal-overlay';
+        document.body.appendChild(overlay);
+      }
+      overlay.innerHTML = html;
+      overlay.classList.add('active');
+    },
+
+    hideModal() {
+      const overlay = document.getElementById('global-modal-overlay');
+      if (overlay) {
+        overlay.classList.remove('active');
+        overlay.innerHTML = '';
+      }
+    },
+
+    confirm(message, options = {}) {
+      return new Promise((resolve) => {
+        const title = options.title || 'Confirm Action';
+        const confirmText = options.confirmText || 'Yes, Proceed';
+        const cancelText = options.cancelText || 'Cancel';
+        const isDanger = options.danger !== false;
+
+        const html = `
+          <div class="modal animate" style="max-width:380px; text-align:center;">
+            <div class="modal-body" style="padding:26px 22px;">
+              <div style="font-size:40px; margin-bottom:12px;">${isDanger ? '⚠️' : '❓'}</div>
+              <h3 style="font-size:17px; font-weight:800; color:#1e293b; margin-bottom:8px;">${this.escapeHtml(title)}</h3>
+              <p style="font-size:13px; color:#64748b; line-height:1.45; margin-bottom:22px;">${this.escapeHtml(message)}</p>
+              <div style="display:flex; justify-content:center; gap:10px;">
+                <button type="button" class="btn btn-secondary" id="btn-helper-confirm-no" style="min-width:95px; height:38px;">${this.escapeHtml(cancelText)}</button>
+                <button type="button" class="btn ${isDanger ? 'btn-danger' : 'btn-primary'}" id="btn-helper-confirm-yes" style="min-width:115px; height:38px; font-weight:700; ${isDanger ? 'background:#ef4444; border-color:#ef4444;' : ''}">${this.escapeHtml(confirmText)}</button>
+              </div>
+            </div>
+          </div>
+        `;
+        this.showModal(html);
+        const yesBtn = document.getElementById('btn-helper-confirm-yes');
+        const noBtn = document.getElementById('btn-helper-confirm-no');
+        if (yesBtn) {
+          yesBtn.onclick = () => {
+            this.hideModal();
+            resolve(true);
+          };
+        }
+        if (noBtn) {
+          noBtn.onclick = () => {
+            this.hideModal();
+            resolve(false);
+          };
+        }
+      });
+    },
+
     /* ── Toast Notification ────────────────────────── */
     showToast(message, type) {
       type = type || 'success';
@@ -846,7 +1020,10 @@
     },
 
     getPaymentMethodColor(method) {
-      const m = String(method || '').toLowerCase().trim();
+      const mName = (typeof method === 'object' && method !== null) 
+        ? String(method.name || '') 
+        : String(method || '');
+      const m = mName.toLowerCase().trim();
       if (this.paymentMethodsList && this.paymentMethodsList.length > 0) {
         const matched = this.paymentMethodsList.find(p => String(p.name || '').toLowerCase().trim() === m);
         if (matched && matched.color) return matched.color;
@@ -864,25 +1041,63 @@
     },
 
     getPaymentMethodIcon(method, size = 28) {
-      const m = String(method || '').toLowerCase().trim();
+      let iconCandidate = '';
+      let mName = '';
+      if (typeof method === 'object' && method !== null) {
+        iconCandidate = String(method.icon || '').trim();
+        mName = String(method.name || '').trim();
+      } else {
+        mName = String(method || '').trim();
+      }
+      const m = mName.toLowerCase();
+
+      // Check if custom icon passed directly on method object
+      if (iconCandidate) {
+        if (iconCandidate.includes('<svg')) {
+          let svgStr = iconCandidate;
+          const svgStart = svgStr.indexOf('<svg');
+          if (svgStart > 0) svgStr = svgStr.substring(svgStart);
+          return svgStr.replace(/width="[^"]*"/, `width="${size}"`).replace(/height="[^"]*"/, `height="${size}"`);
+        }
+        if (iconCandidate.startsWith('data:') || iconCandidate.startsWith('http') || iconCandidate.startsWith('/') || iconCandidate.startsWith('./')) {
+          return `<img src="${iconCandidate}" alt="${this.esc(mName)}" style="width:${size}px; height:${size}px; object-fit:contain; border-radius:6px; flex-shrink:0; background:#fff; padding:2px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.05); display:block;">`;
+        }
+        if (iconCandidate.length <= 4) {
+          return `<span style="font-size:${Math.round(size * 0.75)}px; line-height:1; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${iconCandidate}</span>`;
+        }
+      }
 
       // Check if custom icon defined in paymentMethodsList
       if (this.paymentMethodsList && this.paymentMethodsList.length > 0) {
         const matched = this.paymentMethodsList.find(p => String(p.name || '').toLowerCase().trim() === m);
         if (matched && matched.icon && matched.icon.trim()) {
           const iconStr = matched.icon.trim();
-          if (iconStr.startsWith('<svg')) {
-            return iconStr.replace(/width="[^"]*"/, `width="${size}"`).replace(/height="[^"]*"/, `height="${size}"`);
+          if (iconStr.includes('<svg')) {
+            let svgStr = iconStr;
+            const svgStart = svgStr.indexOf('<svg');
+            if (svgStart > 0) svgStr = svgStr.substring(svgStart);
+            return svgStr.replace(/width="[^"]*"/, `width="${size}"`).replace(/height="[^"]*"/, `height="${size}"`);
           }
-          if (iconStr.startsWith('data:') || iconStr.startsWith('http') || iconStr.startsWith('/')) {
-            return `<img src="${iconStr}" alt="${this.esc(method)}" style="width:${size}px; height:${size}px; object-fit:contain; border-radius:6px; flex-shrink:0; background:#fff; padding:2px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.05);">`;
+          if (iconStr.startsWith('data:') || iconStr.startsWith('http') || iconStr.startsWith('/') || iconStr.startsWith('./')) {
+            return `<img src="${iconStr}" alt="${this.esc(mName)}" style="width:${size}px; height:${size}px; object-fit:contain; border-radius:6px; flex-shrink:0; background:#fff; padding:2px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.05); display:block;">`;
+          }
+          if (iconStr.length <= 4) {
+            return `<span style="font-size:${Math.round(size * 0.75)}px; line-height:1; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${iconStr}</span>`;
           }
         }
       }
 
-      switch (m) {
+      let mKey = m;
+      if (m.includes('bkash')) mKey = 'bkash';
+      else if (m.includes('nagad')) mKey = 'nagad';
+      else if (m.includes('rocket')) mKey = 'rocket';
+      else if (m.includes('card') || m.includes('visa') || m.includes('master') || m.includes('credit') || m.includes('debit')) mKey = 'card';
+      else if (m.includes('cash')) mKey = 'cash';
+      else if (m.includes('bank')) mKey = 'bank';
+
+      switch (mKey) {
         case 'bkash':
-          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0;">
+          return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:6px; flex-shrink:0; display:block;">
             <rect width="48" height="48" rx="8" fill="#E2136E"/>
             <path d="M12 18L24 10L19 25Z" fill="#FFFFFF"/>
             <path d="M24 10L38 15L27 24Z" fill="#FCE4EC"/>
@@ -944,8 +1159,8 @@
           </svg>`;
 
         default: {
-          const color = this.getPaymentMethodColor(method);
-          const initials = (method || 'P').trim().substr(0, 2).toUpperCase();
+          const color = this.getPaymentMethodColor(mName);
+          const initials = (mName || 'P').trim().substr(0, 2).toUpperCase();
           return `<div style="width:${size}px; height:${size}px; border-radius:8px; background:${color}18; border:1.5px solid ${color}45; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:${Math.max(10, Math.round(size * 0.36))}px; color:${color}; flex-shrink:0;">${initials}</div>`;
         }
       }
@@ -1015,7 +1230,9 @@
         'payment_methods': ['payment-methods'],
         'payment-methods': ['payment_methods'],
         'report_settings': ['report-settings'],
-        'report-settings': ['report_settings']
+        'report-settings': ['report_settings'],
+        'expired_wastes': ['expired-wastes', 'expenses'],
+        'expired-wastes': ['expired_wastes', 'expenses']
       };
 
       const mapped = aliases[perm];
@@ -1025,7 +1242,7 @@
     },
 
     /* ── Reusable Media Picker Modal ─────────────── */
-    openMediaPicker({ onSelect, title = 'Choose Image from Gallery or Upload' }) {
+    openMediaPicker({ onSelect, title = 'Choose Image from Gallery or Upload', folderName = 'General', folderId = null, activeTab = 'gallery' }) {
       let pickerOverlay = document.getElementById('media-picker-overlay');
       if (!pickerOverlay) {
         pickerOverlay = document.createElement('div');
@@ -1035,26 +1252,27 @@
         document.body.appendChild(pickerOverlay);
       }
 
-      let activeTab = 'gallery';
+      let currentTab = activeTab || 'gallery';
       let selectedImageUrl = null;
       let selectedImageObj = null;
       let folders = [];
-      let currentFolder = 'all';
+      let currentFolder = folderId || 'all';
 
       pickerOverlay.innerHTML = `
         <div class="modal animate" style="max-width: 780px; width: 95%; max-height: 85vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: #fff;">
           <div class="modal-header" style="padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
             <div style="font-weight: 700; font-size: 16px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
               <span>🖼️</span> <span>${this.esc(title)}</span>
+              ${folderName ? `<span style="font-size:11px; font-weight:700; background:#ECFDF5; color:#059669; padding:2px 8px; border-radius:12px; border:1px solid #A7F3D0;">📁 ${this.esc(folderName)}</span>` : ''}
             </div>
             <button class="modal-close" id="modal-close-picker" style="font-size: 24px; cursor: pointer; border: none; background: none; color: #64748b;">&times;</button>
           </div>
 
           <div style="display: flex; gap: 8px; border-bottom: 1px solid var(--border); background: #f8fafc; padding: 8px 20px;">
-            <button type="button" class="btn btn-sm ${activeTab === 'gallery' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-gallery" style="display: flex; align-items: center; gap: 6px;">
-              📁 Browse Gallery
+            <button type="button" class="btn btn-sm ${currentTab === 'gallery' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-gallery" style="display: flex; align-items: center; gap: 6px;">
+              📁 Choose from Gallery
             </button>
-            <button type="button" class="btn btn-sm ${activeTab === 'upload' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-upload" style="display: flex; align-items: center; gap: 6px;">
+            <button type="button" class="btn btn-sm ${currentTab === 'upload' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-upload" style="display: flex; align-items: center; gap: 6px;">
               📤 Upload from Device
             </button>
           </div>
@@ -1088,6 +1306,16 @@
         }
       };
 
+      // Resolve designated target folder
+      const resolveTargetFolderId = (list) => {
+        if (folderId && list.some(f => f.id === folderId)) return folderId;
+        if (folderName) {
+          const match = list.find(f => f.name.toLowerCase().trim() === folderName.toLowerCase().trim());
+          if (match) return match.id;
+        }
+        return list.length > 0 ? list[0].id : 'default';
+      };
+
       // Load folders and images
       const loadGallery = async () => {
         const body = pickerOverlay.querySelector('#picker-body');
@@ -1095,7 +1323,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <label style="font-size:12px; font-weight:600; color:#475569; margin:0;">Folder:</label>
-              <select id="picker-folder-select" class="form-select" style="font-size:12px; height:32px; padding:2px 8px; width:auto; min-width:140px;">
+              <select id="picker-folder-select" class="form-select" style="font-size:12px; height:32px; padding:2px 8px; width:auto; min-width:160px;">
                 <option value="all">All Folders</option>
               </select>
             </div>
@@ -1107,16 +1335,19 @@
         `;
 
         try {
-          const [foldersRes, imagesRes] = await Promise.all([
-            fetch('/api/gallery/folders'),
-            fetch(`/api/gallery/images${currentFolder !== 'all' ? '?folderId=' + currentFolder : ''}`)
-          ]);
+          const foldersRes = await fetch('/api/gallery/folders');
           folders = await foldersRes.json();
+
+          if (currentFolder === 'all' && (folderId || folderName)) {
+            currentFolder = resolveTargetFolderId(folders);
+          }
+
+          const imagesRes = await fetch(`/api/gallery/images${currentFolder !== 'all' ? '?folderId=' + currentFolder : ''}`);
           const images = await imagesRes.json();
 
           const sel = pickerOverlay.querySelector('#picker-folder-select');
           if (sel) {
-            sel.innerHTML = `<option value="all" ${currentFolder === 'all' ? 'selected' : ''}>All Folders (${images.length})</option>` +
+            sel.innerHTML = `<option value="all" ${currentFolder === 'all' ? 'selected' : ''}>All Folders</option>` +
               folders.map(f => `<option value="${f.id}" ${currentFolder === f.id ? 'selected' : ''}>${f.name} (${f.imageCount || 0})</option>`).join('');
 
             sel.onchange = () => {
@@ -1192,21 +1423,26 @@
           folders = await res.json();
         } catch(e) {}
 
+        const targetFolder = resolveTargetFolderId(folders);
+
         body.innerHTML = `
           <div style="max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;">
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Save into Gallery Folder:</label>
+              <label class="form-label" style="font-weight:700;">Save into Gallery Folder:</label>
               <select id="upload-target-folder" class="form-select">
-                ${folders.map(f => `<option value="${f.id}" ${f.id === 'default' ? 'selected' : ''}>${f.name}</option>`).join('')}
+                ${folders.map(f => `<option value="${f.id}" ${f.id === targetFolder ? 'selected' : ''}>${f.name}</option>`).join('')}
               </select>
+              <div style="font-size:11px; color:#059669; margin-top:4px; font-weight:600;">
+                ✓ Automatically saved into the "${this.esc(folderName)}" folder in your central gallery.
+              </div>
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Choose Photo from Device:</label>
+              <label class="form-label" style="font-weight:700;">Choose Photo from Device:</label>
               <div id="drop-zone" style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 30px 20px; text-align: center; background: #f8fafc; cursor: pointer; transition: border-color 0.2s;">
                 <div style="font-size: 32px; margin-bottom: 8px;">📷</div>
                 <div style="font-weight: 600; color: #1e293b; font-size: 14px;">Click to browse or drag and drop image here</div>
-                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">PNG, JPG, JPEG, WEBP up to 5MB</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">PNG, JPG, JPEG, WEBP, SVG up to 5MB</div>
                 <input type="file" id="picker-file-input" accept="image/*" style="display: none;">
               </div>
             </div>
@@ -1217,7 +1453,7 @@
                 <div id="upload-file-name" style="font-size: 13px; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
                 <div id="upload-file-size" style="font-size: 11px; color: #64748b;"></div>
               </div>
-              <button type="button" class="btn btn-primary btn-sm" id="btn-do-upload">Upload & Select</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-do-upload" style="background:#10B981; border-color:#10B981; font-weight:700;">Upload & Select</button>
             </div>
           </div>
         `;
@@ -1270,13 +1506,13 @@
           if (!pendingBase64) return;
           doUploadBtn.disabled = true;
           doUploadBtn.textContent = 'Uploading...';
-          const folderId = body.querySelector('#upload-target-folder').value || 'default';
+          const folderIdToUse = body.querySelector('#upload-target-folder').value || targetFolder;
           try {
             const res = await fetch('/api/gallery/images', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                folder_id: folderId,
+                folder_id: folderIdToUse,
                 name: pendingName,
                 data: pendingBase64,
                 size: pendingSize
@@ -1305,20 +1541,26 @@
       const tabUpload = pickerOverlay.querySelector('#tab-btn-upload');
 
       tabGallery.onclick = () => {
-        activeTab = 'gallery';
+        currentTab = 'gallery';
         tabGallery.className = 'btn btn-sm btn-primary';
         tabUpload.className = 'btn btn-sm btn-secondary';
         loadGallery();
       };
 
       tabUpload.onclick = () => {
-        activeTab = 'upload';
+        currentTab = 'upload';
         tabGallery.className = 'btn btn-sm btn-secondary';
         tabUpload.className = 'btn btn-sm btn-primary';
         loadUpload();
       };
 
-      loadGallery();
+      if (currentTab === 'upload') {
+        tabGallery.className = 'btn btn-sm btn-secondary';
+        tabUpload.className = 'btn btn-sm btn-primary';
+        loadUpload();
+      } else {
+        loadGallery();
+      }
     },
 
     /* ── Customer labels ──────────────────────────── */
@@ -1327,6 +1569,20 @@
     labelColors: {
       Regular: '#64748b', VIP: '#7c3aed', Elite: '#d97706',
       Wholesale: '#059669', Premium: '#2563eb', New: '#06b6d4'
+    },
+
+    /* ── HTML Escaping ───────────────────────────── */
+    escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    },
+    esc(str) {
+      return this.escapeHtml(str);
     }
   };
 

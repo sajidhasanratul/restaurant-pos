@@ -4,6 +4,7 @@
   const SalesList = {
     currentPage: 1,
     perPage: 50,
+    period: 'all',
     filters: {
       search: '',
       fromDate: '',
@@ -14,12 +15,36 @@
     },
     activePopover: null,
 
+    getPeriodRange(period) {
+      const H = POS.Helpers;
+      const today = H.today();
+      if (period === 'today') {
+        return { from: today, to: today };
+      } else if (period === 'yesterday') {
+        const yest = H.yesterday();
+        return { from: yest, to: yest };
+      } else if (period === 'this_week') {
+        const p = H.getBDDateParts();
+        const d = new Date(Date.UTC(p.year, p.month - 1, p.day));
+        const dayOfWeek = d.getUTCDay(); // 0 is Sunday
+        const startOfWeek = H.addDays(today, -dayOfWeek);
+        return { from: startOfWeek, to: today };
+      } else if (period === 'this_month') {
+        const p = H.getBDDateParts();
+        const pad = n => String(n).padStart(2, '0');
+        const startOfMonth = `${p.year}-${pad(p.month)}-01`;
+        return { from: startOfMonth, to: today };
+      }
+      return { from: '', to: '' };
+    },
+
     async render() {
       const mc = document.getElementById('main-content');
       const S = POS.Store;
       const H = POS.Helpers;
 
       this.currentPage = 1;
+      this.period = 'all';
       this.filters = {
         search: '',
         fromDate: '',
@@ -42,38 +67,64 @@
           </div>
         </div>
 
-        <div class="filter-bar fade-in" style="display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
-          <div class="search-box" style="flex: 1; min-width:250px;">
-            <input type="text" id="sales-search" placeholder="Search by Invoice ID, customer name or phone...">
+        <!-- Top Section: Filterable Total Sales Amount Card and Search Bar Side by Side -->
+        <div class="sales-top-row fade-in" style="display:flex; gap:16px; align-items:stretch; margin-bottom:18px; flex-wrap:wrap;">
+          
+          <!-- Total Sales Amount Card (Filterable) -->
+          <div class="stat-card green" id="card-total-sales" style="flex:1; min-width:320px; padding:14px 18px; display:flex; flex-direction:column; justify-content:center; gap:8px; border-radius:var(--radius-md); background:linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); border:1px solid #bbf7d0; box-shadow:var(--shadow-sm);">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div class="stat-icon" style="width:42px; height:42px; border-radius:10px; background:#dcfce7; color:#16a34a; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:22px; flex-shrink:0;">৳</div>
+                <div>
+                  <div style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#166534;">Total Sales Amount</div>
+                  <div class="stat-value" id="stats-total-amount" style="font-size:24px; font-weight:800; color:#14532d; line-height:1.2; margin-top:2px;">৳0.00</div>
+                  <div id="stats-period-label" style="font-size:11px; color:#15803d; font-weight:600; margin-top:2px;">All Time Orders</div>
+                </div>
+              </div>
+              
+              <!-- Filter Dropdown -->
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label for="sales-period-select" style="font-size:12px; font-weight:700; color:#166534; white-space:nowrap;">Period:</label>
+                <select id="sales-period-select" class="form-select form-select-sm" style="padding:5px 10px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid #86efac; background:#fff; color:#15803d; cursor:pointer;">
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="this_week">This Week</option>
+                  <option value="this_month">This Month</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Custom Date Inputs (shown when custom is selected) -->
+            <div id="sales-custom-date-box" style="display:none; align-items:center; gap:10px; padding-top:8px; border-top:1px dashed #bbf7d0; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11.5px; font-weight:700; color:#166534;">From:</span>
+                <input type="date" id="sales-custom-from" class="form-input" style="padding:3px 8px; font-size:12px; height:30px; width:135px; border-color:#86efac; background:#fff;">
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11.5px; font-weight:700; color:#166534;">To:</span>
+                <input type="date" id="sales-custom-to" class="form-input" style="padding:3px 8px; font-size:12px; height:30px; width:135px; border-color:#86efac; background:#fff;">
+              </div>
+              <button type="button" id="btn-apply-sales-custom" class="btn btn-primary btn-sm" style="height:30px; padding:0 12px; font-size:11.5px; font-weight:700; background:#16a34a; border-color:#16a34a;">Apply</button>
+            </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <label for="sales-per-page" style="font-size:13px; font-weight:600; color:#475569; white-space:nowrap;">Orders Per Page:</label>
-            <select id="sales-per-page" class="form-select" style="width:auto; padding:6px 12px; font-size:13px; border-radius:var(--radius-sm); border:1px solid var(--border);">
+
+          <!-- Shrunk Search Bar & Per Page Controls Side by Side -->
+          <div style="display:flex; align-items:center; gap:8px; width:340px; max-width:100%; flex-shrink:0;">
+            <div class="search-box" style="flex:1; margin:0;">
+              <input type="text" id="sales-search" placeholder="Search invoice, customer..." style="height:44px; font-size:13px; padding-left:36px; border-radius:var(--radius-md);">
+            </div>
+            <select id="sales-per-page" class="form-select" title="Orders Per Page" style="width:78px; height:44px; font-size:12px; font-weight:600; border-radius:var(--radius-md); border:1px solid var(--border); flex-shrink:0;">
               <option value="50" ${this.perPage === 50 ? 'selected' : ''}>50</option>
               <option value="100" ${this.perPage === 100 ? 'selected' : ''}>100</option>
               <option value="200" ${this.perPage === 200 ? 'selected' : ''}>200</option>
               <option value="500" ${this.perPage === 500 ? 'selected' : ''}>500</option>
               <option value="1000" ${this.perPage === 1000 ? 'selected' : ''}>1000</option>
-              <option value="all" ${this.perPage === 'all' ? 'selected' : ''}>All Orders</option>
+              <option value="all" ${this.perPage === 'all' ? 'selected' : ''}>All</option>
             </select>
           </div>
-        </div>
 
-        <div class="stats-grid fade-in" style="grid-template-columns: 1fr 1fr; gap:20px; margin-bottom: 20px;">
-          <div class="stat-card green" style="padding: 15px;">
-            <div class="stat-icon" style="font-weight:700; color:#16a34a;">৳</div>
-            <div class="stat-info">
-              <div class="stat-label">Total Sales Amount</div>
-              <div class="stat-value" id="stats-total-amount">৳0.00</div>
-            </div>
-          </div>
-          <div class="stat-card blue" style="padding: 15px;">
-            <div class="stat-icon" style="font-weight:700; color:#2563eb;">#</div>
-            <div class="stat-info">
-              <div class="stat-label">Today's Sales</div>
-              <div class="stat-value" id="stats-today-amount">৳0.00</div>
-            </div>
-          </div>
         </div>
 
         <div class="card fade-in" style="position:relative;">
@@ -154,30 +205,42 @@
         };
       }
 
-      // Export CSV
-      document.getElementById('btn-export-csv').onclick = async () => {
-        const { list, paymentsMap } = await this.getFilteredOrders();
-        const csvData = list.map(o => {
-          const orderPayments = paymentsMap[o.id] || [];
-          const methodStr = orderPayments.length > 0 
-            ? orderPayments.map(p => p.method + (p.lastFour ? ` (${p.lastFour})` : '')).join(', ') 
-            : 'N/A';
+      // Period filter inside Total Sales Amount card
+      const periodSelect = document.getElementById('sales-period-select');
+      const customDateBox = document.getElementById('sales-custom-date-box');
+      const customFromInput = document.getElementById('sales-custom-from');
+      const customToInput = document.getElementById('sales-custom-to');
+      const btnApplyCustom = document.getElementById('btn-apply-sales-custom');
 
-          return {
-            'Invoice ID': o.invoiceId,
-            'Customer Name': o.customerName,
-            'Customer Phone': o.customerPhone,
-            'Sales Date': H.formatDateTime(o.date),
-            'Payment Method': methodStr,
-            'Subtotal': o.subtotal,
-            'Discount Amount': o.discountAmount,
-            'Tax Amount': o.taxAmount,
-            'Grand Total': o.grandTotal,
-            'Due Amount': o.dueAmount,
-            'Returned Amount': o.returnedAmount
-          };
-        });
-        H.exportCSV(csvData, 'sales_list');
+      periodSelect.onchange = async () => {
+        const val = periodSelect.value;
+        this.period = val;
+        if (val === 'custom') {
+          customDateBox.style.display = 'flex';
+          if (!customFromInput.value) customFromInput.value = H.today();
+          if (!customToInput.value) customToInput.value = H.today();
+          this.filters.fromDate = customFromInput.value;
+          this.filters.toDate = customToInput.value;
+        } else {
+          customDateBox.style.display = 'none';
+          const range = this.getPeriodRange(val);
+          this.filters.fromDate = range.from;
+          this.filters.toDate = range.to;
+        }
+        this.currentPage = 1;
+        await this.updateList();
+      };
+
+      btnApplyCustom.onclick = async () => {
+        this.filters.fromDate = customFromInput.value;
+        this.filters.toDate = customToInput.value;
+        this.currentPage = 1;
+        await this.updateList();
+      };
+
+      // Export CSV (prompts with date range selection modal)
+      document.getElementById('btn-export-csv').onclick = () => {
+        this.showExportModal();
       };
 
       // Floating clear filter button
@@ -199,6 +262,7 @@
 
     resetAllFilters() {
       this.currentPage = 1;
+      this.period = 'all';
       this.filters = {
         search: '',
         fromDate: '',
@@ -209,6 +273,10 @@
       };
       const searchInput = document.getElementById('sales-search');
       if (searchInput) searchInput.value = '';
+      const periodSelect = document.getElementById('sales-period-select');
+      if (periodSelect) periodSelect.value = 'all';
+      const customDateBox = document.getElementById('sales-custom-date-box');
+      if (customDateBox) customDateBox.style.display = 'none';
       this.closeAllPopovers();
     },
 
@@ -440,14 +508,21 @@
       const H = POS.Helpers;
 
       const { list, paymentsMap } = await this.getFilteredOrders();
-      const today = H.today();
-      const todaySales = await S.query('orders', o => H.isDateInRange(o.date, today, today));
 
-      const totalToday = todaySales.reduce((s, o) => s + (parseFloat(o.grandTotal) || 0), 0);
       const totalFiltered = list.reduce((s, o) => s + (parseFloat(o.grandTotal) || 0), 0);
 
-      document.getElementById('stats-total-amount').textContent = H.formatCurrency(totalFiltered);
-      document.getElementById('stats-today-amount').textContent = H.formatCurrency(totalToday);
+      const totalEl = document.getElementById('stats-total-amount');
+      if (totalEl) totalEl.textContent = H.formatCurrency(totalFiltered);
+
+      const periodLabel = document.getElementById('stats-period-label');
+      if (periodLabel) {
+        if (this.period === 'today') periodLabel.textContent = `Today (${H.formatDate(H.today())}) • ${list.length} orders`;
+        else if (this.period === 'yesterday') periodLabel.textContent = `Yesterday (${H.formatDate(H.yesterday())}) • ${list.length} orders`;
+        else if (this.period === 'this_week') periodLabel.textContent = `This Week • ${list.length} orders`;
+        else if (this.period === 'this_month') periodLabel.textContent = `This Month • ${list.length} orders`;
+        else if (this.period === 'custom') periodLabel.textContent = `${this.filters.fromDate || 'Start'} to ${this.filters.toDate || 'Now'} • ${list.length} orders`;
+        else periodLabel.textContent = `All Time • ${list.length} orders`;
+      }
 
       // Update Filter button active states
       const btnDate = document.getElementById('btn-filter-date');
@@ -533,10 +608,13 @@
 
         tbody.innerHTML += `
           <tr class="sales-row" data-id="${o.id}">
-            <td style="font-weight:700;">${o.invoiceId}</td>
+            <td style="font-weight:700;">
+              <div>${o.invoiceId}</div>
+              ${o.tokenNo ? `<span class="badge" style="background:#ECFDF5; color:#059669; border:1px solid #A7F3D0; font-size:11px; font-weight:800; margin-top:2px; display:inline-block;">Token #${String(o.tokenNo).padStart(2, '0')}</span>` : ''}
+            </td>
             <td>
               <div style="font-weight:600;">${H.esc(o.customerName)}</div>
-              <div class="text-muted text-sm">${H.esc(o.customerPhone)}</div>
+              <div class="text-muted text-sm">${H.esc(o.customerPhone || (o.tableName ? `${o.tableName} • ${o.orderType || 'Dine In'}` : ''))}</div>
             </td>
             <td>${H.formatDateTime(o.date)}</td>
             <td>
@@ -552,7 +630,7 @@
               <div style="display:flex; justify-content:center; gap:6px;">
                 <button class="btn btn-secondary btn-sm btn-view-invoice" title="View Details" style="padding:4px 8px; font-size:11px;">View</button>
                 <button class="btn btn-secondary btn-sm btn-print-invoice" title="Print Receipt" style="padding:4px 8px; font-size:11px;">Print</button>
-                <button class="btn btn-secondary btn-sm btn-return-invoice" title="Return Items" style="padding:4px 8px; font-size:11px; color:var(--warning);">Return</button>
+                <button class="btn btn-secondary btn-sm btn-print-kot" title="Print Kitchen Token" style="padding:4px 8px; font-size:11px; background:#fff7ed; color:#c2410c; border-color:#fed7aa;">KOT</button>
                 ${isAdmin ? `
                   <button class="btn btn-secondary btn-sm btn-delete-invoice" title="Delete Order" style="padding:4px 8px; font-size:11px; color:var(--danger); border-color:#fee2e2; background:#fef2f2;">Delete</button>
                 ` : ''}
@@ -625,10 +703,8 @@
 
         row.querySelector('.btn-view-invoice').onclick = () => this.showDetailsModal(order);
         row.querySelector('.btn-print-invoice').onclick = () => this.printReceipt(order);
-        row.querySelector('.btn-return-invoice').onclick = () => {
-          localStorage.setItem('return_search_invoice', order.invoiceId);
-          POS.Router.navigate('/sales-return');
-        };
+        const kotBtn = row.querySelector('.btn-print-kot');
+        if (kotBtn) kotBtn.onclick = () => this.printKOT(order);
         if (isAdmin) {
           const deleteBtn = row.querySelector('.btn-delete-invoice');
           if (deleteBtn) {
@@ -757,7 +833,8 @@
           <div class="modal-footer">
             ${user && (user.role === 'admin' || user.role === 'manager') ? `<button class="btn btn-warning" id="btn-edit-inv-modal" style="margin-right:auto;">Edit Order</button>` : ''}
             <button class="btn btn-secondary" id="btn-close-inv-footer">Close</button>
-            <button class="btn btn-primary" id="btn-print-inv-modal">Print Receipt</button>
+            <button class="btn btn-secondary" id="btn-print-kot-modal" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;">👨‍🍳 Print KOT</button>
+            <button class="btn btn-primary" id="btn-print-inv-modal">Print Invoice</button>
           </div>
         </div>
       `;
@@ -780,6 +857,14 @@
         const items = await S.query('orderItems', i => i.orderId === order.id);
         H.printOrder(order, items);
       };
+
+      const kotModalBtn = overlay.querySelector('#btn-print-kot-modal');
+      if (kotModalBtn) {
+        kotModalBtn.onclick = async () => {
+          const items = await S.query('orderItems', i => i.orderId === order.id);
+          H.printKitchenToken(order, items);
+        };
+      }
     },
 
     async printReceipt(order) {
@@ -787,6 +872,179 @@
       const H = POS.Helpers;
       const items = await S.query('orderItems', i => i.orderId === order.id);
       H.printOrder(order, items);
+    },
+
+    async printKOT(order) {
+      const S = POS.Store;
+      const H = POS.Helpers;
+      const items = await S.query('orderItems', i => i.orderId === order.id);
+      H.printKitchenToken(order, items);
+    },
+
+    async showExportModal() {
+      const H = POS.Helpers;
+      const S = POS.Store;
+      const today = H.today();
+      const currentFrom = this.filters.fromDate || '';
+      const currentTo = this.filters.toDate || '';
+
+      const modalHtml = `
+        <div class="modal" id="modal-export-sales-csv" style="max-width:460px;">
+          <div class="modal-header" style="background:#F0FDF4; border-bottom:1px solid #DCFCE7;">
+            <h3 class="modal-title" style="color:#166534; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
+              📥 Export Sales Orders to CSV
+            </h3>
+            <button class="modal-close" id="btn-close-export-modal">&times;</button>
+          </div>
+          <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+            <p style="font-size:13px; color:#475569; margin:0;">
+              Select the date range of orders you would like to export.
+            </p>
+
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:12px; font-weight:700; color:#334155;">Quick Date Preset</label>
+              <select id="export-preset" class="form-select" style="font-size:13px;">
+                <option value="current" selected>Current Active Filters (${currentFrom || currentTo ? (currentFrom + ' to ' + currentTo) : 'All Time'})</option>
+                <option value="today">Today (${today})</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="this_week">This Week</option>
+                <option value="this_month">This Month</option>
+                <option value="all">All Orders (All Time)</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:12px; font-weight:700; color:#334155;">From Date</label>
+                <input type="date" id="export-from-date" class="form-input" style="font-size:12.5px;" value="${currentFrom}">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:12px; font-weight:700; color:#334155;">To Date</label>
+                <input type="date" id="export-to-date" class="form-input" style="font-size:12.5px;" value="${currentTo}">
+              </div>
+            </div>
+
+            <div id="export-count-preview" style="font-size:12px; font-weight:700; color:#15803d; background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:8px;">
+              <span>⏳</span> Calculating orders to export...
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:6px;">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-export">Cancel</button>
+              <button type="button" class="btn btn-success" id="btn-confirm-export" style="background:#16a34a; border-color:#16a34a; font-weight:700; display:flex; align-items:center; gap:6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                Download CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      H.showModal(modalHtml);
+
+      const fromInput = document.getElementById('export-from-date');
+      const toInput = document.getElementById('export-to-date');
+      const presetSelect = document.getElementById('export-preset');
+      const previewEl = document.getElementById('export-count-preview');
+      const confirmBtn = document.getElementById('btn-confirm-export');
+
+      const allOrders = await S.getAll('orders');
+
+      const updatePreview = () => {
+        const from = fromInput.value;
+        const to = toInput.value;
+        const count = allOrders.filter(o => H.isDateInRange(o.date, from, to)).length;
+        const rangeText = (from && to) ? `${from} to ${to}` : (from ? `From ${from}` : (to ? `Up to ${to}` : 'All Time'));
+        previewEl.innerHTML = `<span>📊</span> <strong>${count}</strong> orders ready to export (${rangeText})`;
+      };
+
+      presetSelect.onchange = () => {
+        const p = presetSelect.value;
+        if (p === 'current') {
+          fromInput.value = currentFrom;
+          toInput.value = currentTo;
+        } else if (p === 'today') {
+          fromInput.value = today;
+          toInput.value = today;
+        } else if (p === 'yesterday') {
+          const y = H.yesterday();
+          fromInput.value = y;
+          toInput.value = y;
+        } else if (p === 'this_week') {
+          const r = this.getPeriodRange('this_week');
+          fromInput.value = r.from;
+          toInput.value = r.to;
+        } else if (p === 'this_month') {
+          const r = this.getPeriodRange('this_month');
+          fromInput.value = r.from;
+          toInput.value = r.to;
+        } else if (p === 'all') {
+          fromInput.value = '';
+          toInput.value = '';
+        }
+        updatePreview();
+      };
+
+      fromInput.onchange = () => { presetSelect.value = 'custom'; updatePreview(); };
+      toInput.onchange = () => { presetSelect.value = 'custom'; updatePreview(); };
+
+      updatePreview();
+
+      document.getElementById('btn-close-export-modal').onclick = () => H.hideModal();
+      document.getElementById('btn-cancel-export').onclick = () => H.hideModal();
+
+      confirmBtn.onclick = async () => {
+        const from = fromInput.value;
+        const to = toInput.value;
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Generating CSV...';
+
+        const [orders, allPayments] = await Promise.all([
+          S.getAll('orders'),
+          S.getAll('payments')
+        ]);
+
+        const paymentsMap = {};
+        allPayments.forEach(p => {
+          if (!paymentsMap[p.orderId]) paymentsMap[p.orderId] = [];
+          paymentsMap[p.orderId].push(p);
+        });
+
+        const filtered = orders.filter(o => H.isDateInRange(o.date, from, to));
+
+        if (filtered.length === 0) {
+          H.showToast('No orders found in selected date range', 'error');
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Download CSV';
+          return;
+        }
+
+        const csvData = filtered.map(o => {
+          const orderPayments = paymentsMap[o.id] || [];
+          const methodStr = orderPayments.length > 0
+            ? orderPayments.map(p => p.method + (p.lastFour ? ` (${p.lastFour})` : '')).join(', ')
+            : 'N/A';
+
+          return {
+            'Invoice ID': o.invoiceId,
+            'Customer Name': o.customerName || 'Walk-in Customer',
+            'Customer Phone': o.customerPhone || 'N/A',
+            'Sales Date': H.formatDateTime(o.date),
+            'Payment Method': methodStr,
+            'Subtotal': o.subtotal,
+            'Discount Amount': o.discountAmount,
+            'Tax Amount': o.taxAmount,
+            'Grand Total': o.grandTotal,
+            'Due Amount': o.dueAmount,
+            'Returned Amount': o.returnedAmount
+          };
+        });
+
+        const dateSuffix = from && to ? `${from}_to_${to}` : (from ? `from_${from}` : (to ? `to_${to}` : 'all'));
+        H.exportCSV(csvData, `sales_list_${dateSuffix}`);
+        H.showToast(`Exported ${filtered.length} orders successfully!`, 'success');
+        H.hideModal();
+      };
     }
   };
 

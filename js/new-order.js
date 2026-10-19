@@ -3,1181 +3,1434 @@
 
   const NewOrder = {
     cart: [],
-    selectedCustomer: null,
-    payments: [{ method: 'Cash', amount: 0, lastFour: '' }],
+    categories: [],
+    products: [],
+    selectedCategory: 'all',
+    searchQuery: '',
+    orderType: 'Dine In', // 'Dine In' or 'Take Away'
+    selectedTable: 'Table 01',
+    customerInfo: { name: 'Walk-in Guest', phone: '' },
+    discount: { type: 'none', value: 0, amount: 0, code: '' },
+    taxPercent: 5.0, // Default restaurant sales tax 5%
+    savedBills: [],
 
     async render() {
       const mc = document.getElementById('main-content');
       const S = POS.Store;
       const H = POS.Helpers;
 
+      // Reset state for new order
       this.cart = [];
-      this.selectedCustomer = null;
-      this.payments = [{ method: 'Cash', amount: 0, lastFour: '' }];
+      this.selectedCategory = 'all';
+      this.searchQuery = '';
+      this.orderType = 'Dine In';
+      this.selectedTable = 'Table 01';
+      this.customerInfo = { name: 'Walk-in Guest', phone: '' };
+      this.discount = { type: 'none', value: 0, amount: 0, code: '' };
 
-      // Ensure active payment channels with custom logos & colors are preloaded
+      // Preload payment methods
       await H.loadPaymentMethods();
 
-      mc.innerHTML = `
-        <div class="page-header fade-in" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-          <div>
-            <h2 class="page-title" style="display:flex; align-items:center; gap:8px;">
-              <span>🛒</span> New Sales Order
-            </h2>
-            <p class="page-subtitle">Add customer details, scan barcodes or select products, and complete payment.</p>
-          </div>
-          <div class="page-actions">
-            <a href="/sales-list" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-              Sales History
-            </a>
-          </div>
-        </div>
-
-        <div class="order-layout fade-in">
-          <!-- Left Panel: Form, Search & Cart -->
-          <div class="flex flex-col gap-2">
-            <!-- Customer & Date -->
-            <div class="card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-              <div class="card-body form-row" style="grid-template-columns: 2fr 1fr; gap:16px;">
-                <div class="form-group" style="position:relative; margin-bottom:0;">
-                  <label class="form-label" style="font-weight:700; font-size:12px; color:#334155;">Customer (Phone or Name)</label>
-                  <input type="text" class="form-input" id="search-customer" placeholder="Search customer phone or name..." style="border: 1.5px solid #cbd5e1; font-weight:500; border-radius:6px; height:40px;">
-                  <div class="product-results" id="customer-results"></div>
-                  <div id="customer-details" class="mt-1" style="display:none;"></div>
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-weight:700; font-size:12px; color:#334155;">Sales Date</label>
-                  <input type="date" class="form-input" id="sales-date" value="${H.today()}" style="border: 1.5px solid #cbd5e1; border-radius:6px; height:40px;">
-                </div>
-              </div>
-            </div>
-
-            <!-- Product Search & Cart Table -->
-            <div class="card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-              <div class="card-body">
-                <div class="product-search-wrap">
-                  <div style="display: flex; gap: 8px;">
-                    <div class="search-box" style="flex: 1; position:relative;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                      <input type="text" id="search-product" placeholder="Type product name, SKU or scan barcode..." style="padding-left:36px; border: 1.5px solid #cbd5e1; font-weight:500; border-radius:6px; height:42px;">
-                    </div>
-                    <button class="btn btn-secondary" id="btn-add-custom-prod" title="Add Custom Item" style="white-space:nowrap; font-weight:600; padding:0 14px; height:42px; border-radius:6px; border:1.5px solid #cbd5e1;">+ Custom Item</button>
-                  </div>
-                  <div class="product-results" id="product-results"></div>
-                </div>
-
-                <div class="table-wrapper mt-3" style="border-radius:8px; border:1px solid #e2e8f0; max-height:480px; overflow-y:auto;">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th>Product / Variation & SKU</th>
-                        <th style="width:125px;">Price</th>
-                        <th style="width:120px;" class="text-center">Qty</th>
-                        <th style="width:120px;" class="text-right">Total</th>
-                        <th style="width:40px;"></th>
-                      </tr>
-                    </thead>
-                    <tbody id="cart-tbody"></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <!-- Discount & Tax -->
-            <div class="card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-              <div class="card-header" style="font-weight:700; font-size:12.5px; color:#475569; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-                🏷️ Discount & Tax Settings
-              </div>
-              <div class="card-body form-row" style="grid-template-columns: repeat(4, 1fr); gap:12px;">
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Discount Type</label>
-                  <select class="form-select" id="discount-type" style="height:36px; font-size:13px; border-radius:6px;">
-                    <option value="none" selected>None</option>
-                    <option value="percentage">Percentage (%)</option>
-                    <option value="amount">Fixed Amount (৳)</option>
-                  </select>
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Discount Value</label>
-                  <input type="number" class="form-input" id="discount-value" value="0" min="0" disabled style="height:36px; font-size:13px; border-radius:6px;">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Promo Coupon</label>
-                  <div style="display:flex; gap:4px;">
-                    <input type="text" class="form-input" id="coupon-code" placeholder="e.g. SAVE10" style="text-transform:uppercase; height:36px; font-size:12px; border-radius:6px;">
-                    <button class="btn btn-secondary" id="btn-apply-coupon" style="padding:0 10px; font-size:11px; font-weight:700; height:36px; border-radius:6px;">Apply</button>
-                  </div>
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                  <label class="form-label" style="font-size:11px; font-weight:700; color:#64748b;">Tax (%)</label>
-                  <input type="number" class="form-input" id="tax-percent" value="0" min="0" style="height:36px; font-size:13px; border-radius:6px;">
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Panel: Order Summary & Payment Down the Summary -->
-          <div class="order-summary-column flex flex-col gap-3">
-            <!-- 1. Order Summary Card -->
-            <div class="order-summary-card shadow-sm">
-              <div class="summary-header">
-                <span style="display:flex; align-items:center; gap:6px;">📋 Order Summary</span>
-                <span id="summary-item-count" style="font-size:11px; font-weight:600; background:rgba(255,255,255,0.18); padding:2px 8px; border-radius:10px;">0 Items</span>
-              </div>
-              <div class="summary-body">
-                <div class="summary-row">
-                  <span>Sub Total:</span>
-                  <span class="summary-val" id="summary-subtotal">৳0.00</span>
-                </div>
-                <div class="summary-row">
-                  <span>Discount:</span>
-                  <span class="summary-val text-danger" id="summary-discount">-৳0.00</span>
-                </div>
-                <div class="summary-row">
-                  <span>Tax:</span>
-                  <span class="summary-val" id="summary-tax">৳0.00</span>
-                </div>
-                <div class="summary-row total">
-                  <span>Grand Total:</span>
-                  <span class="summary-val" id="summary-total">৳0.00</span>
-                </div>
-
-                <div class="summary-row" style="margin-top:6px; padding-top:8px; border-top:1px dashed #cbd5e1;">
-                  <span style="font-weight:600; color:#475569;">Total Paid:</span>
-                  <span class="summary-val text-success" id="summary-paid" style="font-weight:700;">৳0.00</span>
-                </div>
-
-                <!-- Due Balance Field -->
-                <div class="summary-row" id="row-due-balance" style="display:none; color:#ea580c; font-weight:700; background:#fff7ed; padding:7px 10px; border-radius:6px; margin-top:6px; border:1px solid #fed7aa; justify-content:space-between; align-items:center;">
-                  <span style="font-weight:700; color:#9a3412; font-size:12.5px;">Due Balance:</span>
-                  <span class="summary-val" id="summary-due" style="font-weight:800; color:#ea580c; font-size:15px;">৳0.00</span>
-                </div>
-
-                <!-- Change Return: Field (Placed on Order Summary Card) -->
-                <div class="summary-row" id="row-change-return" style="background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; padding:9px 12px; margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                  <span style="font-weight:700; color:#166534; font-size:13px; display:flex; align-items:center; gap:5px;">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-                    Change Return:
-                  </span>
-                  <span class="summary-val" id="summary-change" style="font-size:18px; font-weight:800; color:#15803d;">৳0.00</span>
-                </div>
-
-                <!-- Place Order Action Button (Placed on Order Summary Card) -->
-                <button class="btn btn-success btn-lg btn-block mt-3" id="btn-place-order" style="padding:15px; font-weight:800; letter-spacing:0.5px; font-size:15px; border-radius:8px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); display:flex; align-items:center; justify-content:center; gap:8px;">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  <span>COMPLETE & PLACE SALE</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- 2. Payment Information Card (Down the Order Summary) -->
-            <div class="payment-info-card shadow-sm">
-              <div class="payment-header">
-                <span style="display:flex; align-items:center; gap:6px;">💳 Payment Details</span>
-                <button type="button" class="btn btn-secondary btn-sm" id="btn-add-payment" style="font-size:11px; padding:3px 8px; font-weight:600; border-radius:6px; background:#fff;">
-                  + Split Pay
-                </button>
-              </div>
-              <div class="payment-body">
-                <!-- Payment Slices Container -->
-                <div id="payment-rows-container"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      this.initEvents();
-      this.renderCart();
-      this.renderPayments();
-      this.recalculate();
-    },
-
-    initEvents() {
-      const S = POS.Store;
-      const H = POS.Helpers;
-
-      // ── Customer Search & Select ─────────────────────
-      const searchCust = document.getElementById('search-customer');
-      const custResults = document.getElementById('customer-results');
-
-      searchCust.addEventListener('input', H.debounce(async (e) => {
-        const query = e.target.value.toLowerCase().trim();
-        if (!query) {
-          custResults.classList.remove('open');
-          return;
-        }
-
-        const matches = await S.query('customers', c =>
-          c.name.toLowerCase().includes(query) || c.phone.includes(query)
-        );
-
-        custResults.innerHTML = '';
-        if (matches.length === 0) {
-          custResults.innerHTML = `<div class="product-result-item" style="color:var(--text-secondary); cursor:pointer;">No customers found. Click to add new customer.</div>`;
-          custResults.onclick = () => this.showAddCustomerModal(query);
-        } else {
-          matches.forEach(c => {
-            const labelStyle = c.label ? `background:${H.labelColors[c.label] || '#64748b'};` : '';
-            custResults.innerHTML += `
-              <div class="product-result-item" data-id="${c.id}">
-                <div>
-                  <span class="pr-name" style="font-weight:600;">${H.esc(c.name)}</span>
-                  <span class="pr-sku" style="margin-left: 8px; color:#64748b;">${H.esc(c.phone)}</span>
-                </div>
-                ${c.label ? `<span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px;">${c.label}</span>` : ''}
-              </div>
-            `;
-          });
-
-          custResults.onclick = async (ev) => {
-            const item = ev.target.closest('.product-result-item');
-            if (!item) return;
-            const cid = item.dataset.id;
-            if (cid) {
-              const customer = await S.getById('customers', cid);
-              this.selectCustomer(customer);
-            }
-            custResults.classList.remove('open');
-          };
-        }
-        custResults.classList.add('open');
-      }, 200));
-
-      // Close dropdowns on outside click
-      document.addEventListener('click', (e) => {
-        const custEl = document.getElementById('customer-results');
-        const prodEl = document.getElementById('product-results');
-        if (custEl && !e.target.closest('#search-customer')) custEl.classList.remove('open');
-        if (prodEl && !e.target.closest('#search-product')) prodEl.classList.remove('open');
-      });
-
-      // ── Product Search (Server-Side MySQL, 300ms Debounce, AbortController) ──
-      const searchProd = document.getElementById('search-product');
-      const prodResults = document.getElementById('product-results');
-      let searchAbortController = null;
-
-      searchProd.addEventListener('input', H.debounce(async (e) => {
-        const query = e.target.value.toLowerCase().trim();
-        if (!query) {
-          if (searchAbortController) searchAbortController.abort();
-          prodResults.classList.remove('open');
-          prodResults.innerHTML = '';
-          return;
-        }
-
-        if (searchAbortController) searchAbortController.abort();
-        searchAbortController = new AbortController();
-
-        try {
-          const res = await fetch(`${window.location.origin}/api/products/search?q=${encodeURIComponent(query)}&limit=25`, {
-            headers: S.getHeaders(),
-            signal: searchAbortController.signal
-          });
-          if (!res.ok) return;
-          const products = await res.json();
-          const matches = [];
-
-          products.forEach(p => {
-            if (p.variations && p.variations.length > 0) {
-              p.variations.forEach(v => {
-                matches.push({
-                  id: p.id,
-                  productId: p.id,
-                  name: p.name + ` (${v.name})`,
-                  rawName: p.name,
-                  sku: v.sku || p.sku || '',
-                  barcode: v.barcode || p.barcode || '',
-                  generic: p.generic || '',
-                  strength: p.strength || '',
-                  category: p.category || '',
-                  price: v.price !== null && v.price !== undefined ? parseFloat(v.price) : parseFloat(p.sellingPrice || 0),
-                  stock: v.stock !== null && v.stock !== undefined ? parseInt(v.stock) : 0,
-                  image: p.image,
-                  variationName: v.name
-                });
-              });
-            } else {
-              matches.push({
-                id: p.id,
-                productId: p.id,
-                name: p.name,
-                rawName: p.name,
-                sku: p.sku || '',
-                barcode: p.barcode || '',
-                generic: p.generic || '',
-                strength: p.strength || '',
-                category: p.category || '',
-                price: parseFloat(p.sellingPrice || 0),
-                stock: parseInt(p.stock || 0),
-                image: p.image,
-                variationName: ''
-              });
-            }
-          });
-
-          prodResults.innerHTML = '';
-          if (matches.length === 0) {
-            prodResults.innerHTML = `<div class="product-result-item text-muted" style="padding:12px; text-align:center;">No products found matching "${H.esc(query)}".</div>`;
-          } else {
-            matches.forEach(m => {
-              const imgHtml = m.image 
-                ? `<img src="${m.image}" style="width:36px; height:36px; object-fit:cover; border-radius:var(--radius-sm); margin-right:10px;">`
-                : `<div style="width:36px; height:36px; border-radius:var(--radius-sm); background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; color:#64748b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.27 6.96 8.73 4.86 8.73-4.86"/><path d="M12 22.08V12"/></svg></div>`;
-
-              prodResults.innerHTML += `
-                <div class="product-result-item" data-id="${m.id}" data-var="${H.esc(m.variationName)}" data-sku="${H.esc(m.sku)}" data-price="${m.price}" data-stock="${m.stock}" data-name="${H.esc(m.name)}" data-image="${m.image || ''}" style="display:flex; align-items:center;">
-                  ${imgHtml}
-                  <div style="flex:1;">
-                    <div class="pr-name" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                      <span style="font-weight:600;">${H.esc(m.rawName || m.name)}</span>
-                      ${m.variationName ? `<span class="badge" style="background:#fef3c7; color:#b45309; font-size:11px; padding:1px 6px; border-radius:4px; font-weight:600; border:1px solid #fde68a;">(${H.esc(m.variationName)})</span>` : ''}
-                      ${m.strength ? `<span class="badge" style="background:#eff6ff; color:#2563eb; font-size:11px; padding:1px 6px; border-radius:4px; font-weight:700; border:1px solid #bfdbfe;">${H.esc(m.strength)}</span>` : ''}
-                    </div>
-                    ${m.generic ? `<div style="font-size:11px; color:#475569; margin-top:2px; font-weight:500;">${H.esc(m.generic)}</div>` : ''}
-                    <div class="pr-sku" style="font-size:11px; color:#64748b; margin-top:1px;">SKU: ${H.esc(m.sku)} | Stock: ${m.stock}</div>
-                  </div>
-                  <div class="pr-price" style="font-weight:700; color:#059669;">${H.formatCurrency(m.price)}</div>
-                </div>
-              `;
-            });
-
-            prodResults.onclick = (ev) => {
-              const item = ev.target.closest('.product-result-item');
-              if (!item) return;
-              const ds = item.dataset;
-              this.addToCart({
-                productId: ds.id,
-                productName: ds.name,
-                variationName: ds.var,
-                sku: ds.sku || '',
-                unitPrice: parseFloat(ds.price),
-                qty: 1,
-                image: ds.image,
-                stock: parseInt(ds.stock)
-              });
-              prodResults.classList.remove('open');
-              searchProd.value = '';
-              searchProd.focus();
-            };
-          }
-          prodResults.classList.add('open');
-        } catch (err) {
-          if (err.name === 'AbortError') return;
-          console.error('Product search error:', err);
-        }
-      }, 300));
-
-      // Barcode Enter keypress lookup
-      searchProd.onkeydown = async (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          const query = searchProd.value.trim();
-          if (!query) return;
-
-          if (searchAbortController) searchAbortController.abort();
-
-          try {
-            const res = await fetch(`${window.location.origin}/api/products/resolve-scan?query=${encodeURIComponent(query)}`, {
-              headers: S.getHeaders()
-            });
-            const data = await res.json();
-            if (data && data.success && data.item) {
-              const it = data.item;
-              const matchedItem = {
-                productId: it.productId || it.id,
-                productName: it.productName || it.name,
-                variationName: it.variationName || '',
-                sku: it.sku || '',
-                unitPrice: parseFloat(it.price || 0),
-                qty: 1,
-                image: it.image || '',
-                stock: parseInt(it.currentStock || 0)
-              };
-              this.addToCart(matchedItem);
-              searchProd.value = '';
-              prodResults.classList.remove('open');
-              H.showToast(`Scanned: ${matchedItem.productName} ${matchedItem.variationName ? `(${matchedItem.variationName})` : ''}`, 'success');
-              this.playBeepSound();
-            } else {
-              searchProd.dispatchEvent(new Event('input'));
-            }
-          } catch (err) {
-            console.error('Scan resolution error:', err);
-            searchProd.dispatchEvent(new Event('input'));
+      // Load configured tax settings from database
+      try {
+        const settings = await S.getSettings();
+        if (settings) {
+          const isEnabled = settings.order_tax_status !== 'disabled';
+          if (isEnabled && settings.order_tax_percent !== undefined) {
+            this.taxPercent = parseFloat(settings.order_tax_percent);
+            if (isNaN(this.taxPercent)) this.taxPercent = 5.0;
+          } else if (!isEnabled) {
+            this.taxPercent = 0;
           }
         }
-      };
-
-      const btnCustom = document.getElementById('btn-add-custom-prod');
-      if (btnCustom) {
-        btnCustom.onclick = () => this.showAddCustomProductModal();
+      } catch (e) {
+        console.warn('Could not load tax settings, using default 5%:', e);
       }
 
-      // ── Discount & Tax Changes ───────────────────────
-      const discType = document.getElementById('discount-type');
-      const discVal = document.getElementById('discount-value');
-      const taxPercent = document.getElementById('tax-percent');
+      // Load products and categories from backend
+      await this.loadCatalog();
 
-      discType.onchange = () => {
-        const isNone = discType.value === 'none';
-        discVal.disabled = isNone;
-        if (isNone) discVal.value = 0;
-        this.recalculate();
-      };
-
-      discVal.oninput = () => this.recalculate();
-      taxPercent.oninput = () => this.recalculate();
-
-      // Apply Coupon
-      document.getElementById('btn-apply-coupon').onclick = async () => {
-        const codeInput = document.getElementById('coupon-code');
-        const code = codeInput.value.trim().toUpperCase();
-        if (!code) {
-          H.showToast('Please enter a coupon code', 'warning');
-          return;
-        }
-
-        const coupon = await S.getById('coupons', code);
-        if (coupon) {
-          discType.value = coupon.discountType;
-          discVal.value = coupon.discountValue;
-          discVal.disabled = false;
-          H.showToast(`Coupon "${coupon.code}" applied successfully!`);
-          this.recalculate();
-        } else {
-          H.showToast('Invalid coupon code', 'error');
-        }
-      };
-
-      // ── Add Payment Split Button ─────────────────────
-      document.getElementById('btn-add-payment').onclick = () => {
-        this.payments.push({ method: 'Cash', amount: 0, lastFour: '' });
-        this.renderPayments();
-        this.recalculate();
-      };
-
-      // ── Place Order Button ───────────────────────────
-      document.getElementById('btn-place-order').onclick = () => this.placeOrder();
-    },
-
-    showAddCustomProductModal() {
-      const H = POS.Helpers;
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay active';
-      overlay.innerHTML = `
-        <div class="modal animate" style="max-width:440px;">
-          <div class="modal-header">
-            <h3>Add Custom Product</h3>
-            <button class="modal-close" id="modal-close-custom">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label" style="font-weight:700;">Product Name *</label>
-              <input type="text" class="form-input" id="custom-prod-name" placeholder="Enter product name..." value="" style="border: 1.5px solid #cbd5e1;">
+      mc.innerHTML = `
+        <div class="clapos-container fade-in">
+          <!-- ── Top Header ── -->
+          <div class="clapos-topbar">
+            <div class="clapos-brand">
+              <div class="clapos-brand-logo">ZP</div>
+              <div class="clapos-brand-title">Zen<span>Pos</span></div>
             </div>
-            <div class="form-row" style="grid-template-columns: 1fr 1fr; gap:12px;">
-              <div class="form-group">
-                <label class="form-label" style="font-weight:700;">Unit Price (৳) *</label>
-                <input type="number" class="form-input" id="custom-prod-price" placeholder="0.00" value="" min="0" step="0.01" style="border: 1.5px solid #cbd5e1;">
+
+            <div class="clapos-search-wrap">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" class="clapos-search-input" id="clapos-search-input" placeholder="Search Items / Menu..." autocomplete="off">
+            </div>
+
+            <div class="clapos-top-status">
+              <div class="clapos-status-pill" id="zenpos-token-pill" style="font-weight:800; color:#059669; background:#ECFDF5; border:1px solid #A7F3D0;" title="Today's Active Kitchen Token">
+                🎟️ Token #<span id="clapos-next-token">01</span>
               </div>
-              <div class="form-group">
-                <label class="form-label" style="font-weight:700;">Quantity</label>
-                <input type="number" class="form-input" id="custom-prod-qty" value="1" min="1" style="border: 1.5px solid #cbd5e1;">
+              <div class="clapos-status-pill">
+                <span id="clapos-live-time"></span>
+              </div>
+              <div class="clapos-status-pill" title="System Online & Synchronized">
+                <span style="color:#10B981; font-size:14px;">●</span> Online
               </div>
             </div>
-            <div class="form-group" style="margin-top:8px;">
-              <label class="form-label" style="font-weight:700;">SKU Number (Optional)</label>
-              <input type="text" class="form-input" id="custom-prod-sku" placeholder="e.g. CUST-01" style="border: 1.5px solid #cbd5e1;">
-            </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" id="custom-prod-cancel">Cancel</button>
-            <button class="btn btn-primary" id="custom-prod-add">Add to Cart</button>
+
+          <!-- ── POS Body Layout (Category Rail + Products Grid + Order Details) ── -->
+          <div class="clapos-body">
+            <!-- 1. Left Vertical Category Rail -->
+            <div class="clapos-category-rail" id="clapos-category-rail">
+              <!-- Dynamically populated -->
+            </div>
+
+            <!-- 2. Center Products Grid -->
+            <div class="clapos-products-area">
+              <div class="clapos-grid-header">
+                <div class="clapos-grid-title" id="clapos-active-cat-title">
+                  All Menu
+                  <span class="clapos-item-count-badge" id="clapos-prod-count">0 items</span>
+                </div>
+              </div>
+              <div class="clapos-products-grid" id="clapos-products-grid">
+                <!-- Dynamically populated product cards -->
+              </div>
+            </div>
+
+            <!-- 3. Right Order Details Sidebar -->
+            <div class="clapos-order-panel">
+              <!-- Quick Action 3 Buttons (Save Bill Removed) -->
+              <div class="clapos-actions-grid">
+                <button class="clapos-action-btn" id="btn-order-customer" title="Customer Details (Optional)">
+                  <span class="clapos-action-icon">👤</span>
+                  <span>Customer</span>
+                </button>
+                <button class="clapos-action-btn" id="btn-order-tables" title="Select Table">
+                  <span class="clapos-action-icon">🍽️</span>
+                  <span>Tables</span>
+                </button>
+                <button class="clapos-action-btn" id="btn-order-discount" title="Apply Discount">
+                  <span class="clapos-action-icon">🏷️</span>
+                  <span>Discount</span>
+                </button>
+              </div>
+
+              <!-- Order Details Header -->
+              <div class="clapos-order-header">
+                <div class="clapos-order-title-row">
+                  <span class="clapos-order-title">Order Details</span>
+                  <span class="clapos-table-badge" id="clapos-table-indicator">${this.orderType === 'Dine In' ? this.selectedTable : 'Take Away'}</span>
+                </div>
+
+                <!-- Dine In / Take Away Segmented Control -->
+                <div class="clapos-mode-toggle">
+                  <button class="clapos-mode-btn ${this.orderType === 'Dine In' ? 'active' : ''}" id="btn-mode-dinein">Dine In</button>
+                  <button class="clapos-mode-btn ${this.orderType === 'Take Away' ? 'active' : ''}" id="btn-mode-takeaway">Take Away</button>
+                </div>
+              </div>
+
+              <!-- Cart List -->
+              <div class="clapos-cart-list" id="clapos-cart-list">
+                <!-- Dynamically populated cart items -->
+              </div>
+
+              <!-- Clear all link -->
+              <button class="clapos-clear-btn" id="btn-clear-order">Clear All Order</button>
+
+              <!-- Order Summary Breakdown & Process Button -->
+              <div class="clapos-order-footer">
+                <div class="clapos-summary-row">
+                  <span>Subtotal</span>
+                  <span id="clapos-summary-subtotal" style="font-weight:700; color:#1E293B;">৳0.00</span>
+                </div>
+                <div class="clapos-summary-row">
+                  <span id="clapos-summary-tax-label">Vat / Tax (${this.taxPercent}%)</span>
+                  <span id="clapos-summary-tax">৳0.00</span>
+                </div>
+                <div class="clapos-summary-row" id="clapos-summary-discount-row" style="display:none;">
+                  <span>Voucher / Discount</span>
+                  <span id="clapos-summary-discount" style="color:#EF4444; font-weight:700;">-৳0.00</span>
+                </div>
+                <div class="clapos-summary-row total-row">
+                  <span>Total</span>
+                  <span class="clapos-grand-total" id="clapos-summary-total">৳0.00</span>
+                </div>
+
+                <button class="clapos-process-btn" id="btn-process-transaction" disabled>
+                  Process Transaction
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       `;
-      document.body.appendChild(overlay);
 
-      const nameInput = overlay.querySelector('#custom-prod-name');
-      const priceInput = overlay.querySelector('#custom-prod-price');
-      const qtyInput = overlay.querySelector('#custom-prod-qty');
-      const skuInput = overlay.querySelector('#custom-prod-sku');
-      setTimeout(() => nameInput.focus(), 80);
+      // Fetch live token for today
+      fetch('/api/next-token')
+        .then(r => r.json())
+        .then(d => {
+          const el = document.getElementById('clapos-next-token');
+          if (el && d.tokenNo) el.textContent = String(d.tokenNo).padStart(2, '0');
+        })
+        .catch(() => {});
 
-      const close = () => overlay.remove();
-      overlay.querySelector('#modal-close-custom').onclick = close;
-      overlay.querySelector('#custom-prod-cancel').onclick = close;
-
-      const submitCustom = () => {
-        const pName = nameInput.value.trim();
-        if (!pName) {
-          H.showToast('Please enter a product name', 'warning');
-          nameInput.focus();
-          return;
-        }
-        const pPrice = parseFloat(priceInput.value) || 0;
-        const pQty = parseInt(qtyInput.value) || 1;
-        const pSku = skuInput.value.trim() || 'CUSTOM';
-
-        this.addToCart({
-          productId: 'custom_' + Date.now().toString(36),
-          productName: pName,
-          variationName: '',
-          sku: pSku,
-          unitPrice: pPrice,
-          qty: pQty,
-          image: '',
-          stock: 999999,
-          isCustom: true
-        });
-        close();
-      };
-
-      overlay.querySelector('#custom-prod-add').onclick = submitCustom;
-      priceInput.onkeydown = (e) => {
-        if (e.key === 'Enter') submitCustom();
-      };
-      nameInput.onkeydown = (e) => {
-        if (e.key === 'Enter') priceInput.focus();
-      };
+      this.setupClock();
+      this.renderCategoryRail();
+      this.renderProductCards();
+      this.renderCart();
+      this.bindEvents();
     },
 
-    selectCustomer(c) {
-      const H = POS.Helpers;
-      this.selectedCustomer = c;
-      const det = document.getElementById('customer-details');
-      const searchInput = document.getElementById('search-customer');
+    setupClock() {
+      const update = () => {
+        const el = document.getElementById('clapos-live-time');
+        if (!el) return;
+        const now = new Date();
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dName = days[now.getDay()];
+        const mName = months[now.getMonth()];
+        const day = now.getDate();
+        let hours = now.getHours();
+        const mins = String(now.getMinutes()).padStart(2, '0');
+        el.textContent = `${hours}:${mins} ${dName} ${mName} ${day}`;
+      };
+      update();
+      setInterval(update, 30000);
+    },
 
-      if (c) {
-        searchInput.value = `${c.name} (${c.phone})`;
-        const labelStyle = c.label ? `background:${H.labelColors[c.label] || '#64748b'};` : '';
-        det.innerHTML = `
-          <div style="display:flex; align-items:center; gap:8px; background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0;">
-            <div style="flex:1;">
-              <span style="font-weight:700; color:#1e293b;">${H.esc(c.name)}</span>
-              ${c.label ? `<span class="badge-label" style="${labelStyle} font-size:9px; padding:2px 6px; margin-left:6px;">${c.label}</span>` : ''}
-              ${c.customDiscount > 0 ? `<span class="text-success" style="font-weight:700; margin-left:6px; font-size:12px;">(Auto Discount: ${c.customDiscount}%)</span>` : ''}
-            </div>
-            <button class="btn btn-secondary btn-sm" id="btn-clear-customer" style="padding:2px 8px; font-size:11px;">Change</button>
+    async loadCatalog() {
+      try {
+        const [catRes, prodRes] = await Promise.all([
+          fetch('/api/categories'),
+          fetch('/api/products')
+        ]);
+        this.categories = catRes.ok ? await catRes.json() : [];
+        this.products = prodRes.ok ? await prodRes.json() : [];
+      } catch (err) {
+        console.error('Error loading catalog:', err);
+      }
+    },
+
+    getCategoryIcon(catName) {
+      const name = (catName || '').toLowerCase();
+      if (name.includes('burger')) return '🍔';
+      if (name.includes('chicken') || name.includes('wing')) return '🍗';
+      if (name.includes('drink') || name.includes('beverage')) return '🥤';
+      if (name.includes('coffee') || name.includes('tea')) return '☕';
+      if (name.includes('dessert') || name.includes('ice cream')) return '🍨';
+      if (name.includes('sides') || name.includes('fries')) return '🍟';
+      if (name.includes('combo')) return '🍱';
+      return '🍽️';
+    },
+
+    renderCategoryRail() {
+      const rail = document.getElementById('clapos-category-rail');
+      if (!rail) return;
+
+      const allBtn = `
+        <button class="clapos-cat-btn ${this.selectedCategory === 'all' ? 'active' : ''}" data-cat="all">
+          <div class="clapos-cat-icon">🍽️</div>
+          <div class="clapos-cat-name">All Menu</div>
+        </button>
+      `;
+
+      const catBtns = this.categories.map(c => `
+        <button class="clapos-cat-btn ${this.selectedCategory === c.id ? 'active' : ''}" data-cat="${c.id}">
+          <div class="clapos-cat-icon" style="overflow:hidden; display:flex; align-items:center; justify-content:center;">
+            ${c.image 
+              ? `<img src="${c.image}" alt="${POS.Helpers.escapeHtml(c.name)}" style="width:100%; height:100%; object-fit:cover; border-radius:8px;">` 
+              : (c.icon || this.getCategoryIcon(c.name))}
+          </div>
+          <div class="clapos-cat-name">${POS.Helpers.escapeHtml(c.name)}</div>
+        </button>
+      `).join('');
+
+      rail.innerHTML = allBtn + catBtns;
+
+      rail.querySelectorAll('.clapos-cat-btn').forEach(btn => {
+        btn.onclick = () => {
+          this.selectedCategory = btn.dataset.cat;
+          rail.querySelectorAll('.clapos-cat-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          const catObj = this.categories.find(c => c.id === this.selectedCategory);
+          const titleEl = document.getElementById('clapos-active-cat-title');
+          if (titleEl) {
+            titleEl.innerHTML = `
+              ${this.selectedCategory === 'all' ? 'All Menu' : POS.Helpers.escapeHtml(catObj ? catObj.name : 'Category')}
+              <span class="clapos-item-count-badge" id="clapos-prod-count">0 items</span>
+            `;
+          }
+          this.renderProductCards();
+        };
+      });
+    },
+
+    renderProductCards() {
+      const grid = document.getElementById('clapos-products-grid');
+      const countEl = document.getElementById('clapos-prod-count');
+      if (!grid) return;
+
+      let filtered = this.products.filter(p => p.status !== 'Trash');
+
+      if (this.selectedCategory !== 'all') {
+        filtered = filtered.filter(p => p.categoryId === this.selectedCategory);
+      }
+
+      if (this.searchQuery) {
+        const q = this.searchQuery.toLowerCase().trim();
+        filtered = filtered.filter(p => 
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.sku || '').toLowerCase().includes(q) ||
+          (p.tag || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (countEl) countEl.textContent = `${filtered.length} items`;
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: #94A3B8;">
+            <div style="font-size: 32px; margin-bottom: 8px;">🍽️</div>
+            <p style="font-size: 14px; font-weight:600;">No dishes found matching your criteria.</p>
           </div>
         `;
-        det.style.display = 'block';
+        return;
+      }
 
-        if (c.customDiscount > 0) {
-          const discType = document.getElementById('discount-type');
-          const discVal = document.getElementById('discount-value');
-          discType.value = 'percentage';
-          discType.dispatchEvent(new Event('change'));
-          discVal.value = c.customDiscount;
-        }
+      grid.innerHTML = filtered.map(item => {
+        const inCartItem = this.cart.find(c => c.productId === item.id);
+        const qty = inCartItem ? inCartItem.qty : 0;
+        const price = parseFloat(item.sellingPrice || 0);
 
-        document.getElementById('btn-clear-customer').onclick = () => {
-          this.selectCustomer(null);
-          const discType = document.getElementById('discount-type');
-          discType.value = 'none';
-          discType.dispatchEvent(new Event('change'));
+        return `
+          <div class="clapos-card ${qty > 0 ? 'in-cart' : ''}" data-id="${item.id}">
+            <div class="clapos-card-img-wrap">
+              ${item.image ? `
+                <img src="${item.image}" alt="${POS.Helpers.escapeHtml(item.name)}" class="clapos-card-img" loading="lazy">
+              ` : `
+                <div style="font-size: 36px;">${this.getCategoryIcon(item.name)}</div>
+              `}
+            </div>
+            <div class="clapos-card-name" title="${POS.Helpers.escapeHtml(item.name)}">
+              ${POS.Helpers.escapeHtml(item.name)}
+            </div>
+            <div class="clapos-card-bottom">
+              <span class="clapos-card-price">৳${price.toFixed(2)}</span>
+              ${qty > 0 ? `
+                <div class="clapos-qty-pill" onclick="event.stopPropagation();">
+                  <button class="clapos-qty-btn btn-card-dec" data-id="${item.id}">-</button>
+                  <span>${qty}</span>
+                  <button class="clapos-qty-btn btn-card-inc" data-id="${item.id}">+</button>
+                </div>
+              ` : `
+                <button class="clapos-card-add-btn btn-card-add" data-id="${item.id}" title="Add to Order">+</button>
+              `}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Bind card click & controls
+      grid.querySelectorAll('.clapos-card').forEach(card => {
+        card.onclick = () => {
+          this.addToCart(card.dataset.id);
         };
-      } else {
-        searchInput.value = '';
-        det.innerHTML = '';
-        det.style.display = 'none';
-        this.selectedCustomer = null;
-      }
-      this.recalculate();
+      });
+
+      grid.querySelectorAll('.btn-card-add').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          this.addToCart(btn.dataset.id);
+        };
+      });
+
+      grid.querySelectorAll('.btn-card-inc').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          this.updateCartQty(btn.dataset.id, 1);
+        };
+      });
+
+      grid.querySelectorAll('.btn-card-dec').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          this.updateCartQty(btn.dataset.id, -1);
+        };
+      });
     },
 
-    showAddCustomerModal(prefilledPhone) {
-      const H = POS.Helpers;
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay active';
-      overlay.innerHTML = `
-        <div class="modal" style="max-width:450px;">
-          <div class="modal-header">
-            <h3>Add New Customer</h3>
-            <button class="modal-close" id="modal-close">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label">Full Name *</label>
-              <input type="text" class="form-input" id="cust-modal-name" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Phone Number *</label>
-              <input type="text" class="form-input" id="cust-modal-phone" value="${H.esc(prefilledPhone)}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Customer Label</label>
-              <select class="form-select" id="cust-modal-label">
-                ${H.customerLabels.map(l => `<option value="${l}">${l}</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Custom Discount (%)</label>
-              <input type="number" class="form-input" id="cust-modal-discount" value="0" min="0" max="100">
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" id="cust-modal-cancel">Cancel</button>
-            <button class="btn btn-primary" id="cust-modal-save">Save & Select</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(overlay);
+    addToCart(productId) {
+      const prod = this.products.find(p => p.id === productId);
+      if (!prod) return;
 
-      const close = () => overlay.remove();
-      overlay.querySelector('#modal-close').onclick = close;
-      overlay.querySelector('#cust-modal-cancel').onclick = close;
-
-      overlay.querySelector('#cust-modal-save').onclick = async () => {
-        const name = overlay.querySelector('#cust-modal-name').value.trim();
-        const phone = overlay.querySelector('#cust-modal-phone').value.trim();
-        const label = overlay.querySelector('#cust-modal-label').value;
-        const discount = parseFloat(overlay.querySelector('#cust-modal-discount').value) || 0;
-
-        if (!name || !phone) {
-          H.showToast('Please enter name and phone', 'error');
-          return;
-        }
-
-        const newCust = await POS.Store.add('customers', {
-          name, phone, label, customDiscount: discount, email: '', address: ''
-        });
-
-        this.selectCustomer(newCust);
-        close();
-        H.showToast('Customer created successfully');
-      };
-    },
-
-    addToCart(item) {
-      const existing = this.cart.find(i => i.productId === item.productId && i.variationName === item.variationName);
+      const existing = this.cart.find(c => c.productId === productId);
       if (existing) {
-        if (existing.qty < item.stock) {
-          existing.qty++;
-        } else {
-          POS.Helpers.showToast('Insufficient stock available!', 'warning');
-        }
+        existing.qty += 1;
+        existing.total = existing.qty * existing.price;
       } else {
+        const price = parseFloat(prod.sellingPrice || 0);
         this.cart.push({
-          ...item,
-          sku: item.sku || ''
+          productId: prod.id,
+          productName: prod.name,
+          image: prod.image || '',
+          price: price,
+          qty: 1,
+          total: price
         });
       }
+
       this.renderCart();
-      this.recalculate();
+      this.renderProductCards();
+    },
+
+    updateCartQty(productId, delta) {
+      const item = this.cart.find(c => c.productId === productId);
+      if (!item) return;
+
+      item.qty += delta;
+      if (item.qty <= 0) {
+        this.cart = this.cart.filter(c => c.productId !== productId);
+      } else {
+        item.total = item.qty * item.price;
+      }
+
+      this.renderCart();
+      this.renderProductCards();
     },
 
     renderCart() {
-      const H = POS.Helpers;
-      const tbody = document.getElementById('cart-tbody');
-      tbody.innerHTML = '';
+      const listEl = document.getElementById('clapos-cart-list');
+      const processBtn = document.getElementById('btn-process-transaction');
+      if (!listEl) return;
 
       if (this.cart.length === 0) {
-        tbody.innerHTML = `
-          <tr id="empty-cart-row">
-            <td colspan="5" style="text-align:center; padding:45px 20px; color:#64748b;">
-              <div style="width:48px; height:48px; margin:0 auto 10px auto; border-radius:50%; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
-              </div>
-              <div style="font-weight:700; color:#334155; font-size:14px; margin-bottom:4px;">Your Cart is Empty</div>
-              <div style="font-size:12px; color:#94a3b8;">Scan barcode or type in the search bar above to add products to sale.</div>
-            </td>
-          </tr>
-        `;
-        return;
-      }
-
-      this.cart.forEach((item, index) => {
-        const thumbHtml = item.image 
-          ? `<img src="${item.image}" style="width:34px; height:34px; object-fit:cover; border-radius:6px; margin-right:10px; flex-shrink:0;">`
-          : `<div style="width:34px; height:34px; border-radius:6px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; margin-right:10px; font-size:11px; font-weight:700; color:#64748b; flex-shrink:0;">${item.isCustom ? 'C' : 'P'}</div>`;
-
-        const skuHtml = item.sku 
-          ? `<span style="display:inline-block; font-size:11px; color:#475569; font-family:monospace; background:#f1f5f9; padding:1px 6px; border-radius:4px; border:1px solid #e2e8f0; margin-top:2px;">SKU: ${H.esc(item.sku)}</span>`
-          : `<span style="font-size:11px; color:#94a3b8; font-style:italic; margin-top:2px;">No SKU</span>`;
-
-        const nameDisplayHtml = item.isCustom
-          ? `
-            <div style="flex:1; min-width:0;">
-              <input type="text" class="form-input input-custom-name" value="${H.esc(item.productName)}" placeholder="Custom product name..." style="padding:4px 8px; height:28px; width:100%; font-size:12.5px; font-weight:600; border-radius:4px;">
-              <div style="margin-top:2px;">${skuHtml}</div>
-            </div>
-          `
-          : `
-            <div style="flex:1; min-width:0;">
-              <div class="cart-item-name" style="font-weight:600; font-size:13.5px; color:#1e293b; line-height:1.3;">
-                ${H.esc(item.productName)}
-                ${item.variationName ? `<span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:11px; padding:1px 6px; border-radius:4px; font-weight:600; margin-left:4px;">(${H.esc(item.variationName)})</span>` : ''}
-              </div>
-              <div style="margin-top:2px;">${skuHtml}</div>
-            </div>
-          `;
-
-        tbody.innerHTML += `
-          <tr class="cart-item-row" data-index="${index}">
-            <td>
-              <div style="display:flex; align-items:center;">
-                ${thumbHtml}
-                ${nameDisplayHtml}
-              </div>
-            </td>
-            <td>
-              <div style="display:flex; align-items:center; gap:4px; max-width:115px;">
-                <span style="font-weight:700; color:#64748b; font-size:13px;">৳</span>
-                <input type="number" class="input-price form-input" value="${item.unitPrice || ''}" placeholder="0.00" min="0" step="0.01" style="padding:4px 6px; height:30px; width:100%; font-size:13px; font-weight:700; border-radius:4px;">
-              </div>
-            </td>
-            <td class="text-center">
-              <div class="qty-control" style="margin:0 auto; width:fit-content; border-radius:6px;">
-                <button class="btn-qty-dec" style="width:28px; height:28px;">-</button>
-                <input type="number" class="input-qty" value="${item.qty}" min="1" max="${item.stock}" style="width:36px; height:28px; font-weight:700;">
-                <button class="btn-qty-inc" style="width:28px; height:28px;">+</button>
-              </div>
-            </td>
-            <td class="text-right" style="font-weight:800; font-size:13.5px; color:#0f172a;">${H.formatCurrency(item.unitPrice * item.qty)}</td>
-            <td class="text-center">
-              <button class="btn btn-secondary btn-sm btn-qty-remove" style="width:28px; height:28px; padding:0; display:flex; align-items:center; justify-content:center; color:#ef4444; border-color:#fee2e2; background:#fef2f2; border-radius:6px;" title="Remove Item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              </button>
-            </td>
-          </tr>
-        `;
-      });
-
-      // Bind events
-      tbody.querySelectorAll('.cart-item-row').forEach(row => {
-        const index = parseInt(row.dataset.index, 10);
-        const item = this.cart[index];
-
-        const customNameInput = row.querySelector('.input-custom-name');
-        if (customNameInput) {
-          customNameInput.onchange = (e) => {
-            item.productName = e.target.value.trim() || 'Custom Item';
-          };
-        }
-
-        row.querySelector('.btn-qty-dec').onclick = () => {
-          if (item.qty > 1) {
-            item.qty--;
-            this.renderCart();
-            this.recalculate();
-          }
-        };
-
-        row.querySelector('.btn-qty-inc').onclick = () => {
-          if (item.qty < item.stock) {
-            item.qty++;
-            this.renderCart();
-            this.recalculate();
-          } else {
-            H.showToast('Max available stock reached!', 'warning');
-          }
-        };
-
-        row.querySelector('.input-qty').onchange = (e) => {
-          let val = parseInt(e.target.value, 10) || 1;
-          if (val < 1) val = 1;
-          if (val > item.stock) {
-            val = item.stock;
-            H.showToast('Adjusted to max available stock', 'warning');
-          }
-          item.qty = val;
-          this.renderCart();
-          this.recalculate();
-        };
-
-        row.querySelector('.input-price').onchange = (e) => {
-          let val = parseFloat(e.target.value) || 0;
-          if (val < 0) val = 0;
-          item.unitPrice = val;
-          this.renderCart();
-          this.recalculate();
-        };
-
-        row.querySelector('.btn-qty-remove').onclick = () => {
-          this.cart.splice(index, 1);
-          this.renderCart();
-          this.recalculate();
-        };
-      });
-    },
-
-    renderPayments() {
-      const H = POS.Helpers;
-      const container = document.getElementById('payment-rows-container');
-      if (!container) return;
-      container.innerHTML = '';
-
-      const allMethods = (H.paymentMethods && H.paymentMethods.length > 0)
-        ? H.paymentMethods
-        : ['Cash', 'Card', 'bKash', 'Nagad', 'Rocket', 'Bank Transfer', 'Other'];
-
-      this.payments.forEach((p, idx) => {
-        const isCash = (p.method || 'Cash').toLowerCase() === 'cash';
-
-        const buttonsHtml = allMethods.map(m => {
-          const isSelected = (p.method === m);
-          const icon = H.getPaymentMethodIcon(m, 22);
-          return `
-            <button type="button" 
-                    class="btn-pay-method ${isSelected ? 'active' : ''}" 
-                    data-method="${H.esc(m)}" 
-                    data-row="${idx}">
-              <div class="pay-icon">${icon}</div>
-              <span class="pay-name">${H.esc(m)}</span>
-            </button>
-          `;
-        }).join('');
-
-        container.innerHTML += `
-          <div class="payment-slice-card" data-index="${idx}" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:10px;">
-            ${this.payments.length > 1 ? `
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
-                <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">Split Payment #${idx + 1}</span>
-                <button type="button" class="btn-remove-payment" style="background:none; border:none; color:#ef4444; font-size:11px; font-weight:700; cursor:pointer; padding:0; display:flex; align-items:center; gap:3px;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                  Remove
-                </button>
-              </div>
-            ` : `
-              <div style="font-size:11.5px; font-weight:700; color:#475569; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
-                <span>Payment Method</span>
-                <span class="badge" style="background:#e0e7ff; color:#3730a3; font-size:10px; padding:1px 6px; border-radius:4px; font-weight:700;">${H.esc(p.method)}</span>
-              </div>
-            `}
-
-            <!-- Method Selection Grid (All buttons with logos - NO dropdown) -->
-            <div class="pay-methods-grid">
-              ${buttonsHtml}
-            </div>
-
-            <!-- Amount & Details Row -->
-            <div style="display:flex; gap:8px; align-items:flex-end;">
-              <div class="form-group" style="flex:1; margin-bottom:0;">
-                <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">
-                  Amount Paid (৳)
-                </label>
-                <div style="position:relative;">
-                  <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#64748b;">৳</span>
-                  <input type="number" 
-                         class="form-input payment-amount-input" 
-                         value="${p.amount !== undefined ? p.amount : ''}" 
-                         min="0" 
-                         step="0.01" 
-                         placeholder="0.00"
-                         style="padding-left:26px; font-weight:700; font-size:14px; color:#0f172a; border-radius:6px; background:#fff; height:38px;">
-                </div>
-              </div>
-
-              ${!isCash ? `
-                <div class="form-group" style="width:115px; margin-bottom:0;">
-                  <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:4px;">
-                    Last 4 / Trx
-                  </label>
-                  <input type="text" 
-                         class="form-input payment-lastfour-input" 
-                         value="${H.esc(p.lastFour || '')}" 
-                         maxlength="15" 
-                         placeholder="e.g. 1234"
-                         style="font-size:12px; font-weight:600; text-align:center; border-radius:6px; background:#fff; height:38px;">
-                </div>
-              ` : ''}
-            </div>
-
-            ${isCash ? `
-              <!-- Quick Cash Chips -->
-              <div class="quick-cash-chips">
-                <span style="font-size:10px; font-weight:700; color:#94a3b8; align-self:center; margin-right:2px;">Quick:</span>
-                <button type="button" class="btn-cash-chip btn-chip-exact" data-row="${idx}">Exact</button>
-                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="50">+50</button>
-                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="100">+100</button>
-                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="500">+500</button>
-                <button type="button" class="btn-cash-chip btn-chip-add" data-row="${idx}" data-add="1000">+1000</button>
-              </div>
-            ` : ''}
+        listEl.innerHTML = `
+          <div class="clapos-cart-empty">
+            <span style="font-size: 32px;">🛒</span>
+            <p style="font-weight: 600; color:#475569;">No items in order</p>
+            <span style="font-size:12px; color:#94A3B8;">Tap any dish from the menu to add</span>
           </div>
         `;
-      });
-
-      // Bind button clicks for method selection
-      container.querySelectorAll('.btn-pay-method').forEach(btn => {
-        btn.onclick = () => {
-          const rowIdx = parseInt(btn.dataset.row, 10);
-          const chosenMethod = btn.dataset.method;
-          if (this.payments[rowIdx]) {
-            this.payments[rowIdx].method = chosenMethod;
-            this.renderPayments();
-            this.recalculate();
-          }
-        };
-      });
-
-      // Bind quick cash chips
-      container.querySelectorAll('.btn-chip-exact').forEach(btn => {
-        btn.onclick = () => {
-          const rowIdx = parseInt(btn.dataset.row, 10);
-          const subtotal = this.cart.reduce((s, i) => s + (i.unitPrice * i.qty), 0);
-          const discType = document.getElementById('discount-type').value;
-          const discVal = parseFloat(document.getElementById('discount-value').value) || 0;
-          let discAmt = discType === 'percentage' ? subtotal * (discVal / 100) : (discType === 'amount' ? discVal : 0);
-          if (discAmt > subtotal) discAmt = subtotal;
-          const taxPct = parseFloat(document.getElementById('tax-percent').value) || 0;
-          const grandTotal = subtotal - discAmt + ((subtotal - discAmt) * (taxPct / 100));
-
-          if (this.payments.length === 1) {
-            this.payments[0].amount = grandTotal;
-          } else {
-            let others = 0;
-            this.payments.forEach((p, pIdx) => { if (pIdx !== rowIdx) others += p.amount; });
-            this.payments[rowIdx].amount = Math.max(0, grandTotal - others);
-          }
-          this.renderPayments();
-          this.recalculate();
-        };
-      });
-
-      container.querySelectorAll('.btn-chip-add').forEach(btn => {
-        btn.onclick = () => {
-          const rowIdx = parseInt(btn.dataset.row, 10);
-          const addVal = parseFloat(btn.dataset.add) || 0;
-          this.payments[rowIdx].amount = (parseFloat(this.payments[rowIdx].amount) || 0) + addVal;
-          this.renderPayments();
-          this.recalculate();
-        };
-      });
-
-      // Bind amount inputs
-      container.querySelectorAll('.payment-slice-card').forEach(card => {
-        const idx = parseInt(card.dataset.index, 10);
-
-        const amountInput = card.querySelector('.payment-amount-input');
-        if (amountInput) {
-          amountInput.oninput = (e) => {
-            const val = parseFloat(e.target.value) || 0;
-            this.payments[idx].amount = val;
-            this.recalculate(false);
-          };
-        }
-
-        const lastFourInput = card.querySelector('.payment-lastfour-input');
-        if (lastFourInput) {
-          lastFourInput.oninput = (e) => {
-            this.payments[idx].lastFour = e.target.value.trim();
-          };
-        }
-
-        const removeBtn = card.querySelector('.btn-remove-payment');
-        if (removeBtn) {
-          removeBtn.onclick = () => {
-            this.payments.splice(idx, 1);
-            this.renderPayments();
-            this.recalculate();
-          };
-        }
-      });
-    },
-
-    recalculate(updateSingleInput = true) {
-      const H = POS.Helpers;
-
-      // 1. Calculate Subtotal
-      let subtotal = 0;
-      let totalItemsCount = 0;
-      this.cart.forEach(item => {
-        subtotal += (item.unitPrice * item.qty);
-        totalItemsCount += item.qty;
-      });
-
-      // 2. Calculate Discount
-      const discType = document.getElementById('discount-type').value;
-      const discVal = parseFloat(document.getElementById('discount-value').value) || 0;
-      let discountAmount = 0;
-
-      if (discType === 'percentage') {
-        discountAmount = subtotal * (discVal / 100);
-      } else if (discType === 'amount') {
-        discountAmount = discVal;
-      }
-
-      if (discountAmount > subtotal) discountAmount = subtotal;
-
-      // 3. Calculate Tax
-      const taxPercent = parseFloat(document.getElementById('tax-percent').value) || 0;
-      const taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
-
-      // 4. Grand Total
-      const grandTotal = subtotal - discountAmount + taxAmount;
-
-      // 5. Default single payment row amount to grandTotal when appropriate
-      if (this.payments.length === 1 && updateSingleInput) {
-        this.payments[0].amount = grandTotal;
-        const pInput = document.querySelector('.payment-amount-input');
-        if (pInput && document.activeElement !== pInput) {
-          pInput.value = grandTotal > 0 ? grandTotal.toFixed(2) : '0.00';
-        }
-      }
-
-      // 6. Total Paid sum
-      const totalPaid = this.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-
-      // 7. Due & Change
-      let due = 0;
-      let change = 0;
-
-      if (totalPaid >= grandTotal) {
-        change = totalPaid - grandTotal;
+        if (processBtn) processBtn.disabled = true;
       } else {
-        due = grandTotal - totalPaid;
+        listEl.innerHTML = this.cart.map(item => `
+          <div class="clapos-cart-item">
+            <div class="clapos-cart-item-info">
+              <div class="clapos-cart-item-name">${POS.Helpers.escapeHtml(item.productName)}</div>
+              <div class="clapos-cart-item-unit">৳${item.price.toFixed(2)} × ${item.qty}</div>
+            </div>
+            <div class="clapos-cart-item-right">
+              <div class="clapos-cart-item-price">৳${item.total.toFixed(2)}</div>
+              <button class="clapos-cart-item-remove btn-cart-remove" data-id="${item.productId}" title="Remove">✕</button>
+            </div>
+          </div>
+        `).join('');
+
+        listEl.querySelectorAll('.btn-cart-remove').forEach(btn => {
+          btn.onclick = () => {
+            this.cart = this.cart.filter(c => c.productId !== btn.dataset.id);
+            this.renderCart();
+            this.renderProductCards();
+          };
+        });
+
+        if (processBtn) processBtn.disabled = false;
       }
 
-      // Update Summary Fields
-      const subtotalEl = document.getElementById('summary-subtotal');
-      const discountEl = document.getElementById('summary-discount');
-      const taxEl = document.getElementById('summary-tax');
-      const totalEl = document.getElementById('summary-total');
-      const countEl = document.getElementById('summary-item-count');
-      const paidEl = document.getElementById('summary-paid');
-      const changeEl = document.getElementById('summary-change');
-      const dueRow = document.getElementById('row-due-balance');
-      const dueEl = document.getElementById('summary-due');
-
-      if (subtotalEl) subtotalEl.textContent = H.formatCurrency(subtotal);
-      if (discountEl) discountEl.textContent = `-${H.formatCurrency(discountAmount)}`;
-      if (taxEl) taxEl.textContent = H.formatCurrency(taxAmount);
-      if (totalEl) totalEl.textContent = H.formatCurrency(grandTotal);
-      if (countEl) countEl.textContent = `${totalItemsCount} Item${totalItemsCount === 1 ? '' : 's'}`;
-      if (paidEl) paidEl.textContent = H.formatCurrency(totalPaid);
-      if (changeEl) changeEl.textContent = H.formatCurrency(change);
-
-      if (dueRow && dueEl) {
-        if (due > 0 && this.cart.length > 0) {
-          dueRow.style.display = 'flex';
-          dueEl.textContent = H.formatCurrency(due);
-        } else {
-          dueRow.style.display = 'none';
-        }
-      }
+      this.updateSummary();
     },
 
-    async placeOrder() {
-      const S = POS.Store;
-      const H = POS.Helpers;
+    updateSummary() {
+      let subtotal = 0;
+      this.cart.forEach(item => {
+        subtotal += item.total;
+      });
 
-      if (this.cart.length === 0) {
-        H.showToast('Cart is empty. Please add items first.', 'error');
-        return;
-      }
-
-      const salesDate = document.getElementById('sales-date').value;
-      const subtotal = this.cart.reduce((s, i) => s + (i.unitPrice * i.qty), 0);
-
-      const discType = document.getElementById('discount-type').value;
-      const discVal = parseFloat(document.getElementById('discount-value').value) || 0;
+      // Calculate discount
       let discountAmount = 0;
-      if (discType === 'percentage') {
-        discountAmount = subtotal * (discVal / 100);
-      } else if (discType === 'amount') {
-        discountAmount = discVal;
+      if (this.discount.type === 'percentage') {
+        discountAmount = subtotal * (this.discount.value / 100);
+      } else if (this.discount.type === 'amount') {
+        discountAmount = Math.min(subtotal, this.discount.value);
+      }
+      this.discount.amount = discountAmount;
+
+      const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+      const taxAmount = discountedSubtotal * (this.taxPercent / 100);
+      const grandTotal = discountedSubtotal + taxAmount;
+
+      const subtotalEl = document.getElementById('clapos-summary-subtotal');
+      const taxLabelEl = document.getElementById('clapos-summary-tax-label');
+      const taxEl = document.getElementById('clapos-summary-tax');
+      const discountRow = document.getElementById('clapos-summary-discount-row');
+      const discountEl = document.getElementById('clapos-summary-discount');
+      const totalEl = document.getElementById('clapos-summary-total');
+
+      if (subtotalEl) subtotalEl.textContent = `৳${subtotal.toFixed(2)}`;
+      if (taxLabelEl) taxLabelEl.textContent = `Vat / Tax (${this.taxPercent}%)`;
+      if (taxEl) taxEl.textContent = `৳${taxAmount.toFixed(2)}`;
+
+      if (discountRow && discountEl) {
+        if (discountAmount > 0) {
+          discountRow.style.display = 'flex';
+          discountEl.textContent = `-৳${discountAmount.toFixed(2)}`;
+        } else {
+          discountRow.style.display = 'none';
+        }
       }
 
-      const taxPercent = parseFloat(document.getElementById('tax-percent').value) || 0;
-      const taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
-      const grandTotal = subtotal - discountAmount + taxAmount;
+      if (totalEl) totalEl.textContent = `৳${grandTotal.toFixed(2)}`;
+    },
 
-      const totalPaid = this.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-      const dueAmount = Math.max(0, grandTotal - totalPaid);
+    bindEvents() {
+      const searchInput = document.getElementById('clapos-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          this.searchQuery = e.target.value;
+          this.renderProductCards();
+        });
+      }
 
-      const invoiceId = await S.getNextId('INV-');
-      const orderId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+      // Dine In / Take Away toggles
+      const dineInBtn = document.getElementById('btn-mode-dinein');
+      const takeAwayBtn = document.getElementById('btn-mode-takeaway');
+      const tableIndicator = document.getElementById('clapos-table-indicator');
 
-      // Construct Bangladesh GMT+6 date-time string preserving the exact selected calendar date
-      const sDate = salesDate || H.today();
-      const nowTime = H.nowBDTime();
-      const orderDate = `${sDate} ${nowTime}`;
+      if (dineInBtn && takeAwayBtn) {
+        dineInBtn.onclick = () => {
+          this.orderType = 'Dine In';
+          dineInBtn.classList.add('active');
+          takeAwayBtn.classList.remove('active');
+          if (tableIndicator) tableIndicator.textContent = this.selectedTable;
+        };
+        takeAwayBtn.onclick = () => {
+          this.orderType = 'Take Away';
+          takeAwayBtn.classList.add('active');
+          dineInBtn.classList.remove('active');
+          if (tableIndicator) tableIndicator.textContent = 'Take Away';
+        };
+      }
 
-      const order = {
-        id: orderId,
-        invoiceId,
-        customerId: this.selectedCustomer ? this.selectedCustomer.id : 'walk-in',
-        customerName: this.selectedCustomer ? this.selectedCustomer.name : 'Walk-in Customer',
-        customerPhone: this.selectedCustomer ? this.selectedCustomer.phone : 'N/A',
-        date: orderDate,
-        subtotal,
-        discountType: discType,
-        discountValue: discVal,
-        discountAmount,
-        taxPercent,
-        taxAmount,
-        grandTotal,
-        paidAmount: totalPaid,
-        dueAmount,
-        returnedAmount: 0,
-        status: dueAmount > 0 ? 'due' : 'completed'
+      // Clear all
+      const clearBtn = document.getElementById('btn-clear-order');
+      if (clearBtn) {
+        clearBtn.onclick = () => {
+          if (this.cart.length === 0) return;
+          if (confirm('Clear all items from this order?')) {
+            this.cart = [];
+            this.renderCart();
+            this.renderProductCards();
+          }
+        };
+      }
+
+      // Quick Action Buttons
+      const custBtn = document.getElementById('btn-order-customer');
+      if (custBtn) custBtn.onclick = () => this.showCustomerModal();
+
+      const tableBtn = document.getElementById('btn-order-tables');
+      if (tableBtn) tableBtn.onclick = () => this.showTablesModal();
+
+      const discBtn = document.getElementById('btn-order-discount');
+      if (discBtn) discBtn.onclick = () => this.showDiscountModal();
+
+      // Process Transaction checkout
+      const processBtn = document.getElementById('btn-process-transaction');
+      if (processBtn) processBtn.onclick = () => this.showTransactionModal();
+    },
+
+    // ── 1. Customer Modal (Optional info, NOT required) ──
+    showCustomerModal() {
+      const H = POS.Helpers;
+      const modalHtml = `
+        <div class="modal" id="modal-order-customer" style="max-width:440px;">
+          <div class="modal-header">
+            <h3>👤 Guest / Customer Details</h3>
+            <button class="modal-close" id="btn-close-cust">&times;</button>
+          </div>
+          <div class="modal-body" style="padding:18px 24px;">
+            <p style="font-size:12.5px; color:#64748B; margin-bottom:14px;">
+              Customer details are <strong>completely optional</strong> for dining orders.
+            </p>
+            <div class="form-group mb-2">
+              <label class="form-label">Guest / Customer Name</label>
+              <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || 'Walk-in Guest')}" placeholder="e.g. John Doe / Walk-in Guest">
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label">Phone Number (Optional)</label>
+              <input type="text" class="form-input" id="cust-modal-phone" value="${H.escapeHtml(this.customerInfo.phone || '')}" placeholder="e.g. +1 555-0192">
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:12px 24px;">
+            <button class="btn btn-secondary" id="btn-cancel-cust">Cancel</button>
+            <button class="btn btn-primary" id="btn-save-cust" style="background:#10B981; border-color:#10B981;">Save Guest Details</button>
+          </div>
+        </div>
+      `;
+
+      H.showModal(modalHtml);
+
+      document.getElementById('btn-close-cust').onclick = () => H.hideModal();
+      document.getElementById('btn-cancel-cust').onclick = () => H.hideModal();
+      document.getElementById('btn-save-cust').onclick = () => {
+        const name = document.getElementById('cust-modal-name').value.trim() || 'Walk-in Guest';
+        const phone = document.getElementById('cust-modal-phone').value.trim();
+        this.customerInfo = { name, phone };
+        H.showToast(`Guest set to: ${name}`, 'success');
+        H.hideModal();
+      };
+    },
+
+    // ── 2. Tables Modal ──
+    async showTablesModal() {
+      const H = POS.Helpers;
+      let tablesList = [];
+      try {
+        const res = await fetch('/api/tables');
+        if (res.ok) {
+          const all = await res.json();
+          tablesList = all.filter(t => t.status === 'active');
+        }
+      } catch (e) {
+        console.warn('Error fetching tables:', e);
+      }
+
+      if (tablesList.length === 0) {
+        tablesList = [
+          { name: 'Table 01', zone: 'Main Dining', seats: 4 },
+          { name: 'Table 02', zone: 'Main Dining', seats: 2 },
+          { name: 'Table 03', zone: 'Main Dining', seats: 4 },
+          { name: 'Table 04', zone: 'Main Dining', seats: 4 },
+          { name: 'Table 05', zone: 'Main Dining', seats: 6 },
+          { name: 'Table 06', zone: 'Main Dining', seats: 6 },
+          { name: 'Patio 01', zone: 'Outdoor Patio', seats: 4 },
+          { name: 'VIP 01', zone: 'VIP Lounge', seats: 8 }
+        ];
+      }
+
+      // Group tables by zone
+      const zones = {};
+      tablesList.forEach(t => {
+        const z = t.zone || 'Main Dining';
+        if (!zones[z]) zones[z] = [];
+        zones[z].push(t);
+      });
+
+      const modalHtml = `
+        <div class="modal" id="modal-order-tables" style="max-width:540px;">
+          <div class="modal-header">
+            <h3>🍽️ Select Dining Table</h3>
+            <button class="modal-close" id="btn-close-tables">&times;</button>
+          </div>
+          <div class="modal-body" style="padding:18px 24px; max-height:65vh; overflow-y:auto;">
+            <p style="font-size:12.5px; color:#64748B; margin-bottom:14px;">Choose an active dining table for this Dine-In transaction:</p>
+            
+            ${Object.entries(zones).map(([zoneName, tList]) => `
+              <div style="margin-bottom:16px;">
+                <div style="font-size:11.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                  <span>📍</span> <span>${H.escapeHtml(zoneName)}</span>
+                </div>
+                <div class="table-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(105px, 1fr)); gap:10px;">
+                  ${tList.map(t => {
+                    const isSel = this.selectedTable === t.name && this.orderType === 'Dine In';
+                    return `
+                      <div class="table-card ${isSel ? 'selected' : ''}" data-table="${H.escapeHtml(t.name)}" style="padding:10px 8px; border-radius:10px; border:2px solid ${isSel ? '#10B981' : '#E2E8F0'}; background:${isSel ? '#F0FDF4' : '#fff'}; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; transition:all 0.15s;">
+                        <span style="font-size:22px;">🪑</span>
+                        <span style="font-size:12.5px; font-weight:800; color:#1E293B;">${H.escapeHtml(t.name)}</span>
+                        <span style="font-size:10px; font-weight:700; color:#64748B; background:#F1F5F9; padding:1px 6px; border-radius:10px;">${t.seats ? `${t.seats} Seats` : 'Table'}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="modal-footer" style="padding:12px 24px;">
+            <button class="btn btn-secondary" id="btn-cancel-tables">Cancel</button>
+          </div>
+        </div>
+      `;
+
+      H.showModal(modalHtml);
+
+      document.getElementById('btn-close-tables').onclick = () => H.hideModal();
+      document.getElementById('btn-cancel-tables').onclick = () => H.hideModal();
+
+      document.querySelectorAll('.table-card').forEach(card => {
+        card.onclick = () => {
+          this.selectedTable = card.dataset.table;
+          this.orderType = 'Dine In';
+          const tableIndicator = document.getElementById('clapos-table-indicator');
+          if (tableIndicator) tableIndicator.textContent = this.selectedTable;
+          const dineInBtn = document.getElementById('btn-mode-dinein');
+          const takeAwayBtn = document.getElementById('btn-mode-takeaway');
+          if (dineInBtn) dineInBtn.classList.add('active');
+          if (takeAwayBtn) takeAwayBtn.classList.remove('active');
+          H.showToast(`Assigned to ${this.selectedTable}`, 'success');
+          H.hideModal();
+        };
+      });
+    },
+
+    // ── 3. Discount Modal ──
+    showDiscountModal() {
+      const H = POS.Helpers;
+      const modalHtml = `
+        <div class="modal" id="modal-order-discount" style="max-width:440px;">
+          <div class="modal-header">
+            <h3>🏷️ Order Discount</h3>
+            <button class="modal-close" id="btn-close-disc">&times;</button>
+          </div>
+          <div class="modal-body" style="padding:18px 24px;">
+            <div style="display:flex; gap:8px; margin-bottom:14px;">
+              <button class="btn btn-secondary btn-sm btn-quick-disc" data-pct="5" style="flex:1;">5% Off</button>
+              <button class="btn btn-secondary btn-sm btn-quick-disc" data-pct="10" style="flex:1;">10% Off</button>
+              <button class="btn btn-secondary btn-sm btn-quick-disc" data-pct="15" style="flex:1;">15% Off</button>
+              <button class="btn btn-secondary btn-sm btn-quick-disc" data-pct="20" style="flex:1;">20% Off</button>
+            </div>
+            <div class="form-group mb-2">
+              <label class="form-label">Discount Type</label>
+              <select class="form-select" id="disc-modal-type">
+                <option value="none">None (0%)</option>
+                <option value="percentage" ${this.discount.type === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
+                <option value="amount" ${this.discount.type === 'amount' ? 'selected' : ''}>Fixed Amount (৳)</option>
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label">Discount Value</label>
+              <input type="number" min="0" step="0.5" class="form-input" id="disc-modal-val" value="${this.discount.value || 0}">
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:12px 24px;">
+            <button class="btn btn-secondary" id="btn-cancel-disc">Cancel</button>
+            <button class="btn btn-primary" id="btn-save-disc" style="background:#10B981; border-color:#10B981;">Apply Discount</button>
+          </div>
+        </div>
+      `;
+
+      H.showModal(modalHtml);
+
+      document.querySelectorAll('.btn-quick-disc').forEach(btn => {
+        btn.onclick = () => {
+          document.getElementById('disc-modal-type').value = 'percentage';
+          document.getElementById('disc-modal-val').value = btn.dataset.pct;
+        };
+      });
+
+      document.getElementById('btn-close-disc').onclick = () => H.hideModal();
+      document.getElementById('btn-cancel-disc').onclick = () => H.hideModal();
+      document.getElementById('btn-save-disc').onclick = () => {
+        const type = document.getElementById('disc-modal-type').value;
+        const val = parseFloat(document.getElementById('disc-modal-val').value) || 0;
+        this.discount.type = type;
+        this.discount.value = val;
+        this.updateSummary();
+        H.showToast('Discount applied', 'success');
+        H.hideModal();
+      };
+    },
+
+    // ── Helper to resolve icon for payment method ──
+    getPaymentMethodIcon(name) {
+      const n = String(name || '').toLowerCase().trim();
+      if (n.includes('cash')) return '💵';
+      if (n.includes('card') || n.includes('visa') || n.includes('master') || n.includes('debit') || n.includes('credit')) return '💳';
+      if (n.includes('bkash')) return '📱';
+      if (n.includes('nagad')) return '📱';
+      if (n.includes('rocket')) return '🚀';
+      if (n.includes('bank')) return '🏦';
+      return '💸';
+    },
+
+    // ── Process Transaction Modal & Order Submission ──
+    async showTransactionModal() {
+      if (this.cart.length === 0) return;
+      const H = POS.Helpers;
+      const S = POS.Store;
+
+      // Calculate final totals
+      let subtotal = 0;
+      this.cart.forEach(i => subtotal += i.total);
+      const discountAmount = this.discount.amount || 0;
+      const discountedSub = Math.max(0, subtotal - discountAmount);
+      const taxAmount = discountedSub * (this.taxPercent / 100);
+      const grandTotal = discountedSub + taxAmount;
+
+      // Load active payment methods from settings
+      await H.loadPaymentMethods();
+      let activeMethods = (H.paymentMethodsList || []).filter(m => m.status === 'active');
+      if (activeMethods.length === 0) {
+        const fallbackNames = (H.paymentMethods && H.paymentMethods.length > 0) 
+          ? H.paymentMethods 
+          : ['Cash', 'Card', 'bKash', 'Nagad', 'Rocket'];
+        activeMethods = fallbackNames.map(name => ({
+          name,
+          icon: this.getPaymentMethodIcon(name),
+          color: H.getPaymentMethodColor(name)
+        }));
+      }
+
+      let selectedMethod = activeMethods[0].name;
+
+      const modalHtml = `
+        <div class="modal" id="modal-process-transaction" style="max-width:540px;">
+          <div class="modal-header" style="background:#FAF8F5; border-bottom:1px solid #E8E2D8;">
+            <div>
+              <h3 style="font-size:18px; font-weight:800; color:#1C1714;">💳 Process Payment</h3>
+              <p style="font-size:12px; color:#64748B; margin:0;">${this.orderType === 'Dine In' ? this.selectedTable : 'Take Away'} • ${this.customerInfo.name || 'Walk-in Guest'}</p>
+            </div>
+            <button class="modal-close" id="btn-close-tx">&times;</button>
+          </div>
+          <div class="modal-body" style="padding:20px 24px;">
+            <!-- Amount To Pay Banner -->
+            <div style="background:#F0FDF4; border:1.5px solid #BBF7D0; border-radius:14px; padding:16px; text-align:center; margin-bottom:16px;">
+              <div style="font-size:12px; font-weight:700; color:#166534; text-transform:uppercase; letter-spacing:0.5px;">Amount To Pay</div>
+              <div style="font-size:32px; font-weight:900; color:#059669;">৳${grandTotal.toFixed(2)}</div>
+            </div>
+
+            <!-- Dynamic Payment Methods from Settings -->
+            <div class="form-group mb-3">
+              <label class="form-label" style="font-weight:700;">Select Payment Method</label>
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(105px, 1fr)); gap:8px;" id="pm-buttons-wrap">
+                ${activeMethods.map((m, idx) => `
+                  <button class="btn btn-secondary btn-pay-method ${idx === 0 ? 'active' : ''}" 
+                          data-method="${H.escapeHtml(m.name)}" 
+                          style="font-weight:700; padding:10px 8px; border-radius:10px; display:flex; flex-direction:column; align-items:center; gap:6px; font-size:12px; transition:all 0.15s; ${idx === 0 ? 'background:#F0FDF4; border-color:#10B981; color:#059669; box-shadow:0 2px 6px rgba(16,185,129,0.2);' : ''}">
+                    <div style="width:36px; height:36px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                      ${H.getPaymentMethodIcon(m, 34)}
+                    </div>
+                    <span style="font-weight:800; font-size:12px; line-height:1.2; text-align:center;">${H.escapeHtml(m.name)}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Cash Tender Section -->
+            <div id="cash-tender-wrap">
+              <label class="form-label" style="font-weight:700;">Cash Tendered (৳)</label>
+              <input type="number" step="0.5" min="0" class="form-input mb-2" id="tx-tendered" value="${grandTotal.toFixed(2)}" style="font-size:18px; font-weight:800; height:44px; text-align:center;">
+              
+              <div style="display:flex; gap:6px; margin-bottom:14px;">
+                <button class="btn btn-secondary btn-xs btn-quick-tender" data-val="${grandTotal.toFixed(2)}" style="flex:1; font-weight:700;">Exact</button>
+                <button class="btn btn-secondary btn-xs btn-quick-tender" data-val="100" style="flex:1;">৳100</button>
+                <button class="btn btn-secondary btn-xs btn-quick-tender" data-val="500" style="flex:1;">৳500</button>
+                <button class="btn btn-secondary btn-xs btn-quick-tender" data-val="1000" style="flex:1;">৳1000</button>
+                <button class="btn btn-secondary btn-xs btn-quick-tender" data-val="2000" style="flex:1;">৳2000</button>
+              </div>
+
+              <!-- Change calculation -->
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#FAF8F5; padding:10px 14px; border-radius:10px; border:1px solid #E8E2D8; margin-bottom:10px;">
+                <span style="font-weight:700; font-size:13px; color:#475569;">Change to Return:</span>
+                <span id="tx-change-amount" style="font-size:18px; font-weight:900; color:#0F172A;">৳0.00</span>
+              </div>
+            </div>
+
+            <!-- Print Receipt Checkbox -->
+            <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+              <input type="checkbox" id="tx-print-receipt" checked style="width:16px; height:16px; accent-color:#10B981;">
+              <label for="tx-print-receipt" style="font-size:13px; font-weight:600; color:#475569; cursor:pointer;">
+                Print Customer Receipt & Kitchen Ticket (KOT)
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:14px 24px; background:#FAF8F5; border-top:1px solid #E8E2D8;">
+            <button class="btn btn-secondary" id="btn-cancel-tx" style="height:44px;">Cancel</button>
+            <button class="btn btn-primary" id="btn-confirm-transaction" style="height:44px; flex:1; background:#10B981; border-color:#10B981; font-size:15px; font-weight:800; box-shadow:0 4px 12px rgba(16,185,129,0.35);">
+              ✓ Complete Transaction (৳${grandTotal.toFixed(2)})
+            </button>
+          </div>
+        </div>
+      `;
+
+      H.showModal(modalHtml);
+
+      const tenderInput = document.getElementById('tx-tendered');
+      const changeEl = document.getElementById('tx-change-amount');
+      const cashWrap = document.getElementById('cash-tender-wrap');
+
+      const updateChange = () => {
+        const tendered = parseFloat(tenderInput.value) || 0;
+        const change = Math.max(0, tendered - grandTotal);
+        if (changeEl) changeEl.textContent = `৳${change.toFixed(2)}`;
       };
 
-      const orderItemsList = this.cart.map(item => ({
-        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 9) + '_' + item.productId,
-        orderId,
-        productId: item.productId,
-        productName: item.productName,
-        variationName: item.variationName || null,
-        qty: item.qty,
-        unitPrice: item.unitPrice,
-        total: item.unitPrice * item.qty,
-        costPrice: parseFloat(item.costPrice) || 0.00
-      }));
+      if (tenderInput) tenderInput.addEventListener('input', updateChange);
 
-      const orderPaymentsList = this.payments.map(p => ({
-        id: 'pay_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-        orderId,
-        method: p.method,
-        amount: parseFloat(p.amount) || 0,
-        lastFour: p.lastFour || null
-      }));
+      document.querySelectorAll('.btn-pay-method').forEach(btn => {
+        btn.onclick = () => {
+          document.querySelectorAll('.btn-pay-method').forEach(b => {
+            b.classList.remove('active');
+            b.style.background = '';
+            b.style.borderColor = '';
+            b.style.color = '';
+          });
+          btn.classList.add('active');
+          btn.style.background = '#F0FDF4';
+          btn.style.borderColor = '#10B981';
+          btn.style.color = '#059669';
+          selectedMethod = btn.dataset.method;
 
-      const result = await S.placeOrder(order, orderItemsList, orderPaymentsList);
+          const isCash = selectedMethod.toLowerCase() === 'cash';
+          if (cashWrap) {
+            cashWrap.style.display = isCash ? 'block' : 'none';
+          }
+          if (!isCash && tenderInput) {
+            tenderInput.value = grandTotal.toFixed(2);
+            updateChange();
+          }
+        };
+      });
 
-      if (result.success) {
-        H.showToast(`Order ${invoiceId} placed successfully!`);
-        if (await H.confirm('Would you like to print the receipt?')) {
-          H.printOrder(order, this.cart, orderPaymentsList);
+      document.querySelectorAll('.btn-quick-tender').forEach(btn => {
+        btn.onclick = () => {
+          if (tenderInput) {
+            tenderInput.value = parseFloat(btn.dataset.val).toFixed(2);
+            updateChange();
+          }
+        };
+      });
+
+      document.getElementById('btn-close-tx').onclick = () => H.hideModal();
+      document.getElementById('btn-cancel-tx').onclick = () => H.hideModal();
+
+      document.getElementById('btn-confirm-transaction').onclick = async () => {
+        const confirmBtn = document.getElementById('btn-confirm-transaction');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Processing Transaction...';
+
+        const tendered = (selectedMethod.toLowerCase() === 'cash' && tenderInput)
+          ? (parseFloat(tenderInput.value) || grandTotal)
+          : grandTotal;
+        const paidAmount = selectedMethod.toLowerCase() === 'cash' ? Math.min(grandTotal, tendered) : grandTotal;
+        const dueAmount = Math.max(0, grandTotal - paidAmount);
+
+        // Fetch Next Invoice ID
+        const invoiceId = await S.getNextId('INV-');
+        const orderId = 'ord_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+
+        const orderRecord = {
+          id: orderId,
+          invoiceId: invoiceId,
+          customerId: null,
+          customerName: this.customerInfo.name || 'Walk-in Guest',
+          customerPhone: this.customerInfo.phone || '',
+          orderType: this.orderType,
+          tableName: this.selectedTable,
+          date: H.getBangladeshDateTimeString ? H.getBangladeshDateTimeString(new Date()) : new Date().toISOString(),
+          subtotal: subtotal,
+          discountType: this.discount.type,
+          discountValue: this.discount.value,
+          discountAmount: discountAmount,
+          taxPercent: this.taxPercent,
+          taxAmount: taxAmount,
+          grandTotal: grandTotal,
+          paidAmount: paidAmount,
+          dueAmount: dueAmount,
+          returnedAmount: 0,
+          status: 'completed'
+        };
+
+        const orderItems = this.cart.map(item => ({
+          id: 'oi_' + Math.random().toString(36).substr(2, 9),
+          orderId: orderId,
+          productId: item.productId,
+          productName: item.productName,
+          variationName: '',
+          qty: item.qty,
+          unitPrice: item.price,
+          total: item.total,
+          costPrice: 0 // No cost price
+        }));
+
+        const payments = [{
+          id: 'pay_' + Math.random().toString(36).substr(2, 9),
+          method: selectedMethod,
+          amount: paidAmount
+        }];
+
+        const shouldPrint = document.getElementById('tx-print-receipt').checked;
+
+        const result = await S.placeOrder(orderRecord, orderItems, payments);
+
+        if (result && result.success) {
+          orderRecord.tokenNo = (result && result.tokenNo) ? result.tokenNo : 1;
+          H.showToast(`Order #${invoiceId} processed! Token #${orderRecord.tokenNo}`, 'success');
+          H.hideModal();
+
+          // Update live header token counter for next customer
+          const nextTokEl = document.getElementById('clapos-next-token');
+          if (nextTokEl) nextTokEl.textContent = String(orderRecord.tokenNo + 1).padStart(2, '0');
+
+          if (shouldPrint) {
+            this.printCustomerReceipt(orderRecord, orderItems, payments, grandTotal, tendered);
+          }
+
+          // Show success post-order modal with quick reprint buttons
+          this.showOrderSuccessModal(orderRecord, orderItems, payments, grandTotal, tendered);
+
+          // Reset order
+          this.cart = [];
+          this.renderCart();
+          this.renderProductCards();
+        } else {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Retry Transaction';
+          H.showToast((result && result.error) || 'Failed to place order', 'error');
         }
-        POS.Router.navigate('/sales-list');
-      } else {
-        H.showToast('Failed to place order: ' + result.error, 'error');
-      }
+      };
     },
 
-    async printInvoice(order, cartItems) {
+    // ── Success Modal with Token & Quick Print Actions ──
+    showOrderSuccessModal(order, items, payments, total, tendered) {
       const H = POS.Helpers;
-      H.printOrder(order, cartItems);
+      const modalHtml = `
+        <div class="modal" id="modal-order-success" style="max-width:440px; text-align:center;">
+          <div class="modal-body" style="padding:28px 24px;">
+            <div style="font-size:46px; margin-bottom:8px;">✅</div>
+            <h3 style="font-weight:900; font-size:22px; color:#1E293B; margin-bottom:4px;">Order Placed Successfully!</h3>
+            <p style="color:#64748B; font-size:13px; margin-bottom:16px;">Invoice: <strong>${order.invoiceId}</strong></p>
+            
+            <div style="background:#F8FAFC; border:2px dashed #059669; border-radius:14px; padding:16px; margin-bottom:20px;">
+              <div style="font-size:12px; font-weight:800; color:#065F46; text-transform:uppercase; letter-spacing:1px;">Today's Kitchen Token</div>
+              <div style="font-size:44px; font-weight:900; color:#059669; line-height:1.1; margin:6px 0;">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</div>
+              <div style="font-size:13px; font-weight:700; color:#047857;">${order.orderType.toUpperCase()} • ${order.tableName}</div>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <button class="btn btn-primary" id="btn-print-receipt-modal" style="height:44px; font-weight:800; background:#10B981; border-color:#10B981; font-size:14px;">
+                🧾 Print Customer Receipt
+              </button>
+              <button class="btn btn-secondary" id="btn-print-kot-modal" style="height:42px; font-weight:700; font-size:13.5px;">
+                🍳 Print Kitchen Ticket (KOT)
+              </button>
+              <button class="btn btn-secondary" id="btn-next-order-modal" style="height:40px; font-weight:700; color:#475569;">
+                + Next Order
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      H.showModal(modalHtml);
+
+      const btnRcpt = document.getElementById('btn-print-receipt-modal');
+      const btnKot = document.getElementById('btn-print-kot-modal');
+      const btnNext = document.getElementById('btn-next-order-modal');
+
+      if (btnRcpt) btnRcpt.onclick = () => this.printCustomerReceipt(order, items, payments, total, tendered);
+      if (btnKot) btnKot.onclick = () => this.printKitchenToken(order, items);
+      if (btnNext) btnNext.onclick = () => H.hideModal();
     },
 
-    playBeepSound() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
+    // ── Separate Kitchen Order Ticket (KOT) — Minimal Thermal Design ──
+    printKitchenToken(order, items) {
+      const H = POS.Helpers;
+      const printWindow = window.open('', '_blank', 'width=380,height=600');
+      if (!printWindow) return;
 
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+      const dateStr = order.date ? new Date(order.date).toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }) : new Date().toLocaleString();
 
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>KOT - Token #${order.tokenNo || 1}</title>
+          <style>
+            body { font-family: monospace, sans-serif; font-size: 13px; margin: 0; padding: 12px; color: #000; line-height: 1.35; background: #fff; }
+            .text-center { text-align: center; }
+            .divider { border-top: 1.5px dashed #000; margin: 8px 0; }
+            .bold { font-weight: 900; }
+            .token-box {
+              font-size: 28px;
+              font-weight: 900;
+              text-align: center;
+              border: 2px dashed #000;
+              background: transparent;
+              color: #000;
+              padding: 6px 0;
+              margin: 8px 0;
+              letter-spacing: 2px;
+            }
+            .table-box {
+              font-size: 14px;
+              font-weight: 800;
+              text-align: center;
+              border: 1.5px dashed #000;
+              background: transparent;
+              color: #000;
+              padding: 4px;
+              margin: 6px 0;
+              letter-spacing: 1px;
+            }
+            .item-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 6px 0;
+              border-bottom: 1px dashed #000;
+              font-size: 14px;
+              font-weight: 800;
+            }
+            .item-qty {
+              font-size: 16px;
+              width: 50px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="text-center bold" style="font-size: 15px; letter-spacing: 1px;">*** KITCHEN ORDER TICKET (KOT) ***</div>
+          <div class="text-center" style="font-size: 12px;">ZenPos Kitchen</div>
+          <div class="divider"></div>
+          
+          <div class="token-box">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</div>
+          <div class="table-box">${order.orderType.toUpperCase()} — ${order.tableName}</div>
+          
+          <div style="margin-top: 6px; font-size: 12px;">
+            <div>Time: ${dateStr}</div>
+            <div>Invoice Ref: ${order.invoiceId}</div>
+            <div>Server / Guest: ${H.escapeHtml(order.customerName || 'Walk-in')}</div>
+          </div>
+          <div class="divider"></div>
+          
+          <div style="font-weight: 900; margin-bottom: 6px; font-size: 13px;">ORDER ITEMS:</div>
+          <div>
+            ${items.map(i => `
+              <div class="item-row">
+                <span class="item-qty">[ ${i.qty} ]</span>
+                <span style="flex:1;">${H.escapeHtml(i.productName)}</span>
+              </div>
+            `).join('')}
+          </div>
+          
+          <div class="divider"></div>
+          <div class="text-center bold" style="margin-top: 8px; font-size: 11px;">
+            *** PREPARE FRESH & SERVE HOT ***
+          </div>
 
-        oscillator.start();
-        setTimeout(() => {
-          try {
-            oscillator.stop();
-            audioCtx.close();
-          } catch(e) {}
-        }, 80);
-      } catch (err) {
-        // AudioContext not allowed or sound unavailable
-      }
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    },
+
+    // ── Customer Invoice Receipt — Minimal Thermal Design ──
+    async printCustomerReceipt(order, items, payments, total, tendered) {
+      const H = POS.Helpers;
+      const S = POS.Store;
+      const settings = (await S.getSettings()) || {};
+
+      const printWindow = window.open('', '_blank', 'width=380,height=600');
+      if (!printWindow) return;
+
+      const change = Math.max(0, (tendered || total) - total);
+      const dateStr = order.date ? new Date(order.date).toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }) : new Date().toLocaleString();
+      const showStoreName = settings.invoice_show_store_name !== '0';
+      const storeName = showStoreName ? (settings.store_name || 'ZenPos Restaurant') : '';
+      const storeAddress = settings.store_address || '';
+      const storePhone = settings.store_phone || '';
+      const storeLogo = settings.invoice_logo || '';
+      const receiptWidth = settings.receipt_width || '80';
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Receipt - ${order.invoiceId}</title>
+          <style>
+            body { font-family: monospace, sans-serif; font-size: 12px; margin: 0 auto; padding: 10px; color: #000; max-width: ${receiptWidth}mm; background: #fff; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .divider { border-top: 1px dashed #000; margin: 7px 0; }
+            .table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+            .table td { padding: 3px 0; font-size: 11.5px; }
+            .bold { font-weight: bold; }
+            .receipt-header { margin-bottom: 6px; }
+            .title { font-size: 16px; font-weight: 800; }
+            .token-banner {
+              font-size: 18px;
+              font-weight: 900;
+              text-align: center;
+              padding: 5px;
+              border: 1.5px dashed #000;
+              background: transparent;
+              color: #000;
+              margin: 7px 0;
+              letter-spacing: 1px;
+            }
+            .table-tag {
+              display: inline-block;
+              border: 1px dashed #000;
+              background: transparent;
+              color: #000;
+              font-weight: 800;
+              padding: 2px 8px;
+              border-radius: 3px;
+              font-size: 11px;
+              margin: 3px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-header text-center">
+            ${storeLogo ? `<img src="${storeLogo}" style="max-width:60px; max-height:60px; object-fit:contain; margin-bottom:4px; display:block; margin-left:auto; margin-right:auto;">` : ''}
+            ${storeName ? `<div class="title">${H.escapeHtml(storeName)}</div>` : ''}
+            ${storeAddress ? `<div>${H.escapeHtml(storeAddress)}</div>` : ''}
+            ${storePhone ? `<div>Tel: ${H.escapeHtml(storePhone)}</div>` : ''}
+            ${settings.store_website ? `<div>${H.escapeHtml(settings.store_website)}</div>` : ''}
+            <div class="token-banner">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</div>
+            <div><span class="table-tag">${order.orderType.toUpperCase()} • ${order.tableName}</span></div>
+            <div class="divider"></div>
+            <div style="font-size: 11px; text-align: left;">
+              <div><strong>Invoice:</strong> ${order.invoiceId}</div>
+              <div><strong>Date:</strong> ${dateStr}</div>
+              <div><strong>Guest:</strong> ${H.escapeHtml(order.customerName || 'Walk-in')}</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <table class="table">
+            <thead>
+              <tr class="bold" style="border-bottom: 1px dashed #000;">
+                <td style="padding-bottom: 4px;">Item</td>
+                <td class="text-center" style="padding-bottom: 4px;">Qty</td>
+                <td class="text-right" style="padding-bottom: 4px;">Price</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(i => `
+                <tr style="border-bottom: 1px dotted #ccc;">
+                  <td style="padding: 3px 0;">${H.escapeHtml(i.productName)}</td>
+                  <td class="text-center" style="padding: 3px 0;">${i.qty}</td>
+                  <td class="text-right" style="padding: 3px 0;">৳${i.total.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="divider"></div>
+          <table class="table">
+            <tr>
+              <td>Subtotal:</td>
+              <td class="text-right">৳${order.subtotal.toFixed(2)}</td>
+            </tr>
+            ${order.discountAmount > 0 ? `
+              <tr>
+                <td>Discount:</td>
+                <td class="text-right">-৳${order.discountAmount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${order.taxAmount > 0 ? `
+              <tr>
+                <td>Vat / Tax (${order.taxPercent || 5}%):</td>
+                <td class="text-right">৳${order.taxAmount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            <tr class="bold" style="font-size:13.5px; border-top: 1px dashed #000;">
+              <td style="padding-top: 4px;">TOTAL:</td>
+              <td class="text-right" style="padding-top: 4px;">৳${total.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td>Paid (${payments && payments[0] ? payments[0].method : 'Cash'}):</td>
+              <td class="text-right">৳${order.paidAmount.toFixed(2)}</td>
+            </tr>
+            ${change > 0 ? `
+              <tr>
+                <td>Change Return:</td>
+                <td class="text-right">৳${change.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+          </table>
+          <div class="divider"></div>
+          <div class="text-center" style="margin-top:8px;">
+            ${settings.invoice_note ? `<div style="font-style:italic; margin-bottom:4px;">${H.escapeHtml(settings.invoice_note)}</div>` : '<div>Thank you for dining with us!</div>'}
+            <div>Please visit again soon.</div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    },
+
+    // ── Combined Customer Receipt & Kitchen Token (Continuous Thermal Roll / Single Print) ──
+    printCombinedReceiptAndKOT(order, items, payments, total, tendered) {
+      const H = POS.Helpers;
+      const printWindow = window.open('', '_blank', 'width=380,height=750');
+      if (!printWindow) return;
+
+      const change = Math.max(0, (tendered || total) - total);
+      const dateStr = order.date ? new Date(order.date).toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }) : new Date().toLocaleString();
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>ZenPos - #${order.invoiceId} (Token #${order.tokenNo || 1})</title>
+          <style>
+            body { font-family: monospace, sans-serif; font-size: 12px; margin: 0; padding: 12px; color: #000; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .divider { border-top: 1px dashed #000; margin: 8px 0; }
+            .table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+            .table td { padding: 3px 0; font-size: 11.5px; }
+            .bold { font-weight: bold; }
+            .title { font-size: 16px; font-weight: 800; }
+            .token-banner {
+              font-size: 24px;
+              font-weight: 900;
+              text-align: center;
+              padding: 6px;
+              border: 2px dashed #000;
+              margin: 8px 0;
+              letter-spacing: 1px;
+            }
+            .tear-off {
+              border-top: 2px dashed #000;
+              border-bottom: 2px dashed #000;
+              padding: 8px 0;
+              margin: 20px 0;
+              text-align: center;
+              font-size: 11px;
+              font-weight: bold;
+              letter-spacing: 1px;
+            }
+            .kot-box {
+              padding-top: 10px;
+            }
+            .item-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 5px 0;
+              border-bottom: 1px dotted #666;
+              font-size: 14px;
+              font-weight: 800;
+            }
+          </style>
+        </head>
+        <body>
+          <!-- SECTION 1: CUSTOMER RECEIPT -->
+          <div class="text-center">
+            <div class="title">ZenPos Gourmet Bistro</div>
+            <div>14 Gourmet Avenue, Food District</div>
+            <div>Tel: +880 1712-345678</div>
+            <div class="token-banner">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</div>
+            <div class="divider"></div>
+            <div><strong>${order.orderType.toUpperCase()}</strong> • <strong>${order.tableName}</strong></div>
+            <div>Invoice: ${order.invoiceId}</div>
+            <div>Date: ${dateStr}</div>
+            <div>Guest: ${H.escapeHtml(order.customerName)}</div>
+          </div>
+          <div class="divider"></div>
+          <table class="table">
+            <thead>
+              <tr class="bold">
+                <td>Item</td>
+                <td class="text-center">Qty</td>
+                <td class="text-right">Price</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(i => `
+                <tr>
+                  <td>${H.escapeHtml(i.productName)}</td>
+                  <td class="text-center">${i.qty}</td>
+                  <td class="text-right">৳${i.total.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="divider"></div>
+          <table class="table">
+            <tr>
+              <td>Subtotal:</td>
+              <td class="text-right">৳${order.subtotal.toFixed(2)}</td>
+            </tr>
+            ${order.discountAmount > 0 ? `
+              <tr>
+                <td>Discount:</td>
+                <td class="text-right">-৳${order.discountAmount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            <tr>
+              <td>Vat / Tax (5%):</td>
+              <td class="text-right">৳${order.taxAmount.toFixed(2)}</td>
+            </tr>
+            <tr class="bold" style="font-size:14px;">
+              <td>TOTAL:</td>
+              <td class="text-right">৳${total.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td>Paid (${payments && payments[0] ? payments[0].method : 'Cash'}):</td>
+              <td class="text-right">৳${order.paidAmount.toFixed(2)}</td>
+            </tr>
+            ${change > 0 ? `
+              <tr>
+                <td>Change Return:</td>
+                <td class="text-right">৳${change.toFixed(2)}</td>
+              </tr>
+            ` : ''}
+          </table>
+          <div class="divider"></div>
+          <div class="text-center" style="margin-top:8px;">
+            <div>Thank you for dining with us!</div>
+          </div>
+
+          <!-- SECTION 2: KITCHEN TOKEN (KOT) WITH TEAR-OFF LINE -->
+          <div class="tear-off">
+            ✂ - - - - - - - TEAR OFF FOR KITCHEN (KOT) - - - - - - - ✂
+          </div>
+
+          <div class="kot-box">
+            <div class="text-center bold" style="font-size: 15px;">*** KITCHEN ORDER TICKET (KOT) ***</div>
+            <div class="text-center" style="font-size: 12px;">ZenPos Kitchen</div>
+            <div class="token-banner" style="font-size: 26px; border: 2px dashed #000; background: transparent; color: #000;">
+              TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}
+            </div>
+            <div class="text-center bold" style="border: 1.5px dashed #000; background: transparent; color: #000; padding: 4px; font-size: 14px; margin: 4px 0;">
+              ${order.orderType.toUpperCase()} — ${order.tableName}
+            </div>
+            <div style="font-size:11.5px; margin-top:6px;">
+              <div>Time: ${dateStr}</div>
+              <div>Invoice Ref: ${order.invoiceId}</div>
+            </div>
+            <div class="divider"></div>
+            <div class="bold" style="font-size:13px; margin-bottom:4px;">KITCHEN ITEMS:</div>
+            <div>
+              ${items.map(i => `
+                <div class="item-row">
+                  <span style="font-size:16px; width:45px;">[ ${i.qty} ]</span>
+                  <span style="flex:1;">${H.escapeHtml(i.productName)}</span>
+                </div>
+              `).join('')}
+            </div>
+            <div class="divider"></div>
+            <div class="text-center bold" style="margin-top:8px; font-size:11px;">
+              *** SEND TO KITCHEN CHEF ***
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
     }
   };
 

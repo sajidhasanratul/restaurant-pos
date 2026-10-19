@@ -1,7 +1,7 @@
 {
-  "name": "retail-pos",
+  "name": "restaurent-pos",
   "version": "1.0.0",
-  "description": "Professional Retail POS system with Node.js Express backend and MySQL database",
+  "description": "Professional Restaurant POS system with Node.js Express backend and MySQL database",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,7 +12,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.22.3",
     "mysql2": "^3.24.6",
-    "nodemailer": "^10.1.1"
+    "nodemailer": "^10.1.1",
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

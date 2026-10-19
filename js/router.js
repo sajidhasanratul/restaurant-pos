@@ -67,25 +67,34 @@
 
       // Route authorizations guard
       if (currentUser && currentUser.role !== 'admin') {
+        // Auto-redirect removed legacy features
+        if (path === '/sales-return' || path === '/return-list' || path === '/custom-item-price') {
+          path = '/sales-list';
+          window.history.replaceState(null, '', path);
+        } else if (path === '/inventory-details' || path === '/bulk-scan' || path === '/label-printer') {
+          path = '/products';
+          window.history.replaceState(null, '', path);
+        } else if (path === '/reports/stock-value') {
+          path = '/reports/daily-sale';
+          window.history.replaceState(null, '', path);
+        }
+
         const getRequiredPermission = (p) => {
           if (p === '/dashboard') return 'dashboard';
           if (p === '/new-order' || p.startsWith('/edit-order/')) return 'pos';
           if (p === '/sales-list') return 'sales_list';
-          if (p === '/sales-return') return 'sales_return';
-          if (p === '/return-list') return 'return_list';
-          if (p === '/custom-item-price') return 'custom_item_prices';
           if (p === '/products') return 'products';
-          if (p === '/inventory-details') return 'inventory_details';
-          if (p === '/bulk-scan') return 'bulk_stock';
-          if (p === '/label-printer') return 'label_printer';
           if (p === '/expenses') return 'expenses';
+          if (p === '/ingredient-costs') return 'ingredient_costs';
           if (p === '/suppliers') return 'suppliers';
+          if (p === '/expired-wastes') return 'expired_wastes';
           if (p.startsWith('/reports')) return 'reports';
           if (p === '/coupons') return 'coupons';
           if (p === '/customers') return 'customers';
           if (p === '/gallery') return 'gallery';
           if (p === '/invoice-settings') return 'invoice_settings';
           if (p === '/payment-methods') return 'payment_methods';
+          if (p === '/tables') return 'tables';
           if (p === '/report-settings') return 'report_settings';
           if (p === '/users') return 'users';
           return null;
@@ -162,9 +171,10 @@
       const el = document.getElementById('breadcrumb');
       if (!el) return;
       const parts = path.split('/').filter(Boolean);
-      const labels = parts.map(p =>
-        p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-      );
+      const labels = parts.map(p => {
+        if (p === 'coupons') return 'Coupon and Tax';
+        return p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      });
       el.innerHTML = labels.map((name, i) =>
         i < labels.length - 1
           ? '<span class="bc-item">' + name + '</span><span class="bc-sep">›</span>'

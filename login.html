@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Retail POS Login Panel">
-  <title>Sign In — ZenPos</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏪</text></svg>">
+  <meta name="description" content="ZenPos Restaurant POS Login Panel">
+  <title>Sign In — ZenPos Restaurant</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍔</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <style>
     body {
@@ -18,8 +18,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: radial-gradient(circle at 10% 20%, rgb(90, 92, 234) 0%, rgb(32, 45, 107) 100%);
-      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 10% 20%, #2E221E 0%, #15100E 100%);
+      font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
     }
     .login-container {
       width: 100%;
@@ -132,9 +132,11 @@
   <div class="login-container">
     <div class="login-card">
       <div class="logo-container">
-        <span class="logo-icon">🏪</span>
-        <h2 class="logo-title">ZenPos</h2>
-        <p class="logo-subtitle">Point of Sale Login Panel</p>
+        <div style="width:52px; height:52px; background:linear-gradient(135deg, #10B981, #059669); color:#fff; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; font-weight:900; font-size:24px; margin-bottom:12px; box-shadow:0 4px 14px rgba(16,185,129,0.35);">
+          ZP
+        </div>
+        <h2 class="logo-title" style="font-weight:900; letter-spacing:-0.5px;">Zen<span style="color:#10B981;">Pos</span></h2>
+        <p class="logo-subtitle">ZenPos Restaurant Point of Sale & Kitchen Workflow</p>
       </div>
 
       <div id="error-message" class="alert-error"></div>
@@ -152,16 +154,16 @@
             <input type="password" class="form-input" id="password" placeholder="Enter password" required autocomplete="current-password">
           </div>
           <div style="text-align: right; margin-top: -10px; margin-bottom: 18px;">
-            <a href="javascript:void(0)" id="link-forgot" style="color: var(--primary); font-size: 13px; font-weight: 600; text-decoration: none;">Forgot Password?</a>
+            <a href="javascript:void(0)" id="link-forgot" style="color: #10B981; font-size: 13px; font-weight: 600; text-decoration: none;">Forgot Password?</a>
           </div>
-          <button type="submit" class="btn-login" id="btn-submit">Sign In 🚀</button>
+          <button type="submit" class="btn-login" id="btn-submit" style="background:#10B981; border:none; box-shadow:0 4px 12px rgba(16,185,129,0.35);">Sign In 🍽️</button>
         </form>
 
         <div class="demo-accounts">
-          <strong>Demo Accounts Setup:</strong><br>
-          • admin / admin (Full access)<br>
-          • manager / manager (Inventory & Sales)<br>
-          • cashier / cashier (Billing desk only)
+          <strong>Staff Login Credentials:</strong><br>
+          • admin / admin (Owner / Head Chef - Full Access)<br>
+          • manager / manager (Floor Manager & Menu)<br>
+          • cashier / cashier (Waitstaff / Counter Server)
         </div>
       </div>
 

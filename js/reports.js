@@ -2,6 +2,33 @@
   'use strict';
 
   const Reports = {
+    getPeriodDates(period) {
+      const H = POS.Helpers;
+      const today = H.today();
+      if (period === 'today') {
+        return { from: today, to: today };
+      }
+      if (period === 'yesterday') {
+        const y = H.yesterday();
+        return { from: y, to: y };
+      }
+      if (period === 'this-week') {
+        const now = new Date();
+        const day = now.getDay(); // 0 is Sunday
+        const startOfWeek = H.addDays(today, -day);
+        return { from: startOfWeek, to: today };
+      }
+      if (period === 'this-month') {
+        const p = H.getBDDateParts(new Date());
+        const pad = n => String(n).padStart(2, '0');
+        return { from: `${p.year}-${pad(p.month)}-01`, to: today };
+      }
+      return {
+        from: localStorage.getItem('rep_from') || today,
+        to: localStorage.getItem('rep_to') || today
+      };
+    },
+
     async render(type) {
       const mc = document.getElementById('main-content');
       const H = POS.Helpers;
@@ -12,15 +39,20 @@
         'top-selling': 'Top Selling Products Report',
         'slow-selling': 'Slow Selling Products Report',
         'payment-method': 'Payment Method Report',
-        'stock-value': 'Stock Value Report',
         'sales-summary': 'Sales Summary Report',
         'overall-profit': 'Overall Profit Report'
       };
 
       const title = titleMap[type] || 'Reports Overview';
 
-      let fromDate = localStorage.getItem('rep_from') || H.today();
-      let toDate = localStorage.getItem('rep_to') || H.today();
+      let currentPeriod = localStorage.getItem('rep_period') || 'today';
+      let dates = this.getPeriodDates(currentPeriod);
+      let fromDate = dates.from;
+      let toDate = dates.to;
+      if (currentPeriod === 'custom') {
+        fromDate = localStorage.getItem('rep_from') || H.today();
+        toDate = localStorage.getItem('rep_to') || H.today();
+      }
 
       mc.innerHTML = `
         <div class="page-header fade-in">
@@ -33,29 +65,86 @@
           </div>
         </div>
 
-        <div class="filter-bar fade-in">
-          <div class="form-group" style="margin-bottom:0; flex:1; min-width:150px;">
-            <label class="form-label">From Date</label>
-            <input type="date" class="form-input" id="rep-from" value="${fromDate}">
+        <!-- Period Filter Selector (Today, Yesterday, This Week, This Month, Custom) -->
+        <div class="filter-bar fade-in" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; background:#fff; padding:12px 18px; border-radius:12px; border:1px solid #EAE4D9;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="font-size:12px; font-weight:800; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">Filter:</span>
+            <div class="btn-group" style="display:flex; gap:6px; background:#F8FAFC; padding:4px; border-radius:10px; border:1px solid #E2E8F0;">
+              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'today' ? 'active' : ''}" data-period="today" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Today</button>
+              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'yesterday' ? 'active' : ''}" data-period="yesterday" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Yesterday</button>
+              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'this-week' ? 'active' : ''}" data-period="this-week" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">This Week</button>
+              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'this-month' ? 'active' : ''}" data-period="this-month" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">This Month</button>
+              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'custom' ? 'active' : ''}" data-period="custom" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Custom</button>
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom:0; flex:1; min-width:150px;">
-            <label class="form-label">To Date</label>
-            <input type="date" class="form-input" id="rep-to" value="${toDate}">
+
+          <!-- Date inputs: Shown on Custom -->
+          <div id="rep-custom-date-container" style="display:${currentPeriod === 'custom' ? 'flex' : 'none'}; gap:10px; align-items:center; flex-wrap:wrap;">
+            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">From:</label>
+              <input type="date" class="form-input" id="rep-from" value="${fromDate}" style="height:34px; font-size:13px; border-radius:8px; padding:0 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">To:</label>
+              <input type="date" class="form-input" id="rep-to" value="${toDate}" style="height:34px; font-size:13px; border-radius:8px; padding:0 8px;">
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-apply-rep-filter" style="height:34px; padding:0 14px; font-weight:700; border-radius:8px; background:#10B981; border-color:#10B981;">Apply</button>
           </div>
-          <button class="btn btn-primary" id="btn-apply-rep-filter" style="margin-top:18px;">Apply Filter</button>
+
+          <!-- Active range badge when not in custom mode -->
+          <div id="rep-range-indicator" style="display:${currentPeriod !== 'custom' ? 'flex' : 'none'}; align-items:center; gap:6px; background:#F8FAFC; border:1px solid #CBD5E1; padding:6px 14px; border-radius:8px; font-size:12.5px; font-weight:600; color:#475569;">
+            <span>📅 Range:</span>
+            <span id="rep-range-text" style="color:#0F172A; font-weight:700;">${H.formatDate(fromDate)} to ${H.formatDate(toDate)}</span>
+          </div>
         </div>
 
         <div id="report-output-container" class="fade-in"></div>
       `;
 
       // Filter events
-      document.getElementById('btn-apply-rep-filter').onclick = async () => {
-        fromDate = document.getElementById('rep-from').value;
-        toDate = document.getElementById('rep-to').value;
-        localStorage.setItem('rep_from', fromDate);
-        localStorage.setItem('rep_to', toDate);
-        await this.generateReport(type, fromDate, toDate);
-      };
+      document.querySelectorAll('.rep-period-btn').forEach(btn => {
+        btn.onclick = async () => {
+          document.querySelectorAll('.rep-period-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const p = btn.dataset.period;
+          currentPeriod = p;
+          localStorage.setItem('rep_period', p);
+
+          const customContainer = document.getElementById('rep-custom-date-container');
+          const rangeIndicator = document.getElementById('rep-range-indicator');
+
+          if (p === 'custom') {
+            if (customContainer) customContainer.style.display = 'flex';
+            if (rangeIndicator) rangeIndicator.style.display = 'none';
+          } else {
+            if (customContainer) customContainer.style.display = 'none';
+            if (rangeIndicator) rangeIndicator.style.display = 'flex';
+            const range = this.getPeriodDates(p);
+            fromDate = range.from;
+            toDate = range.to;
+            const elFrom = document.getElementById('rep-from');
+            const elTo = document.getElementById('rep-to');
+            const elText = document.getElementById('rep-range-text');
+            if (elFrom) elFrom.value = fromDate;
+            if (elTo) elTo.value = toDate;
+            if (elText) elText.textContent = `${H.formatDate(fromDate)} to ${H.formatDate(toDate)}`;
+            await this.generateReport(type, fromDate, toDate);
+          }
+        };
+      });
+
+      const applyBtn = document.getElementById('btn-apply-rep-filter');
+      if (applyBtn) {
+        applyBtn.onclick = async () => {
+          const elFrom = document.getElementById('rep-from');
+          const elTo = document.getElementById('rep-to');
+          fromDate = elFrom ? elFrom.value : H.today();
+          toDate = elTo ? elTo.value : H.today();
+          localStorage.setItem('rep_from', fromDate);
+          localStorage.setItem('rep_to', toDate);
+          await this.generateReport(type, fromDate, toDate);
+        };
+      }
 
       document.getElementById('btn-export-rep').onclick = async () => {
         await this.exportReportCSV(type, fromDate, toDate);
@@ -90,9 +179,6 @@
           break;
         case 'payment-method':
           this.paymentMethodReport(container, orders, payments, H);
-          break;
-        case 'stock-value':
-          await this.stockValueReport(container, products, S, H);
           break;
         case 'sales-summary':
           this.salesSummaryReport(container, orders, H);

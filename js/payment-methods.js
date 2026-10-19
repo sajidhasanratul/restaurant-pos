@@ -234,21 +234,23 @@
             <div class="form-group" style="border-top:1px solid #e2e8f0; padding-top:12px;">
               <label class="form-label" style="font-weight:700; margin-bottom:8px;">Method Icon / Logo</label>
               
-              <div style="display:flex; gap:8px; margin-bottom:10px;">
-                <button type="button" class="btn btn-sm btn-tab active" id="tab-btn-file" style="padding:4px 12px; font-weight:700;">📁 Upload Image</button>
-                <button type="button" class="btn btn-sm btn-tab" id="tab-btn-url" style="padding:4px 12px; font-weight:700;">🔗 Image URL</button>
-                <button type="button" class="btn btn-sm btn-tab" id="tab-btn-preset" style="padding:4px 12px; font-weight:700;">⚡ Built-in Presets</button>
-              </div>
-
-              <!-- Tab 1: File Upload -->
-              <div id="tab-content-file" style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:var(--radius-sm); padding:12px;">
-                <input type="file" id="pm-modal-file" accept="image/png, image/jpeg, image/svg+xml, image/webp" style="font-size:12px;">
-                <div style="font-size:11px; color:#64748b; margin-top:4px;">Supports transparent PNG, SVG, JPG, WebP. Recommended size: 64×64 or 128×128.</div>
-              </div>
-
-              <!-- Tab 2: URL -->
-              <div id="tab-content-url" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:var(--radius-sm); padding:10px;">
-                <input type="text" class="form-input" id="pm-modal-url" placeholder="https://example.com/logo.png" value="${currentIcon.startsWith('http') || currentIcon.startsWith('/') ? H.esc(currentIcon) : ''}" style="font-size:12px;">
+              <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:10px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-pm-pick-gallery" style="font-weight:700;">
+                    🖼️ Choose from Gallery
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-pm-upload-device" style="font-weight:700;">
+                    📤 Upload from Device
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-pm-tab-presets" style="font-weight:700;">
+                    ⚡ Preset Icons
+                  </button>
+                </div>
+                
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input type="text" class="form-input" id="pm-modal-url" placeholder="Or paste image URL / Base64..." value="${currentIcon.startsWith('http') || currentIcon.startsWith('/') || currentIcon.startsWith('data:') ? H.esc(currentIcon) : ''}" style="font-size:11px; height:30px; flex:1;">
+                  <button type="button" class="btn btn-secondary btn-xs" id="btn-pm-clear-icon" style="color:#ef4444;" title="Clear Icon">✕ Clear</button>
+                </div>
               </div>
 
               <!-- Tab 3: Presets -->
@@ -374,51 +376,50 @@
         activeContent.style.display = 'block';
       };
 
-      tabBtnFile.onclick = () => setTab(tabBtnFile, tabContentFile);
-      tabBtnUrl.onclick = () => setTab(tabBtnUrl, tabContentUrl);
-      tabBtnPreset.onclick = () => setTab(tabBtnPreset, tabContentPreset);
+      // Gallery & Device Upload handlers
+      const btnPmGallery = overlay.querySelector('#btn-pm-pick-gallery');
+      const btnPmUpload = overlay.querySelector('#btn-pm-upload-device');
+      const btnPmPresets = overlay.querySelector('#btn-pm-tab-presets');
+      const btnPmClear = overlay.querySelector('#btn-pm-clear-icon');
 
-      // Color synchronization
-      colorPicker.oninput = (e) => {
-        colorHexInput.value = e.target.value.toUpperCase();
-        updatePreview();
-      };
-      colorHexInput.oninput = (e) => {
-        let val = e.target.value;
-        if (!val.startsWith('#')) val = '#' + val;
-        if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-          colorPicker.value = val;
-        }
-        updatePreview();
-      };
-
-      overlay.querySelectorAll('.btn-color-swatch').forEach(btn => {
-        btn.onclick = () => {
-          const c = btn.dataset.color;
-          colorPicker.value = c;
-          colorHexInput.value = c.toUpperCase();
-          updatePreview();
-        };
-      });
-
-      nameInput.oninput = updatePreview;
-
-      // File upload handler
-      fileInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          currentIcon = reader.result;
-          updatePreview();
-        };
-        reader.readAsDataURL(file);
+      btnPmGallery.onclick = () => {
+        H.openMediaPicker({
+          title: 'Choose Payment Logo from Gallery',
+          folderName: 'Payment Methods',
+          folderId: 'folder_payment_methods',
+          activeTab: 'gallery',
+          onSelect: (url) => {
+            currentIcon = url;
+            urlInput.value = url;
+            updatePreview();
+          }
+        });
       };
 
-      // URL input handler
-      urlInput.oninput = (e) => {
-        currentIcon = e.target.value.trim();
+      btnPmUpload.onclick = () => {
+        H.openMediaPicker({
+          title: 'Upload Payment Logo from Device',
+          folderName: 'Payment Methods',
+          folderId: 'folder_payment_methods',
+          activeTab: 'upload',
+          onSelect: (url) => {
+            currentIcon = url;
+            urlInput.value = url;
+            updatePreview();
+          }
+        });
+      };
+
+      btnPmClear.onclick = () => {
+        currentIcon = '';
+        urlInput.value = '';
         updatePreview();
+      };
+
+      btnPmPresets.onclick = () => {
+        const isShown = tabContentPreset.style.display !== 'none';
+        tabContentPreset.style.display = isShown ? 'none' : 'block';
+        btnPmPresets.classList.toggle('active', !isShown);
       };
 
       // Preset click handler
