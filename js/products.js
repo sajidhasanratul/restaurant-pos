@@ -8,6 +8,8 @@
     perPage: localStorage.getItem('products_per_page') || '50',
     customLimit: parseInt(localStorage.getItem('products_custom_limit')) || 25,
     currentPage: 1,
+    selectedIds: new Set(),
+    allProductsList: [],
 
     async render() {
       const mc = document.getElementById('main-content');
@@ -17,22 +19,24 @@
       const categories = await S.getAll('categories');
 
       mc.innerHTML = `
-        <div class="page-header fade-in" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div class="page-header fade-in" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
           <div>
             <h2 class="page-title" style="display:flex; align-items:center; gap:8px;">
               <span>🍽️</span> Restaurant Items & Menu
             </h2>
             <p class="page-subtitle">Manage menu dishes, appetizers, drinks, and categories. Made to order with no stock or cost limits.</p>
           </div>
-          <div class="page-actions" style="display:flex; gap:8px; align-items:center;">
+          <div class="page-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" id="btn-export-products" style="font-weight:700;">📥 Export</button>
+            <button class="btn btn-secondary btn-sm" id="btn-import-products" style="font-weight:700;">📤 Import</button>
             <button class="btn btn-secondary btn-sm" id="btn-manage-categories">📂 Categories</button>
-            <button class="btn btn-primary btn-sm" id="btn-add-product" style="background:#10B981; border-color:#10B981;">+ Add New Item</button>
+            <button class="btn btn-primary btn-sm" id="btn-add-product" style="background:#10B981; border-color:#10B981; font-weight:700;">+ Add New Item</button>
           </div>
         </div>
 
         <!-- Filter tabs: All, Published, Draft, Trash -->
         <div class="filter-bar fade-in" style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; background:#fff; padding:12px 18px; border-radius:12px; border:1px solid #EAE4D9; flex-wrap:wrap;">
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
             <button class="btn btn-secondary btn-sm tab-filter-btn active" data-tab="all" id="tab-all">All Dishes (<span id="count-all">0</span>)</button>
             <button class="btn btn-secondary btn-sm tab-filter-btn" data-tab="Publish" id="tab-publish">Published (<span id="count-publish">0</span>)</button>
             <button class="btn btn-secondary btn-sm tab-filter-btn" data-tab="Draft" id="tab-draft">Drafts (<span id="count-draft">0</span>)</button>
@@ -40,6 +44,12 @@
           </div>
 
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <!-- Select All Checkbox -->
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#475569; cursor:pointer; user-select:none; background:#F8FAFC; border:1px solid #CBD5E1; padding:6px 10px; border-radius:8px;">
+              <input type="checkbox" id="select-all-checkbox" style="width:15px; height:15px; accent-color:#10B981; cursor:pointer;">
+              <span id="select-all-label">Select Page</span>
+            </label>
+
             <div style="position:relative; width:180px;">
               <input type="text" class="form-input" id="search-product-input" placeholder="Search dish..." style="height:36px; font-size:13px; border-radius:20px; padding:0 12px;">
             </div>
@@ -67,6 +77,21 @@
           </div>
         </div>
 
+        <!-- Bulk Actions Toolbar -->
+        <div id="bulk-actions-toolbar" class="fade-in" style="display:none; align-items:center; justify-content:space-between; background:linear-gradient(135deg, #1E293B, #0F172A); color:#fff; padding:10px 18px; border-radius:12px; margin-bottom:16px; box-shadow:0 4px 15px rgba(15,23,42,0.25); flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span id="bulk-selected-badge" style="background:#10B981; color:#fff; font-size:12px; font-weight:800; padding:4px 12px; border-radius:20px;">0 Selected</span>
+            <span style="font-size:13px; font-weight:600; color:#E2E8F0;">Bulk Options:</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-sm" id="btn-bulk-publish" style="background:#10B981; color:#fff; border:none; font-weight:700; border-radius:8px; padding:6px 14px;">🚀 Publish Selected</button>
+            <button class="btn btn-sm" id="btn-bulk-draft" style="background:#64748B; color:#fff; border:none; font-weight:700; border-radius:8px; padding:6px 14px;">📦 Draft Selected</button>
+            <button class="btn btn-sm" id="btn-bulk-export" style="background:#3B82F6; color:#fff; border:none; font-weight:700; border-radius:8px; padding:6px 14px;">📥 Export Selected</button>
+            <button class="btn btn-sm" id="btn-bulk-trash" style="background:#EF4444; color:#fff; border:none; font-weight:700; border-radius:8px; padding:6px 14px;">🗑️ Move to Trash</button>
+            <button class="btn btn-sm" id="btn-bulk-clear" style="background:transparent; color:#94A3B8; border:1px solid #475569; font-weight:600; border-radius:8px; padding:6px 12px;">✕ Deselect All</button>
+          </div>
+        </div>
+
         <!-- Products Card Grid Container -->
         <div class="fade-in" id="products-cards-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:16px;">
           <!-- Dynamically populated cards -->
@@ -87,6 +112,18 @@
     bindEvents() {
       document.getElementById('btn-add-product').onclick = () => this.showAddEditModal(null);
       document.getElementById('btn-manage-categories').onclick = () => this.showCategoriesModal();
+      document.getElementById('btn-export-products').onclick = () => this.exportProducts();
+      document.getElementById('btn-import-products').onclick = () => this.showImportModal();
+
+      document.getElementById('btn-bulk-publish').onclick = () => this.bulkUpdateStatus('Publish');
+      document.getElementById('btn-bulk-draft').onclick = () => this.bulkUpdateStatus('Draft');
+      document.getElementById('btn-bulk-export').onclick = () => this.exportProducts();
+      document.getElementById('btn-bulk-trash').onclick = () => this.bulkTrash();
+      document.getElementById('btn-bulk-clear').onclick = () => {
+        this.selectedIds.clear();
+        this.updateBulkToolbar();
+        this.renderCardsLocally();
+      };
 
       document.querySelectorAll('.tab-filter-btn').forEach(btn => {
         btn.onclick = async () => {
@@ -161,6 +198,13 @@
         const all = res.ok ? await res.json() : [];
         this.allProductsList = all;
 
+        // Prune selected IDs that might no longer exist
+        const validIds = new Set(all.map(p => p.id));
+        for (const id of this.selectedIds) {
+          if (!validIds.has(id)) this.selectedIds.delete(id);
+        }
+        this.updateBulkToolbar();
+
         // Update counts
         const allCount = all.filter(p => p.status !== 'Trash').length;
         const pubCount = all.filter(p => p.status === 'Publish' || !p.status).length;
@@ -212,7 +256,8 @@
         list = list.filter(p => 
           (p.name || '').toLowerCase().includes(this.searchQuery) ||
           (p.sku || '').toLowerCase().includes(this.searchQuery) ||
-          (p.tag || '').toLowerCase().includes(this.searchQuery)
+          (p.tag || '').toLowerCase().includes(this.searchQuery) ||
+          (p.description || '').toLowerCase().includes(this.searchQuery)
         );
       }
 
@@ -226,6 +271,7 @@
           </div>
         `;
         if (paginContainer) paginContainer.style.display = 'none';
+        this.updateBulkToolbar();
         return;
       }
 
@@ -248,18 +294,24 @@
       const pagedList = this.perPage === 'all' ? list : list.slice(startIndex, endIndex);
 
       container.innerHTML = pagedList.map(item => {
+        const isSelected = this.selectedIds.has(item.id);
         const price = parseFloat(item.sellingPrice || 0);
         const isTrash = item.status === 'Trash';
 
         return `
-          <div class="card" style="border-radius:14px; border:1px solid #EAE4D9; overflow:hidden; background:#fff; display:flex; flex-direction:column; box-shadow:0 1px 3px rgba(35,25,20,0.04); transition:transform 0.2s, box-shadow 0.2s;">
+          <div class="card dish-item-card" data-id="${item.id}" style="border-radius:14px; border:${isSelected ? '2px solid #10B981' : '1px solid #EAE4D9'}; background:${isSelected ? '#F0FDF4' : '#fff'}; overflow:hidden; display:flex; flex-direction:column; box-shadow:${isSelected ? '0 4px 14px rgba(16,185,129,0.2)' : '0 1px 3px rgba(35,25,20,0.04)'}; transition:all 0.2s;">
             <div style="width:100%; height:130px; background:#F5EFE6; position:relative; overflow:hidden;">
+              <!-- Selection Checkbox -->
+              <label style="position:absolute; top:8px; left:8px; z-index:3; display:flex; align-items:center; justify-content:center; width:26px; height:26px; background:rgba(255,255,255,0.95); border-radius:6px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.15);" title="Select this dish">
+                <input type="checkbox" class="dish-select-checkbox" data-id="${item.id}" ${isSelected ? 'checked' : ''} style="width:16px; height:16px; accent-color:#10B981; cursor:pointer;">
+              </label>
+
               ${item.image ? `
                 <img src="${item.image}" alt="${H.escapeHtml(item.name)}" style="width:100%; height:100%; object-fit:cover;">
               ` : `
                 <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:42px;">🍔</div>
               `}
-              <span class="badge" style="position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.9); font-weight:700; font-size:10.5px; color:${item.status === 'Draft' ? '#64748B' : (isTrash ? '#EF4444' : '#059669')};">
+              <span class="badge" style="position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.92); font-weight:700; font-size:10.5px; color:${item.status === 'Draft' ? '#64748B' : (isTrash ? '#EF4444' : '#059669')};">
                 ${isTrash ? 'Trash' : (item.status === 'Draft' ? 'Draft' : 'Active')}
               </span>
             </div>
@@ -269,7 +321,7 @@
                 ${H.escapeHtml(item.name)}
               </h4>
               <p style="font-size:11.5px; color:#64748B; margin-bottom:10px; flex:1; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">
-                ${H.escapeHtml(item.tag || 'Fresh restaurant prepared dish')}
+                ${H.escapeHtml(item.description || item.tag || 'Fresh restaurant prepared dish')}
               </p>
 
               <div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:1px solid #F1ECE4; margin-top:auto;">
@@ -431,6 +483,509 @@
           }
         };
       });
+
+      // Bind select all checkbox for currently shown page
+      const selectAllCb = document.getElementById('select-all-checkbox');
+      if (selectAllCb) {
+        const pageIds = pagedList.map(p => p.id);
+        const allSelected = pageIds.length > 0 && pageIds.every(id => this.selectedIds.has(id));
+        const someSelected = !allSelected && pageIds.some(id => this.selectedIds.has(id));
+        selectAllCb.checked = allSelected;
+        selectAllCb.indeterminate = someSelected;
+
+        selectAllCb.onchange = () => {
+          if (selectAllCb.checked) {
+            pageIds.forEach(id => this.selectedIds.add(id));
+          } else {
+            pageIds.forEach(id => this.selectedIds.delete(id));
+          }
+          this.updateBulkToolbar();
+          this.renderCardsLocally();
+        };
+      }
+
+      // Bind individual dish checkboxes
+      container.querySelectorAll('.dish-select-checkbox').forEach(cb => {
+        cb.onchange = (e) => {
+          e.stopPropagation();
+          const id = cb.dataset.id;
+          if (cb.checked) {
+            this.selectedIds.add(id);
+          } else {
+            this.selectedIds.delete(id);
+          }
+          this.updateBulkToolbar();
+          this.renderCardsLocally();
+        };
+      });
+
+      this.updateBulkToolbar();
+    },
+
+    updateBulkToolbar() {
+      const toolbar = document.getElementById('bulk-actions-toolbar');
+      const badge = document.getElementById('bulk-selected-badge');
+      const exportBtn = document.getElementById('btn-export-products');
+      const bulkExportBtn = document.getElementById('btn-bulk-export');
+
+      const count = this.selectedIds ? this.selectedIds.size : 0;
+      if (toolbar) {
+        toolbar.style.display = count > 0 ? 'flex' : 'none';
+      }
+      if (badge) {
+        badge.textContent = `${count} Selected`;
+      }
+      if (bulkExportBtn) {
+        bulkExportBtn.textContent = `📥 Export Selected (${count})`;
+      }
+      if (exportBtn) {
+        exportBtn.textContent = count > 0 ? `📥 Export (${count})` : '📥 Export';
+      }
+    },
+
+    async bulkUpdateStatus(targetStatus) {
+      const S = POS.Store;
+      const H = POS.Helpers;
+      const ids = Array.from(this.selectedIds);
+      if (ids.length === 0) return;
+
+      const actionText = targetStatus === 'Publish' ? 'published' : (targetStatus === 'Draft' ? 'drafted' : 'moved to trash');
+      try {
+        const res = await fetch('/api/products/bulk-status', {
+          method: 'POST',
+          headers: S.getHeaders(),
+          body: JSON.stringify({ ids, status: targetStatus })
+        });
+        if (res.ok) {
+          H.showToast(`Successfully ${actionText} ${ids.length} dish(es)!`, 'success');
+          this.selectedIds.clear();
+          this.updateBulkToolbar();
+          await this.updateList();
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          H.showToast(errData.error || 'Bulk update failed', 'error');
+        }
+      } catch (err) {
+        H.showToast('Error: ' + err.message, 'error');
+      }
+    },
+
+    async bulkTrash() {
+      const H = POS.Helpers;
+      const count = this.selectedIds.size;
+      if (count === 0) return;
+
+      const ok = await H.confirm(`Move ${count} selected dish(es) to Trash? You can restore them anytime.`, {
+        title: 'Bulk Trash Confirmation',
+        confirmText: 'Move to Trash',
+        danger: true
+      });
+      if (ok) {
+        await this.bulkUpdateStatus('Trash');
+      }
+    },
+
+    exportProducts() {
+      const H = POS.Helpers;
+      let itemsToExport = [];
+
+      if (this.selectedIds && this.selectedIds.size > 0) {
+        // Export ONLY selected products
+        itemsToExport = this.allProductsList.filter(p => this.selectedIds.has(p.id));
+      } else {
+        // Export ALL products (or current tab)
+        if (this.currentTab === 'Trash') {
+          itemsToExport = this.allProductsList.filter(p => p.status === 'Trash');
+        } else if (this.currentTab === 'Draft') {
+          itemsToExport = this.allProductsList.filter(p => p.status === 'Draft');
+        } else if (this.currentTab === 'Publish') {
+          itemsToExport = this.allProductsList.filter(p => p.status === 'Publish' || !p.status);
+        } else {
+          itemsToExport = this.allProductsList.filter(p => p.status !== 'Trash');
+        }
+        if (itemsToExport.length === 0) {
+          itemsToExport = this.allProductsList;
+        }
+      }
+
+      if (itemsToExport.length === 0) {
+        H.showToast('No products available to export', 'warning');
+        return;
+      }
+
+      const catMap = {};
+      if (POS.Store && POS.Store.cache && POS.Store.cache.categories) {
+        POS.Store.cache.categories.forEach(c => { catMap[c.id] = c.name; });
+      }
+
+      const escapeCsv = (val) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const headers = ['Item Name', 'Category', 'Selling Price', 'Description', 'Status', 'Priority', 'Image URL'];
+      const rows = itemsToExport.map(item => {
+        const catName = item.category || catMap[item.categoryId] || 'Starters & Appetizers';
+        const price = parseFloat(item.sellingPrice || 0).toFixed(2);
+        const desc = item.description || item.tag || '';
+        const status = item.status || 'Publish';
+        const priority = item.priority !== undefined ? item.priority : 10;
+        const img = item.image || '';
+
+        return [
+          escapeCsv(item.name),
+          escapeCsv(catName),
+          escapeCsv(price),
+          escapeCsv(desc),
+          escapeCsv(status),
+          escapeCsv(priority),
+          escapeCsv(img)
+        ].join(',');
+      });
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const prefix = this.selectedIds.size > 0 ? 'selected_dishes_' : 'all_dishes_';
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${prefix}${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      H.showToast(`Exported ${itemsToExport.length} dish(es) to CSV successfully!`, 'success');
+    },
+
+    showImportModal() {
+      const S = POS.Store;
+      const H = POS.Helpers;
+      const overlay = document.getElementById('prod-modal-overlay');
+
+      overlay.innerHTML = `
+        <div class="modal animate" style="max-width:720px;">
+          <div class="modal-header">
+            <h3 style="display:flex; align-items:center; gap:8px;">
+              <span>📤</span> Import Dishes & Menu Items
+            </h3>
+            <button class="modal-close" id="modal-close-import">&times;</button>
+          </div>
+          <div class="modal-body" style="padding:20px 24px; max-height:540px; overflow-y:auto;">
+            <!-- Guidance & Template Download -->
+            <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <h4 style="font-size:13.5px; font-weight:800; color:#166534; margin-bottom:2px;">
+                    📋 CSV Import Specifications
+                  </h4>
+                  <p style="font-size:12px; color:#15803D; margin:0;">
+                    Required columns: <b>Item Name, Category, Selling Price, Description, Status, Priority, Image URL</b>
+                  </p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btn-download-csv-template" style="background:#fff; border-color:#86EFAC; color:#166534; font-weight:700;">
+                  📄 Download Sample CSV
+                </button>
+              </div>
+            </div>
+
+            <!-- Duplicate Rule Highlight -->
+            <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:12.5px; color:#92400E; display:flex; gap:8px; align-items:flex-start;">
+              <span style="font-size:16px; line-height:1;">⚡</span>
+              <div>
+                <b>Smart Duplicate Detection:</b> Products are matched by <b>Item Name</b>. Any matching existing product will be <b>automatically updated</b> with new category, selling price, description, status, priority, and image URL. New dishes will be cleanly added to the menu!
+              </div>
+            </div>
+
+            <!-- Upload Area -->
+            <div id="import-dropzone" style="border:2px dashed #CBD5E1; border-radius:12px; padding:24px; text-align:center; background:#F8FAFC; cursor:pointer; transition:all 0.2s;">
+              <input type="file" id="import-file-input" accept=".csv, .json, text/csv, application/json" style="display:none;">
+              <div style="font-size:36px; margin-bottom:8px;">📁</div>
+              <p style="font-size:14px; font-weight:700; color:#1E293B; margin-bottom:4px;">
+                Click to browse or drag & drop your CSV or JSON file here
+              </p>
+              <p style="font-size:12px; color:#64748B; margin:0;">
+                Accepts UTF-8 encoded .csv or .json files
+              </p>
+            </div>
+
+            <!-- Preview Container -->
+            <div id="import-preview-container" style="display:none; margin-top:18px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                <h4 style="font-size:13.5px; font-weight:800; color:#1E293B; margin:0;">
+                  Dishes Preview (<span id="import-preview-count">0</span>)
+                </h4>
+                <div id="import-preview-stats" style="font-size:12px; font-weight:700;"></div>
+              </div>
+
+              <div style="max-height:220px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:8px;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                  <thead style="background:#F1F5F9; position:sticky; top:0; z-index:2;">
+                    <tr>
+                      <th style="padding:8px 10px; border-bottom:1px solid #CBD5E1;">Action</th>
+                      <th style="padding:8px 10px; border-bottom:1px solid #CBD5E1;">Dish Name</th>
+                      <th style="padding:8px 10px; border-bottom:1px solid #CBD5E1;">Category</th>
+                      <th style="padding:8px 10px; border-bottom:1px solid #CBD5E1;">Price</th>
+                      <th style="padding:8px 10px; border-bottom:1px solid #CBD5E1;">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="import-preview-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:14px 24px; display:flex; justify-content:space-between;">
+            <button class="btn btn-secondary" id="modal-cancel-import">Cancel</button>
+            <button class="btn btn-primary" id="btn-submit-import" disabled style="background:#10B981; border-color:#10B981; font-weight:700; opacity:0.5;">
+              Select a file to import
+            </button>
+          </div>
+        </div>
+      `;
+
+      overlay.classList.add('active');
+      const close = () => overlay.classList.remove('active');
+      document.getElementById('modal-close-import').onclick = close;
+      document.getElementById('modal-cancel-import').onclick = close;
+
+      // Sample template download
+      document.getElementById('btn-download-csv-template').onclick = () => {
+        const sampleCsv = 
+`Item Name,Category,Selling Price,Description,Status,Priority,Image URL
+Spicy Honey BBQ Wings (6 pcs),Starters & Appetizers,320,Crispy fried wings tossed in rich honey BBQ glaze with garlic dip,Publish,10,
+Cheesy Garlic Bread (4 pcs),Starters & Appetizers,220,Toasted French baguette loaded with roasted garlic herb butter & mozzarella,Publish,15,
+Classic Beef Burger,Burgers & Sandwiches,280,Juicy seasoned beef patty with tomato lettuce and cheddar,Publish,10,https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500
+Iced Lemon Mint Tea,Beverages & Drinks,120,Refreshing iced tea with fresh mint leaves and squeezed lemon,Draft,20,`;
+
+        const blob = new Blob(['\uFEFF' + sampleCsv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'sample_restaurant_menu.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      // File handling
+      const dropzone = document.getElementById('import-dropzone');
+      const fileInput = document.getElementById('import-file-input');
+      const submitBtn = document.getElementById('btn-submit-import');
+      const previewContainer = document.getElementById('import-preview-container');
+      const previewTbody = document.getElementById('import-preview-tbody');
+      const previewCount = document.getElementById('import-preview-count');
+      const previewStats = document.getElementById('import-preview-stats');
+
+      let parsedItems = [];
+
+      dropzone.onclick = () => fileInput.click();
+      dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = '#10B981'; dropzone.style.background = '#F0FDF4'; };
+      dropzone.ondragleave = () => { dropzone.style.borderColor = '#CBD5E1'; dropzone.style.background = '#F8FAFC'; };
+      dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = '#CBD5E1';
+        dropzone.style.background = '#F8FAFC';
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          processFile(e.dataTransfer.files[0]);
+        }
+      };
+
+      fileInput.onchange = () => {
+        if (fileInput.files && fileInput.files[0]) {
+          processFile(fileInput.files[0]);
+        }
+      };
+
+      const processFile = (file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const content = e.target.result;
+          if (file.name.endsWith('.json')) {
+            try {
+              const data = JSON.parse(content);
+              parsedItems = Array.isArray(data) ? data : (data.items || []);
+              displayPreview(parsedItems);
+            } catch (err) {
+              H.showToast('Invalid JSON file format: ' + err.message, 'error');
+            }
+          } else {
+            parsedItems = parseCSVContent(content);
+            displayPreview(parsedItems);
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      const parseCSVContent = (text) => {
+        const lines = [];
+        let row = [];
+        let inQuotes = false;
+        let curVal = '';
+
+        for (let i = 0; i < text.length; i++) {
+          const c = text[i];
+          const next = text[i + 1];
+
+          if (c === '"') {
+            if (inQuotes && next === '"') {
+              curVal += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (c === ',' && !inQuotes) {
+            row.push(curVal.trim());
+            curVal = '';
+          } else if ((c === '\r' || c === '\n') && !inQuotes) {
+            if (c === '\r' && next === '\n') i++;
+            row.push(curVal.trim());
+            curVal = '';
+            if (row.length > 0 && row.some(cell => cell.length > 0)) {
+              lines.push(row);
+            }
+            row = [];
+          } else {
+            curVal += c;
+          }
+        }
+        if (curVal.length > 0 || row.length > 0) {
+          row.push(curVal.trim());
+          if (row.some(cell => cell.length > 0)) lines.push(row);
+        }
+
+        if (lines.length < 2) return [];
+
+        // Header mapping
+        const headerRow = lines[0].map(h => {
+          const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (clean.includes('name') || clean.includes('dish') || clean.includes('item')) return 'name';
+          if (clean.includes('cat')) return 'category';
+          if (clean.includes('price') || clean.includes('rate') || clean.includes('sell')) return 'sellingPrice';
+          if (clean.includes('desc') || clean.includes('tag') || clean.includes('ingredient')) return 'description';
+          if (clean.includes('stat') || clean.includes('state')) return 'status';
+          if (clean.includes('prior') || clean.includes('order') || clean.includes('sort')) return 'priority';
+          if (clean.includes('img') || clean.includes('image') || clean.includes('photo') || clean.includes('url')) return 'image';
+          return clean;
+        });
+
+        const items = [];
+        for (let i = 1; i < lines.length; i++) {
+          const r = lines[i];
+          const item = {};
+          headerRow.forEach((colKey, colIdx) => {
+            if (r[colIdx] !== undefined) {
+              item[colKey] = r[colIdx];
+            }
+          });
+          if (item.name && item.name.trim()) {
+            items.push(item);
+          }
+        }
+        return items;
+      };
+
+      const displayPreview = (items) => {
+        if (!items || items.length === 0) {
+          H.showToast('No valid dishes found in this file', 'warning');
+          previewContainer.style.display = 'none';
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.5';
+          submitBtn.textContent = 'Select a file to import';
+          return;
+        }
+
+        let totalUpdates = 0;
+        let totalAdds = 0;
+
+        const rowsHtml = items.slice(0, 50).map((it) => {
+          const itName = (it.name || '').trim();
+          const isDuplicate = this.allProductsList.some(
+            p => p.name && p.name.trim().toLowerCase() === itName.toLowerCase()
+          );
+
+          if (isDuplicate) totalUpdates++;
+          else totalAdds++;
+
+          const cat = it.category || 'Starters & Appetizers';
+          const price = parseFloat(it.sellingPrice || it.price || 0).toFixed(2);
+          const status = it.status || 'Publish';
+
+          return `
+            <tr style="border-bottom:1px solid #F1F5F9; ${isDuplicate ? 'background:#FFFBEB;' : ''}">
+              <td style="padding:6px 10px;">
+                ${isDuplicate 
+                  ? `<span style="background:#FEF3C7; color:#D97706; padding:2px 8px; border-radius:4px; font-weight:800; font-size:11px;">✏️ Update Existing</span>`
+                  : `<span style="background:#D1FAE5; color:#059669; padding:2px 8px; border-radius:4px; font-weight:800; font-size:11px;">🆕 Add New</span>`
+                }
+              </td>
+              <td style="padding:6px 10px; font-weight:700; color:#1E293B;">${H.escapeHtml(itName)}</td>
+              <td style="padding:6px 10px; color:#64748B;">${H.escapeHtml(cat)}</td>
+              <td style="padding:6px 10px; font-weight:700; color:#0F172A;">৳${price}</td>
+              <td style="padding:6px 10px;">
+                <span style="font-size:11px; font-weight:600; color:${status === 'Draft' ? '#64748B' : '#059669'};">
+                  ${H.escapeHtml(status)}
+                </span>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        // Recalculate true counts for all items in batch
+        totalUpdates = 0;
+        totalAdds = 0;
+        items.forEach(it => {
+          const itName = (it.name || '').trim();
+          const isDuplicate = this.allProductsList.some(
+            p => p.name && p.name.trim().toLowerCase() === itName.toLowerCase()
+          );
+          if (isDuplicate) totalUpdates++;
+          else totalAdds++;
+        });
+
+        previewCount.textContent = items.length;
+        previewStats.innerHTML = `
+          <span style="color:#D97706; margin-right:8px;">✏️ ${totalUpdates} to Edit</span>
+          <span style="color:#059669;">🆕 ${totalAdds} to Add</span>
+        `;
+        previewTbody.innerHTML = rowsHtml;
+        previewContainer.style.display = 'block';
+
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.textContent = `🚀 Import Now (${items.length} dishes)`;
+      };
+
+      submitBtn.onclick = async () => {
+        if (!parsedItems || parsedItems.length === 0) return;
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Importing into MySQL... ⌛';
+
+        try {
+          const res = await fetch('/api/products/import', {
+            method: 'POST',
+            headers: S.getHeaders(),
+            body: JSON.stringify(parsedItems)
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            H.showToast(`Import completed! ${data.added} added, ${data.updated} updated.`, 'success');
+            close();
+            await this.updateList();
+          } else {
+            H.showToast(data.error || 'Failed to import dishes', 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = `🚀 Import Now (${parsedItems.length} dishes)`;
+          }
+        } catch (err) {
+          H.showToast('Import error: ' + err.message, 'error');
+          submitBtn.disabled = false;
+          submitBtn.textContent = `🚀 Import Now (${parsedItems.length} dishes)`;
+        }
+      };
     },
 
     async showAddEditModal(p) {
@@ -581,18 +1136,21 @@
         const id = isEdit ? p.id : ('prod_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5));
         const sku = isEdit ? p.sku : ('DISH-' + Math.floor(100 + Math.random() * 900));
 
+        const categoryObj = categories.find(c => c.id === categoryId);
         const payload = {
           id,
           name,
           sku,
           barcode: sku,
           categoryId,
+          category: categoryObj ? categoryObj.name : '',
           costPrice: 0, // No cost price rules
           sellingPrice,
           stock: 99999, // No stock constraints
           alertQty: 0,
           image,
           tag,
+          description: tag,
           status,
           priority
         };

@@ -181,6 +181,7 @@ const initDB = async () => {
     await addCol('status', "VARCHAR(50) NOT NULL DEFAULT 'Publish'");
     await addCol('deletedAt', 'DATETIME NULL DEFAULT NULL');
     await addCol('priority', 'INT NOT NULL DEFAULT 0');
+    await addCol('description', 'TEXT DEFAULT NULL');
 
     // Auto-fix: Ensure deletedAt is nullable and reset any bad default timestamps for active products
     try {
@@ -2370,6 +2371,144 @@ app.post('/api/products/bulk', verifyRole(['admin', 'manager']), async (req, res
 
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Bulk Status Update (Publish, Draft, Trash) ────
+app.post('/api/products/bulk-status', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids array is required and must not be empty' });
+    }
+
+    const validStatuses = ['Publish', 'Draft', 'Trash'];
+    const targetStatus = validStatuses.includes(status) ? status : 'Publish';
+
+    const placeholders = ids.map(() => '?').join(',');
+    if (targetStatus === 'Trash') {
+      const nowVal = getBangladeshDateTimeString(new Date());
+      await dbQuery(
+        `UPDATE products SET status = 'Trash', deletedAt = ? WHERE id IN (${placeholders})`,
+        [nowVal, ...ids]
+      );
+    } else {
+      await dbQuery(
+        `UPDATE products SET status = ?, deletedAt = NULL WHERE id IN (${placeholders})`,
+        [targetStatus, ...ids]
+      );
+    }
+
+    res.json({ success: true, updatedCount: ids.length, status: targetStatus });
+  } catch (err) {
+    console.error('Error in /api/products/bulk-status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Import Products with Duplicate Name Detection & Auto-Update ──
+app.post('/api/products/import', verifyRole(['admin', 'manager']), async (req, res) => {
+  try {
+    const items = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Body must be a non-empty array of products' });
+    }
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    const results = [];
+
+    // Pre-cache all categories for fast lookup
+    const catRows = await dbQuery(`SELECT id, name FROM categories`);
+    const catMap = new Map();
+    for (const c of catRows) {
+      if (c.name) catMap.set(c.name.trim().toLowerCase(), c.id);
+    }
+
+    for (const raw of items) {
+      const name = (raw.name || raw.itemName || raw.dishName || raw.dish || '').toString().trim();
+      if (!name) continue; // Skip items without a name
+
+      const categoryName = (raw.category || raw.categoryName || 'Starters & Appetizers').toString().trim();
+      const sellingPrice = parseFloat(raw.sellingPrice !== undefined ? raw.sellingPrice : (raw.price !== undefined ? raw.price : 0)) || 0;
+      const description = (raw.description !== undefined ? raw.description : (raw.tag || '')).toString().trim();
+
+      // Normalize status
+      let status = (raw.status || 'Publish').toString().trim();
+      const statusLower = status.toLowerCase();
+      if (statusLower === 'draft' || statusLower === 'inactive') {
+        status = 'Draft';
+      } else if (statusLower === 'trash' || statusLower === 'deleted') {
+        status = 'Trash';
+      } else {
+        status = 'Publish';
+      }
+
+      const priority = parseInt(raw.priority) || 10;
+      const image = (raw.image || raw.imageUrl || raw.image_url || '').toString().trim();
+
+      // Find or create category
+      let categoryId = 'cat_mains';
+      if (categoryName) {
+        const catKey = categoryName.toLowerCase();
+        if (catMap.has(catKey)) {
+          categoryId = catMap.get(catKey);
+        } else {
+          categoryId = 'cat_' + Math.random().toString(36).substr(2, 9);
+          await dbQuery(`INSERT INTO categories (id, name, icon) VALUES (?, ?, '🍽️')`, [categoryId, categoryName]);
+          catMap.set(catKey, categoryId);
+        }
+      }
+
+      // Check duplicate by name (case-insensitive)
+      const existing = await dbQuery(
+        `SELECT id, name, sku, image FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+        [name]
+      );
+
+      if (existing.length > 0) {
+        // Edit existing product!
+        const prod = existing[0];
+        const finalImage = image || prod.image || null;
+        await dbQuery(
+          `UPDATE products SET 
+            categoryId = ?, 
+            category = ?, 
+            sellingPrice = ?, 
+            tag = ?, 
+            description = ?, 
+            status = ?, 
+            priority = ?, 
+            image = ? 
+           WHERE id = ?`,
+          [categoryId, categoryName, sellingPrice, description, description, status, priority, finalImage, prod.id]
+        );
+        updatedCount++;
+        results.push({ id: prod.id, name, action: 'updated', status });
+      } else {
+        // Insert new product!
+        const newId = 'prod_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        const newSku = 'DISH-' + Math.floor(1000 + Math.random() * 9000);
+        await dbQuery(
+          `INSERT INTO products (id, name, sku, barcode, categoryId, category, costPrice, sellingPrice, stock, alertQty, image, tag, description, status, priority)
+           VALUES (?, ?, ?, ?, ?, ?, 0.00, ?, 99999, 0, ?, ?, ?, ?, ?)`,
+          [newId, name, newSku, newSku, categoryId, categoryName, sellingPrice, image || null, description, description, status, priority]
+        );
+        addedCount++;
+        results.push({ id: newId, name, action: 'added', status });
+      }
+    }
+
+    res.json({
+      success: true,
+      total: items.length,
+      added: addedCount,
+      updated: updatedCount,
+      results
+    });
+  } catch (err) {
+    console.error('Error in /api/products/import:', err);
     res.status(500).json({ error: err.message });
   }
 });
