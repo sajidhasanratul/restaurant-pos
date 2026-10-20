@@ -15,7 +15,6 @@
       let toDate = localStorage.getItem('ing_to') || today;
 
       mc.innerHTML = `
-      mc.innerHTML = `
         <!-- Top Bar: Date Range Filter + Action Buttons (Name Card Removed) -->
         <div class="filter-bar fade-in" style="display:flex; flex-direction:column; gap:12px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">

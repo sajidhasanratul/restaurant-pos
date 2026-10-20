@@ -636,9 +636,11 @@
       const discountNoticeDesc = document.getElementById('cust-discount-notice-desc');
 
       let selectedCustomer = null;
+      let isCustomerSelected = false;
 
       const applyCustomerDetails = (c) => {
         selectedCustomer = c;
+        isCustomerSelected = true;
         if (c.name) nameInput.value = c.name;
         if (c.phone) phoneInput.value = c.phone;
         this.customerInfo = {
@@ -671,6 +673,7 @@
           if (discountNotice) discountNotice.style.display = 'none';
         }
         suggestionsBox.style.display = 'none';
+        suggestionsBox.innerHTML = '';
       };
 
       // Check current customer if already set
@@ -681,10 +684,20 @@
         }
       }
 
-      // Phone input listener with instant search & suggestions
+      // Phone input listener: only trigger search & suggestions once a full number is typed
       const searchCustomers = H.debounce(async (val) => {
         const query = (val || '').trim();
-        if (query.length < 2) {
+        const cleanDigits = query.replace(/\D/g, '');
+
+        // If a customer was already selected and the phone matches, do not show suggestions
+        if (isCustomerSelected && selectedCustomer && (selectedCustomer.phone || '').trim() === query) {
+          suggestionsBox.style.display = 'none';
+          suggestionsBox.innerHTML = '';
+          return;
+        }
+
+        // Only show suggestions after typing full phone number (at least 10 digits)
+        if (cleanDigits.length < 10) {
           suggestionsBox.style.display = 'none';
           suggestionsBox.innerHTML = '';
           return;
@@ -695,22 +708,20 @@
           if (!res.ok) return;
           const list = await res.json();
 
-          if (!list || list.length === 0) {
+          if (!list || list.length === 0 || (isCustomerSelected && selectedCustomer && list.some(c => c.id === selectedCustomer.id))) {
             suggestionsBox.style.display = 'none';
             suggestionsBox.innerHTML = '';
             return;
           }
 
-          // Check if there is an exact phone match
-          const exact = list.find(c => (c.phone || '').trim() === query);
-          if (exact && (!nameInput.value.trim() || nameInput.value.trim() === exact.name)) {
-            applyCustomerDetails(exact);
-          }
-
-          suggestionsBox.innerHTML = list.map(c => {
+          suggestionsBox.innerHTML = `
+            <div style="padding:6px 12px; font-size:11px; font-weight:800; color:#64748B; background:#F8FAFC; border-bottom:1px solid #E2E8F0; text-transform:uppercase; letter-spacing:0.5px;">
+              Saved Customer Found (Click to select):
+            </div>
+          ` + list.map(c => {
             const disc = parseFloat(c.customDiscount) || 0;
             return `
-              <div class="cust-suggest-item" data-cust-id="${c.id}" style="padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; transition:background 0.15s;">
+              <div class="cust-suggest-item" data-cust-id="${c.id}" style="padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
                 <div>
                   <div style="font-weight:700; font-size:13px; color:#1e293b;">${H.escapeHtml(c.name)}</div>
                   <div style="font-size:11.5px; color:#64748b;">📞 ${H.escapeHtml(c.phone || 'No phone recorded')}</div>
@@ -729,6 +740,7 @@
           suggestionsBox.querySelectorAll('.cust-suggest-item').forEach(item => {
             item.onmousedown = (e) => {
               e.preventDefault();
+              e.stopPropagation();
               const custId = item.dataset.custId;
               const matched = list.find(c => String(c.id) === String(custId));
               if (matched) {
@@ -742,6 +754,9 @@
       }, 150);
 
       phoneInput.addEventListener('input', (e) => {
+        if (selectedCustomer && (selectedCustomer.phone || '').trim() !== e.target.value.trim()) {
+          isCustomerSelected = false;
+        }
         searchCustomers(e.target.value);
       });
 

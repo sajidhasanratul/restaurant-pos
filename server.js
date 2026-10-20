@@ -821,6 +821,18 @@ const initDB = async () => {
 
     // Supplier Payments indexes
     await ensureTableIndex('supplier_payments', 'idx_supplier_payments_date', 'date');
+
+    // Auto-link historical orders where customerId was null but customerPhone matches customers.phone
+    try {
+      await dbQuery(`
+        UPDATE orders o 
+        JOIN customers c ON (c.phone IS NOT NULL AND c.phone != '' AND o.customerPhone = c.phone)
+        SET o.customerId = c.id
+        WHERE o.customerId IS NULL OR o.customerId = ''
+      `);
+    } catch (linkErr) {
+      // Safe to ignore if table structure differs
+    }
   } catch (idxErr) {
     console.warn('Notice during database index setup:', idxErr.message);
   }
@@ -2818,16 +2830,46 @@ app.get('/api/customers', async (req, res) => {
       const s = `%${search.trim().toLowerCase()}%`;
       const maxLimit = Math.min(parseInt(limit) || 20, 50);
       const rows = await dbQuery(
-        `SELECT id, name, phone, email, label, customDiscount, address 
-         FROM customers 
-         WHERE LOWER(name) LIKE ? OR phone LIKE ? 
-         ORDER BY name 
+        `SELECT 
+           c.id, c.name, c.phone, c.email, c.label, c.customDiscount, c.address,
+           (
+             SELECT COUNT(*) 
+             FROM orders o 
+             WHERE (o.customerId = c.id) 
+                OR (c.phone IS NOT NULL AND c.phone != '' AND o.customerPhone = c.phone)
+           ) AS orderCount,
+           (
+             SELECT COALESCE(SUM(o.grandTotal), 0) 
+             FROM orders o 
+             WHERE (o.customerId = c.id) 
+                OR (c.phone IS NOT NULL AND c.phone != '' AND o.customerPhone = c.phone)
+           ) AS totalSpent
+         FROM customers c 
+         WHERE LOWER(c.name) LIKE ? OR c.phone LIKE ? 
+         ORDER BY c.name 
          LIMIT ?`,
         [s, s, maxLimit]
       );
       return res.json(rows);
     }
-    const rows = await dbQuery(`SELECT * FROM customers ORDER BY name`);
+    const rows = await dbQuery(`
+      SELECT 
+        c.id, c.name, c.phone, c.email, c.label, c.customDiscount, c.address,
+        (
+          SELECT COUNT(*) 
+          FROM orders o 
+          WHERE (o.customerId = c.id) 
+             OR (c.phone IS NOT NULL AND c.phone != '' AND o.customerPhone = c.phone)
+        ) AS orderCount,
+        (
+          SELECT COALESCE(SUM(o.grandTotal), 0) 
+          FROM orders o 
+          WHERE (o.customerId = c.id) 
+             OR (c.phone IS NOT NULL AND c.phone != '' AND o.customerPhone = c.phone)
+        ) AS totalSpent
+      FROM customers c 
+      ORDER BY c.name
+    `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2918,10 +2960,19 @@ app.delete('/api/customers/:id', verifyRole(['admin', 'manager', 'cashier']), as
 app.get('/api/orders', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const { from, to, search, paymentMethod, minTotal, maxTotal, page, limit } = req.query;
+    const { from, to, search, customerId, paymentMethod, minTotal, maxTotal, page, limit } = req.query;
 
     let whereClauses = [];
     let queryParams = [];
+
+    // Customer ID filter
+    if (customerId) {
+      whereClauses.push(`(
+        o.customerId = ? OR 
+        (o.customerPhone IS NOT NULL AND o.customerPhone != '' AND o.customerPhone = (SELECT phone FROM customers WHERE id = ? LIMIT 1))
+      )`);
+      queryParams.push(customerId, customerId);
+    }
 
     // Date range filter
     if (from) {
@@ -3545,29 +3596,32 @@ app.post('/api/orders', async (req, res) => {
     const finalCustName = (order.customerName && order.customerName.trim()) ? order.customerName.trim() : '';
     const finalCustPhone = (order.customerPhone || '').trim();
 
-    await connection.execute(`INSERT INTO orders (
-      id, invoiceId, customerId, customerName, customerPhone, date, subtotal, discountType, 
-      discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, orderType, tableName, tokenNo
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order.id, order.invoiceId, order.customerId || null, finalCustName, finalCustPhone, formattedDate, order.subtotal,
-      order.discountType, order.discountValue, order.discountAmount, order.taxPercent, order.taxAmount, order.grandTotal,
-      order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken]);
-
-    // Automatically save or update customer in customers table ONLY if full phone and real name provided
-    if (finalCustName && finalCustPhone && finalCustPhone.replace(/\D/g, '').length >= 7 && finalCustName.toLowerCase() !== 'guest') {
+    let assignedCustId = order.customerId || null;
+    if (finalCustPhone && finalCustPhone.replace(/\D/g, '').length >= 7) {
       try {
         const [existingCust] = await connection.execute(`SELECT id FROM customers WHERE phone = ? LIMIT 1`, [finalCustPhone]);
         if (existingCust && existingCust.length > 0) {
-          await connection.execute(`UPDATE customers SET name = ? WHERE id = ?`, [finalCustName, existingCust[0].id]);
-        } else {
-          const newCustId = order.customerId || ('c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
+          assignedCustId = existingCust[0].id;
+          if (finalCustName && finalCustName.toLowerCase() !== 'guest') {
+            await connection.execute(`UPDATE customers SET name = ? WHERE id = ?`, [finalCustName, existingCust[0].id]);
+          }
+        } else if (finalCustName && finalCustName.toLowerCase() !== 'guest') {
+          assignedCustId = assignedCustId || ('c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
           await connection.execute(`INSERT INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, ?, 'Regular', 0.00)`,
-            [newCustId, finalCustName, finalCustPhone]);
+            [assignedCustId, finalCustName, finalCustPhone]);
         }
       } catch (custErr) {
         console.warn('Customer auto-save notice during order creation:', custErr.message);
       }
     }
+
+    await connection.execute(`INSERT INTO orders (
+      id, invoiceId, customerId, customerName, customerPhone, date, subtotal, discountType, 
+      discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, orderType, tableName, tokenNo
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order.id, order.invoiceId, assignedCustId, finalCustName, finalCustPhone, formattedDate, order.subtotal,
+      order.discountType, order.discountValue, order.discountAmount, order.taxPercent, order.taxAmount, order.grandTotal,
+      order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken]);
 
     for (const item of items) {
       await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 

@@ -211,11 +211,21 @@
 
       let custOrders = [];
       try {
-        const queryTerm = customer.phone || customer.name || '';
-        const res = await fetch(`/api/orders?search=${encodeURIComponent(queryTerm)}&limit=100`);
+        const res = await fetch(`/api/orders?customerId=${encodeURIComponent(customer.id)}&limit=100`);
         if (res.ok) {
           const list = await res.json();
-          custOrders = list.filter(o => o.customerId === customer.id || (customer.phone && o.customerPhone === customer.phone) || (customer.name && o.customerName === customer.name));
+          custOrders = Array.isArray(list) ? list : (list.orders || []);
+        }
+        if (!custOrders || custOrders.length === 0) {
+          const queryTerm = customer.phone || customer.name || '';
+          if (queryTerm) {
+            const fallbackRes = await fetch(`/api/orders?search=${encodeURIComponent(queryTerm)}&limit=100`);
+            if (fallbackRes.ok) {
+              const list = await fallbackRes.json();
+              const fullList = Array.isArray(list) ? list : (list.orders || []);
+              custOrders = fullList.filter(o => o.customerId === customer.id || (customer.phone && o.customerPhone === customer.phone) || (customer.name && o.customerName === customer.name));
+            }
+          }
         }
       } catch (e) {
         console.warn('Error fetching customer orders:', e);
