@@ -9,8 +9,23 @@
       // Register routes
       // Register routes with safe fallback handling
       const R = POS.Router;
-      const safeRender = (modName, param) => {
-        const mod = POS[modName] || window[modName];
+      const safeRender = async (modName, param) => {
+        let mod = POS[modName] || window[modName];
+        if (!mod || (typeof mod.render !== 'function' && typeof mod.reader !== 'function')) {
+          const scriptFile = `js/${modName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}.js?v=${Date.now()}`;
+          try {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement('script');
+              s.src = scriptFile;
+              s.onload = () => resolve();
+              s.onerror = (e) => reject(e);
+              document.head.appendChild(s);
+            });
+            mod = POS[modName] || window[modName];
+          } catch (e) {
+            console.warn(`Dynamic load of ${scriptFile} failed:`, e);
+          }
+        }
         if (mod && typeof mod.render === 'function') {
           return mod.render(param);
         }
@@ -18,7 +33,9 @@
           return mod.reader(param);
         }
         console.error(`POS.${modName} module is not available on window.POS. Ensure js/${modName.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')}.js is loaded.`);
-        POS.Helpers.showToast(`${modName} module not loaded. Please hard refresh your browser (Ctrl + F5).`, 'error');
+        if (POS.Helpers && typeof POS.Helpers.showToast === 'function') {
+          POS.Helpers.showToast(`${modName} module not loaded. Please hard refresh your browser (Ctrl + F5).`, 'error');
+        }
       };
 
       R.register('/dashboard',         () => safeRender('Dashboard'));
