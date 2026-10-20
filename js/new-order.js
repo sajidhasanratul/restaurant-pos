@@ -585,26 +585,38 @@
       if (processBtn) processBtn.onclick = () => this.showTransactionModal();
     },
 
-    // ── 1. Customer Modal (Optional info, NOT required) ──
+    // ── 1. Customer Modal (Auto-fill by Phone, Suggestions & Custom Discount) ──
     showCustomerModal() {
       const H = POS.Helpers;
       const modalHtml = `
-        <div class="modal" id="modal-order-customer" style="max-width:440px;">
+        <div class="modal" id="modal-order-customer" style="max-width:460px;">
           <div class="modal-header">
             <h3>👤 Guest / Customer Details</h3>
             <button class="modal-close" id="btn-close-cust">&times;</button>
           </div>
           <div class="modal-body" style="padding:18px 24px;">
             <p style="font-size:12.5px; color:#64748B; margin-bottom:14px;">
-              Customer details are <strong>completely optional</strong> for dining orders.
+              Enter customer phone to auto-find customer and apply personalized discount.
             </p>
+            <div class="form-group mb-2" style="position:relative;">
+              <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Phone Number</span>
+                <span id="cust-modal-vip-badge" style="display:none; font-size:11px; font-weight:700; color:#10B981; background:#ecfdf5; padding:2px 8px; border-radius:12px; border:1px solid #a7f3d0;">VIP Customer</span>
+              </label>
+              <input type="text" class="form-input" id="cust-modal-phone" value="${H.escapeHtml(this.customerInfo.phone || '')}" placeholder="Type customer phone number..." autocomplete="off">
+              <!-- Autocomplete suggestions dropdown -->
+              <div id="cust-suggestions-box" style="display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.12); z-index:1000; max-height:220px; overflow-y:auto; margin-top:4px;"></div>
+            </div>
             <div class="form-group mb-2">
               <label class="form-label">Guest / Customer Name</label>
-              <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || '')}" placeholder="Customer name (optional)">
+              <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || '')}" placeholder="Customer name">
             </div>
-            <div class="form-group mb-0">
-              <label class="form-label">Phone Number (Optional)</label>
-              <input type="text" class="form-input" id="cust-modal-phone" value="${H.escapeHtml(this.customerInfo.phone || '')}" placeholder="Phone number (optional)">
+            <div id="cust-discount-notice" style="display:none; padding:10px 14px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; font-size:12.5px; color:#065f46; margin-top:8px;">
+              <div style="font-weight:700; display:flex; align-items:center; gap:6px;">
+                <span>🎉</span>
+                <span id="cust-discount-notice-title">Customer Personalized Discount</span>
+              </div>
+              <div id="cust-discount-notice-desc" style="font-size:11.5px; margin-top:2px; color:#047857;"></div>
             </div>
           </div>
           <div class="modal-footer" style="padding:12px 24px;">
@@ -618,7 +630,122 @@
 
       const nameInput = document.getElementById('cust-modal-name');
       const phoneInput = document.getElementById('cust-modal-phone');
+      const suggestionsBox = document.getElementById('cust-suggestions-box');
+      const vipBadge = document.getElementById('cust-modal-vip-badge');
+      const discountNotice = document.getElementById('cust-discount-notice');
+      const discountNoticeDesc = document.getElementById('cust-discount-notice-desc');
 
+      let selectedCustomer = null;
+
+      const applyCustomerDetails = (c) => {
+        selectedCustomer = c;
+        if (c.name) nameInput.value = c.name;
+        if (c.phone) phoneInput.value = c.phone;
+        this.customerInfo = {
+          id: c.id || null,
+          name: c.name || '',
+          phone: c.phone || '',
+          customDiscount: parseFloat(c.customDiscount) || 0
+        };
+
+        if (vipBadge) {
+          vipBadge.style.display = 'inline-block';
+          vipBadge.textContent = c.label || 'Customer';
+        }
+
+        const disc = parseFloat(c.customDiscount) || 0;
+        if (disc > 0) {
+          this.discount = {
+            type: 'percentage',
+            value: disc,
+            amount: 0,
+            code: `${c.name ? c.name + ' ' : ''}VIP (${disc}%)`
+          };
+          this.updateOrderSummary();
+          if (discountNotice && discountNoticeDesc) {
+            discountNotice.style.display = 'block';
+            discountNoticeDesc.textContent = `${disc}% custom discount applied for ${c.name || 'this customer'}!`;
+          }
+          H.showToast(`Applied ${disc}% discount for ${c.name || 'Customer'}!`, 'success');
+        } else {
+          if (discountNotice) discountNotice.style.display = 'none';
+        }
+        suggestionsBox.style.display = 'none';
+      };
+
+      // Check current customer if already set
+      if (this.customerInfo && this.customerInfo.customDiscount > 0) {
+        if (discountNotice && discountNoticeDesc) {
+          discountNotice.style.display = 'block';
+          discountNoticeDesc.textContent = `${this.customerInfo.customDiscount}% custom discount active on this order.`;
+        }
+      }
+
+      // Phone input listener with instant search & suggestions
+      const searchCustomers = H.debounce(async (val) => {
+        const query = (val || '').trim();
+        if (query.length < 2) {
+          suggestionsBox.style.display = 'none';
+          suggestionsBox.innerHTML = '';
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/customers?search=${encodeURIComponent(query)}&limit=10`);
+          if (!res.ok) return;
+          const list = await res.json();
+
+          if (!list || list.length === 0) {
+            suggestionsBox.style.display = 'none';
+            suggestionsBox.innerHTML = '';
+            return;
+          }
+
+          // Check if there is an exact phone match
+          const exact = list.find(c => (c.phone || '').trim() === query);
+          if (exact && (!nameInput.value.trim() || nameInput.value.trim() === exact.name)) {
+            applyCustomerDetails(exact);
+          }
+
+          suggestionsBox.innerHTML = list.map(c => {
+            const disc = parseFloat(c.customDiscount) || 0;
+            return `
+              <div class="cust-suggest-item" data-cust-id="${c.id}" style="padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; transition:background 0.15s;">
+                <div>
+                  <div style="font-weight:700; font-size:13px; color:#1e293b;">${H.escapeHtml(c.name)}</div>
+                  <div style="font-size:11.5px; color:#64748b;">📞 ${H.escapeHtml(c.phone || 'No phone recorded')}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  ${c.label ? `<span style="font-size:10px; font-weight:700; background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px;">${H.escapeHtml(c.label)}</span>` : ''}
+                  ${disc > 0 ? `<span style="font-size:10.5px; font-weight:800; background:#ecfdf5; color:#059669; padding:2px 8px; border-radius:6px; border:1px solid #a7f3d0;">${disc}% OFF</span>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          suggestionsBox.style.display = 'block';
+
+          // Click handler for suggestion items
+          suggestionsBox.querySelectorAll('.cust-suggest-item').forEach(item => {
+            item.onmousedown = (e) => {
+              e.preventDefault();
+              const custId = item.dataset.custId;
+              const matched = list.find(c => String(c.id) === String(custId));
+              if (matched) {
+                applyCustomerDetails(matched);
+              }
+            };
+          });
+        } catch (err) {
+          console.warn('Customer search error:', err);
+        }
+      }, 150);
+
+      phoneInput.addEventListener('input', (e) => {
+        searchCustomers(e.target.value);
+      });
+
+      // Auto-save customer if new
       const autoSaveCustomer = H.debounce(async () => {
         const name = nameInput.value.trim();
         const phone = phoneInput.value.trim();
@@ -633,17 +760,42 @@
             console.warn('Customer auto-save notice:', e);
           }
         }
-      }, 350);
+      }, 400);
 
       nameInput.addEventListener('input', autoSaveCustomer);
       phoneInput.addEventListener('input', autoSaveCustomer);
+
+      // Hide suggestions on blur or clicking outside
+      phoneInput.addEventListener('blur', () => {
+        setTimeout(() => { suggestionsBox.style.display = 'none'; }, 200);
+      });
 
       document.getElementById('btn-close-cust').onclick = () => H.hideModal();
       document.getElementById('btn-cancel-cust').onclick = () => H.hideModal();
       document.getElementById('btn-save-cust').onclick = async () => {
         const name = nameInput.value.trim();
         const phone = phoneInput.value.trim();
-        this.customerInfo = { name, phone };
+        
+        // If user didn't click dropdown but phone matches a known customer, apply discount
+        if (phone && (!selectedCustomer || selectedCustomer.phone !== phone)) {
+          try {
+            const checkRes = await fetch(`/api/customers?search=${encodeURIComponent(phone)}&limit=5`);
+            if (checkRes.ok) {
+              const matches = await checkRes.json();
+              const exact = matches.find(c => (c.phone || '').trim() === phone);
+              if (exact) {
+                applyCustomerDetails(exact);
+              }
+            }
+          } catch (e) {}
+        }
+
+        this.customerInfo = {
+          id: (selectedCustomer && selectedCustomer.id) || this.customerInfo.id || null,
+          name: name,
+          phone: phone,
+          customDiscount: (selectedCustomer && selectedCustomer.customDiscount) || this.customerInfo.customDiscount || 0
+        };
 
         if (name || phone) {
           try {
@@ -669,7 +821,12 @@
       if (btn) {
         const span = btn.querySelector('span:last-child');
         if (span) {
-          span.textContent = this.customerInfo && this.customerInfo.name ? this.customerInfo.name : 'Customer';
+          if (this.customerInfo && this.customerInfo.name) {
+            const disc = parseFloat(this.customerInfo.customDiscount) || 0;
+            span.textContent = disc > 0 ? `${this.customerInfo.name} (${disc}%)` : this.customerInfo.name;
+          } else {
+            span.textContent = 'Customer';
+          }
         }
       }
     },
@@ -1069,6 +1226,9 @@
 
           // Reset order
           this.cart = [];
+          this.customerInfo = { id: null, name: '', phone: '', customDiscount: 0 };
+          this.discount = { type: 'none', value: 0, amount: 0, code: '' };
+          this.updateCustomerButton();
           this.renderCart();
           this.renderProductCards();
         } else {

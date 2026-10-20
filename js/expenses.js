@@ -26,20 +26,37 @@
           </div>
         </div>
 
-        <div class="filter-bar fade-in">
-          <div class="form-group" style="margin-bottom:0; flex: 1; min-width: 140px;">
-            <label class="form-label">From Date</label>
-            <input type="date" class="form-input" id="exp-from" value="${fromDate}">
+        <div class="filter-bar fade-in" style="display:flex; flex-direction:column; gap:12px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; margin-bottom:16px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:12px; font-weight:800; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">Filter:</span>
+              <div class="btn-group" style="display:flex; gap:6px; background:#F8FAFC; padding:4px; border-radius:10px; border:1px solid #E2E8F0;">
+                <button type="button" class="btn btn-sm exp-period-btn active" data-period="today" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Today</button>
+                <button type="button" class="btn btn-sm exp-period-btn" data-period="yesterday" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Yesterday</button>
+                <button type="button" class="btn btn-sm exp-period-btn" data-period="this_week" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Week</button>
+                <button type="button" class="btn btn-sm exp-period-btn" data-period="this_month" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Month</button>
+                <button type="button" class="btn btn-sm exp-period-btn" data-period="custom" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Custom</button>
+              </div>
+            </div>
+
+            <!-- Search box -->
+            <div style="flex:1; min-width:220px; max-width:380px;">
+              <input type="text" class="form-input" id="exp-search" placeholder="Search supplier, reason, or note..." style="height:36px; font-size:12.5px;">
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom:0; flex: 1; min-width: 140px;">
-            <label class="form-label">To Date</label>
-            <input type="date" class="form-input" id="exp-to" value="${toDate}">
+
+          <!-- Date inputs row -->
+          <div id="exp-custom-date-box" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; border-top:1px dashed #E2E8F0; padding-top:10px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">From:</label>
+              <input type="date" class="form-input" id="exp-from" value="${fromDate}" style="height:32px; font-size:12px; width:135px;">
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">To:</label>
+              <input type="date" class="form-input" id="exp-to" value="${toDate}" style="height:32px; font-size:12px; width:135px;">
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-filter-expenses" style="height:32px; padding:0 14px; font-size:12px; font-weight:700;">Apply Range</button>
           </div>
-          <div class="form-group" style="margin-bottom:0; flex: 1.5; min-width: 160px;">
-            <label class="form-label">Search</label>
-            <input type="text" class="form-input" id="exp-search" placeholder="Supplier / Reason...">
-          </div>
-          <button class="btn btn-primary" id="btn-filter-expenses" style="margin-top: 18px;">Apply Filter</button>
         </div>
 
         <div class="stats-grid fade-in mb-2" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;">
@@ -90,9 +107,55 @@
         manageBtn.onclick = () => this.showCategoriesModal();
       }
 
+      const customBox = document.getElementById('exp-custom-date-box');
+      const fromInput = document.getElementById('exp-from');
+      const toInput = document.getElementById('exp-to');
+
+      const getExpensePeriodRange = (period) => {
+        const today = H.today();
+        if (period === 'today') return { from: today, to: today };
+        if (period === 'yesterday') {
+          const y = H.yesterday();
+          return { from: y, to: y };
+        }
+        if (period === 'this_week') {
+          const p = H.getBDDateParts();
+          const d = new Date(Date.UTC(p.year, p.month - 1, p.day));
+          const dayOfWeek = d.getUTCDay();
+          return { from: H.addDays(today, -dayOfWeek), to: today };
+        }
+        if (period === 'this_month') {
+          const p = H.getBDDateParts();
+          const pad = n => String(n).padStart(2, '0');
+          return { from: `${p.year}-${pad(p.month)}-01`, to: today };
+        }
+        return { from: today, to: today };
+      };
+
+      document.querySelectorAll('.exp-period-btn').forEach(btn => {
+        btn.onclick = async () => {
+          document.querySelectorAll('.exp-period-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const p = btn.dataset.period;
+          if (p === 'custom') {
+            customBox.style.display = 'flex';
+          } else {
+            customBox.style.display = 'none';
+            const range = getExpensePeriodRange(p);
+            fromDate = range.from;
+            toDate = range.to;
+            fromInput.value = fromDate;
+            toInput.value = toDate;
+            localStorage.setItem('exp_from', fromDate);
+            localStorage.setItem('exp_to', toDate);
+            await this.updateList(fromDate, toDate);
+          }
+        };
+      });
+
       document.getElementById('btn-filter-expenses').onclick = async () => {
-        fromDate = document.getElementById('exp-from').value;
-        toDate = document.getElementById('exp-to').value;
+        fromDate = fromInput.value;
+        toDate = toInput.value;
         localStorage.setItem('exp_from', fromDate);
         localStorage.setItem('exp_to', toDate);
         await this.updateList(fromDate, toDate);

@@ -29,24 +29,36 @@
           </div>
         </div>
 
-        <div class="filter-bar fade-in" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
-          <div class="form-group" style="margin-bottom:0; flex:1; min-width:130px;">
-            <label class="form-label">From Date</label>
-            <input type="date" class="form-input" id="ew-filter-from" value="${fromDate}">
+        <div class="filter-bar fade-in" style="display:flex; flex-direction:column; gap:12px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; margin-bottom:16px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:12px; font-weight:800; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">Filter:</span>
+              <div class="btn-group" style="display:flex; gap:6px; background:#F8FAFC; padding:4px; border-radius:10px; border:1px solid #E2E8F0;">
+                <button type="button" class="btn btn-sm ew-period-btn active" data-period="today" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Today</button>
+                <button type="button" class="btn btn-sm ew-period-btn" data-period="yesterday" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Yesterday</button>
+                <button type="button" class="btn btn-sm ew-period-btn" data-period="this_week" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Week</button>
+                <button type="button" class="btn btn-sm ew-period-btn" data-period="this_month" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Month</button>
+                <button type="button" class="btn btn-sm ew-period-btn" data-period="custom" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Custom</button>
+              </div>
+            </div>
+
+            <!-- Search box -->
+            <div style="flex:1; min-width:200px; max-width:360px;">
+              <input type="text" class="form-input" id="ew-search" placeholder="Search item, supplier, reason..." style="height:36px; font-size:12.5px;">
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom:0; flex:1; min-width:130px;">
-            <label class="form-label">To Date</label>
-            <input type="date" class="form-input" id="ew-filter-to" value="${toDate}">
-          </div>
-          <div class="form-group" style="margin-bottom:0; flex:1.5; min-width:180px;">
-            <label class="form-label">Search</label>
-            <input type="text" class="form-input" id="ew-search" placeholder="Search item, supplier, reason...">
-          </div>
-          <div style="display:flex; gap:6px;">
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-ew-today">Today</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-ew-month">This Month</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-ew-all">All</button>
-            <button class="btn btn-primary btn-sm" id="btn-filter-ew">Filter</button>
+
+          <!-- Date inputs row for Custom -->
+          <div id="ew-custom-date-box" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; border-top:1px dashed #E2E8F0; padding-top:10px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">From:</label>
+              <input type="date" class="form-input" id="ew-filter-from" value="${fromDate}" style="height:32px; font-size:12px; width:135px;">
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">To:</label>
+              <input type="date" class="form-input" id="ew-filter-to" value="${toDate}" style="height:32px; font-size:12px; width:135px;">
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-filter-ew" style="height:32px; padding:0 14px; font-size:12px; font-weight:700;">Apply Range</button>
           </div>
         </div>
 
@@ -116,45 +128,58 @@
 
       document.getElementById('btn-add-expired-waste').onclick = () => this.showModal(null);
 
+      const customBox = document.getElementById('ew-custom-date-box');
+      const fromInput = document.getElementById('ew-filter-from');
+      const toInput = document.getElementById('ew-filter-to');
+
+      const getEwPeriodRange = (period) => {
+        const today = H.today();
+        if (period === 'today') return { from: today, to: today };
+        if (period === 'yesterday') {
+          const y = H.yesterday();
+          return { from: y, to: y };
+        }
+        if (period === 'this_week') {
+          const p = H.getBDDateParts();
+          const d = new Date(Date.UTC(p.year, p.month - 1, p.day));
+          const dayOfWeek = d.getUTCDay();
+          return { from: H.addDays(today, -dayOfWeek), to: today };
+        }
+        if (period === 'this_month') {
+          const p = H.getBDDateParts();
+          const pad = n => String(n).padStart(2, '0');
+          return { from: `${p.year}-${pad(p.month)}-01`, to: today };
+        }
+        return { from: today, to: today };
+      };
+
+      document.querySelectorAll('.ew-period-btn').forEach(btn => {
+        btn.onclick = async () => {
+          document.querySelectorAll('.ew-period-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const p = btn.dataset.period;
+          if (p === 'custom') {
+            customBox.style.display = 'flex';
+          } else {
+            customBox.style.display = 'none';
+            const range = getEwPeriodRange(p);
+            fromDate = range.from;
+            toDate = range.to;
+            fromInput.value = fromDate;
+            toInput.value = toDate;
+            localStorage.setItem('ew_from', fromDate);
+            localStorage.setItem('ew_to', toDate);
+            await this.updateList(fromDate, toDate);
+          }
+        };
+      });
+
       document.getElementById('btn-filter-ew').onclick = async () => {
-        fromDate = document.getElementById('ew-filter-from').value;
-        toDate = document.getElementById('ew-filter-to').value;
+        fromDate = fromInput.value;
+        toDate = toInput.value;
         localStorage.setItem('ew_from', fromDate);
         localStorage.setItem('ew_to', toDate);
         await this.updateList(fromDate, toDate);
-      };
-
-      document.getElementById('btn-ew-today').onclick = async () => {
-        const t = H.today();
-        document.getElementById('ew-filter-from').value = t;
-        document.getElementById('ew-filter-to').value = t;
-        fromDate = t; toDate = t;
-        localStorage.setItem('ew_from', fromDate);
-        localStorage.setItem('ew_to', toDate);
-        await this.updateList(fromDate, toDate);
-      };
-
-      document.getElementById('btn-ew-month').onclick = async () => {
-        const p = H.getBDDateParts(new Date());
-        const pad = n => String(n).padStart(2, '0');
-        const lastDay = new Date(Date.UTC(p.year, p.month, 0)).getUTCDate();
-        const f = `${p.year}-${pad(p.month)}-01`;
-        const to = `${p.year}-${pad(p.month)}-${pad(lastDay)}`;
-        document.getElementById('ew-filter-from').value = f;
-        document.getElementById('ew-filter-to').value = to;
-        fromDate = f; toDate = to;
-        localStorage.setItem('ew_from', fromDate);
-        localStorage.setItem('ew_to', toDate);
-        await this.updateList(fromDate, toDate);
-      };
-
-      document.getElementById('btn-ew-all').onclick = async () => {
-        document.getElementById('ew-filter-from').value = '';
-        document.getElementById('ew-filter-to').value = '';
-        fromDate = ''; toDate = '';
-        localStorage.removeItem('ew_from');
-        localStorage.removeItem('ew_to');
-        await this.updateList('', '');
       };
 
       document.getElementById('ew-search').addEventListener('input', () => {

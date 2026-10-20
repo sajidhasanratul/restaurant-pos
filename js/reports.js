@@ -55,46 +55,46 @@
       }
 
       mc.innerHTML = `
-        <div class="page-header fade-in">
+        <!-- Top Bar: Date Range Filter + Export Action (Named Header Card Removed) -->
+        <div class="filter-bar fade-in" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:14px; margin-bottom:18px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; font-weight:800; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">Filter:</span>
+              <div class="btn-group" style="display:flex; gap:6px; background:#F8FAFC; padding:4px; border-radius:10px; border:1px solid #E2E8F0;">
+                <button class="btn btn-sm rep-period-btn ${currentPeriod === 'today' ? 'active' : ''}" data-period="today" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Today</button>
+                <button class="btn btn-sm rep-period-btn ${currentPeriod === 'yesterday' ? 'active' : ''}" data-period="yesterday" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Yesterday</button>
+                <button class="btn btn-sm rep-period-btn ${currentPeriod === 'this-week' ? 'active' : ''}" data-period="this-week" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">This Week</button>
+                <button class="btn btn-sm rep-period-btn ${currentPeriod === 'this-month' ? 'active' : ''}" data-period="this-month" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">This Month</button>
+                <button class="btn btn-sm rep-period-btn ${currentPeriod === 'custom' ? 'active' : ''}" data-period="custom" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Custom</button>
+              </div>
+            </div>
+
+            <!-- Date inputs: Shown on Custom -->
+            <div id="rep-custom-date-container" style="display:${currentPeriod === 'custom' ? 'flex' : 'none'}; gap:10px; align-items:center; flex-wrap:wrap;">
+              <div class="form-group" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">From:</label>
+                <input type="date" class="form-input" id="rep-from" value="${fromDate}" style="height:34px; font-size:13px; border-radius:8px; padding:0 8px;">
+              </div>
+              <div class="form-group" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
+                <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">To:</label>
+                <input type="date" class="form-input" id="rep-to" value="${toDate}" style="height:34px; font-size:13px; border-radius:8px; padding:0 8px;">
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-apply-rep-filter" style="height:34px; padding:0 14px; font-weight:700; border-radius:8px; background:#10B981; border-color:#10B981;">Apply</button>
+            </div>
+
+            <!-- Active range badge when not in custom mode -->
+            <div id="rep-range-indicator" style="display:${currentPeriod !== 'custom' ? 'flex' : 'none'}; align-items:center; gap:6px; background:#F8FAFC; border:1px solid #CBD5E1; padding:6px 14px; border-radius:8px; font-size:12.5px; font-weight:600; color:#475569;">
+              <span>📅</span>
+              <span id="rep-range-text" style="color:#0F172A; font-weight:700;">${H.formatDate(fromDate)} to ${H.formatDate(toDate)}</span>
+            </div>
+          </div>
+
+          <!-- Export CSV button on top right -->
           <div>
-            <h2 class="page-title">📈 ${title}</h2>
-            <p class="page-subtitle">Analyze business performance, check cashflows and output CSV logs.</p>
-          </div>
-          <div class="page-actions">
-            <button class="btn btn-success btn-sm" id="btn-export-rep">📥 Export CSV</button>
-          </div>
-        </div>
-
-        <!-- Period Filter Selector (Today, Yesterday, This Week, This Month, Custom) -->
-        <div class="filter-bar fade-in" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; background:#fff; padding:12px 18px; border-radius:12px; border:1px solid #EAE4D9;">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span style="font-size:12px; font-weight:800; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">Filter:</span>
-            <div class="btn-group" style="display:flex; gap:6px; background:#F8FAFC; padding:4px; border-radius:10px; border:1px solid #E2E8F0;">
-              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'today' ? 'active' : ''}" data-period="today" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Today</button>
-              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'yesterday' ? 'active' : ''}" data-period="yesterday" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Yesterday</button>
-              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'this-week' ? 'active' : ''}" data-period="this-week" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">This Week</button>
-              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'this-month' ? 'active' : ''}" data-period="this-month" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">This Month</button>
-              <button class="btn btn-sm rep-period-btn ${currentPeriod === 'custom' ? 'active' : ''}" data-period="custom" style="border-radius:7px; font-weight:700; padding:6px 14px; font-size:12.5px;">Custom</button>
-            </div>
-          </div>
-
-          <!-- Date inputs: Shown on Custom -->
-          <div id="rep-custom-date-container" style="display:${currentPeriod === 'custom' ? 'flex' : 'none'}; gap:10px; align-items:center; flex-wrap:wrap;">
-            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
-              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">From:</label>
-              <input type="date" class="form-input" id="rep-from" value="${fromDate}" style="height:34px; font-size:13px; border-radius:8px; padding:0 8px;">
-            </div>
-            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center; gap:6px;">
-              <label class="form-label" style="margin:0; font-size:12px; font-weight:700; color:#64748B;">To:</label>
-              <input type="date" class="form-input" id="rep-to" value="${toDate}" style="height:34px; font-size:13px; border-radius:8px; padding:0 8px;">
-            </div>
-            <button class="btn btn-primary btn-sm" id="btn-apply-rep-filter" style="height:34px; padding:0 14px; font-weight:700; border-radius:8px; background:#10B981; border-color:#10B981;">Apply</button>
-          </div>
-
-          <!-- Active range badge when not in custom mode -->
-          <div id="rep-range-indicator" style="display:${currentPeriod !== 'custom' ? 'flex' : 'none'}; align-items:center; gap:6px; background:#F8FAFC; border:1px solid #CBD5E1; padding:6px 14px; border-radius:8px; font-size:12.5px; font-weight:600; color:#475569;">
-            <span>📅 Range:</span>
-            <span id="rep-range-text" style="color:#0F172A; font-weight:700;">${H.formatDate(fromDate)} to ${H.formatDate(toDate)}</span>
+            <button class="btn btn-success btn-sm" id="btn-export-rep" style="height:36px; padding:0 16px; font-weight:700; display:flex; align-items:center; gap:6px; border-radius:8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Export CSV</span>
+            </button>
           </div>
         </div>
 

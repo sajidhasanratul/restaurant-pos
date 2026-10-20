@@ -45,11 +45,10 @@
 
       this.currentPage = 1;
       this.period = 'today';
-      const todayRange = this.getPeriodRange('today');
       this.filters = {
         search: '',
-        fromDate: todayRange.from,
-        toDate: todayRange.to,
+        fromDate: '',
+        toDate: '',
         paymentMethod: 'all',
         minTotal: '',
         maxTotal: ''
@@ -57,16 +56,16 @@
       this.activePopover = null;
 
       mc.innerHTML = `
-        <!-- Top Section: 3-Card High-Speed Layout (Total Sales Amount | Search Bar | Sales Actions) -->
+        <!-- Top Section: 3-Card High-Speed Layout (Todays Sales Amount | Search Bar | Sales Actions) -->
         <div class="sales-top-cards fade-in" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:16px; margin-bottom:20px; align-items:stretch;">
           
-          <!-- 1. Left Card: Total Sales Amount (Filterable, Defaults to Today) -->
+          <!-- 1. Left Card: Todays Sales Amount (Filterable, Defaults to Today) -->
           <div class="card stat-card green" id="card-total-sales" style="margin:0; padding:16px 20px; display:flex; flex-direction:column; justify-content:space-between; border-radius:12px; background:linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); border:1.5px solid #86efac; box-shadow:0 2px 8px rgba(16,185,129,0.08);">
             <div>
               <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                   <div class="stat-icon" style="width:36px; height:36px; border-radius:10px; background:#dcfce7; color:#16a34a; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px;">৳</div>
-                  <span style="font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:#166534;">Total Sales Amount</span>
+                  <span style="font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:#166534;">Todays Sales Amount</span>
                 </div>
                 <select id="sales-period-select" class="form-select form-select-sm" style="padding:4px 8px; font-size:12px; font-weight:700; border-radius:8px; border:1px solid #86efac; background:#fff; color:#15803d; cursor:pointer;">
                   <option value="today" selected>Today</option>
@@ -283,11 +282,10 @@
     resetAllFilters() {
       this.currentPage = 1;
       this.period = 'today';
-      const range = this.getPeriodRange('today');
       this.filters = {
         search: '',
-        fromDate: range.from,
-        toDate: range.to,
+        fromDate: '',
+        toDate: '',
         paymentMethod: 'all',
         minTotal: '',
         maxTotal: ''
@@ -516,19 +514,32 @@
       const S = POS.Store;
       const H = POS.Helpers;
 
-      const { list, totalOrders, totalSalesAmount } = await this.getFilteredOrders();
+      const { list, totalOrders, totalSalesAmount, todaySalesAmount, todayOrders } = await this.getFilteredOrders();
 
       const totalEl = document.getElementById('stats-total-amount');
-      if (totalEl) totalEl.textContent = H.formatCurrency(totalSalesAmount);
-
       const periodLabel = document.getElementById('stats-period-label');
+
+      // If initial open with period === 'today' and no explicit date filter, display today's sales on card
+      const isInitialToday = this.period === 'today' && !this.filters.fromDate && !this.filters.toDate;
+      const displayAmount = isInitialToday ? todaySalesAmount : totalSalesAmount;
+      const displayCount = isInitialToday ? todayOrders : totalOrders;
+
+      if (totalEl) totalEl.textContent = H.formatCurrency(displayAmount);
+
       if (periodLabel) {
-        if (this.period === 'today') periodLabel.textContent = `Today (${H.formatDate(H.today())}) • ${totalOrders} orders`;
-        else if (this.period === 'yesterday') periodLabel.textContent = `Yesterday (${H.formatDate(H.yesterday())}) • ${totalOrders} orders`;
-        else if (this.period === 'this_week') periodLabel.textContent = `This Week • ${totalOrders} orders`;
-        else if (this.period === 'this_month') periodLabel.textContent = `This Month • ${totalOrders} orders`;
-        else if (this.period === 'custom') periodLabel.textContent = `${this.filters.fromDate || 'Start'} to ${this.filters.toDate || 'Now'} • ${totalOrders} orders`;
-        else periodLabel.textContent = `All Time • ${totalOrders} orders`;
+        if (isInitialToday || this.period === 'today') {
+          periodLabel.textContent = `Today (${H.formatDate(H.today())}) • ${displayCount} orders`;
+        } else if (this.period === 'yesterday') {
+          periodLabel.textContent = `Yesterday (${H.formatDate(H.yesterday())}) • ${totalOrders} orders`;
+        } else if (this.period === 'this_week') {
+          periodLabel.textContent = `This Week • ${totalOrders} orders`;
+        } else if (this.period === 'this_month') {
+          periodLabel.textContent = `This Month • ${totalOrders} orders`;
+        } else if (this.period === 'custom') {
+          periodLabel.textContent = `${this.filters.fromDate || 'Start'} to ${this.filters.toDate || 'Now'} • ${totalOrders} orders`;
+        } else {
+          periodLabel.textContent = `All Time • ${totalOrders} orders`;
+        }
       }
 
       // Update Filter button active states
@@ -547,7 +558,7 @@
 
       // Check if any filter is active
       const isFiltered = !!(
-        (this.period !== 'today' && (this.filters.fromDate || this.filters.toDate)) || 
+        (this.filters.fromDate || this.filters.toDate) || 
         (this.filters.paymentMethod && this.filters.paymentMethod !== 'all') || 
         this.filters.minTotal !== '' || 
         this.filters.maxTotal !== '' || 

@@ -2813,6 +2813,20 @@ app.post('/api/products/bulk-stock-update', verifyRole(['admin', 'manager', 'cas
 // Customers
 app.get('/api/customers', async (req, res) => {
   try {
+    const { search, limit } = req.query;
+    if (search && search.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      const maxLimit = Math.min(parseInt(limit) || 20, 50);
+      const rows = await dbQuery(
+        `SELECT id, name, phone, email, label, customDiscount, address 
+         FROM customers 
+         WHERE LOWER(name) LIKE ? OR phone LIKE ? 
+         ORDER BY name 
+         LIMIT ?`,
+        [s, s, maxLimit]
+      );
+      return res.json(rows);
+    }
     const rows = await dbQuery(`SELECT * FROM customers ORDER BY name`);
     res.json(rows);
   } catch (err) {
