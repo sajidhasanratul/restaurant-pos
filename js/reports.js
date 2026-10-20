@@ -994,26 +994,75 @@
       const totalDiscount = orders.reduce((s, o) => s + (parseFloat(o.discountAmount) || 0), 0);
       const productProfit = totalSubtotal - totalCostOfGoods - totalDiscount;
 
+      // 1. Operating Expenses
       const expenses = await Store.query('expenses', e => H.isDateInRange(e.date, from, to));
-      let totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+      const totalOpExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
+      // 2. Ingredient Costs
+      const ingredientCosts = await Store.query('ingredient-costs', ic => H.isDateInRange(ic.date, from, to));
+      const totalIngredientCost = ingredientCosts.reduce((s, ic) => s + (parseFloat(ic.amount) || 0), 0);
+
+      // 3. Supplier Payments
+      const supplierPayments = await Store.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
+      const totalSupplierPayments = supplierPayments.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
+
+      // 4. Expired & Waste
+      const expiredWastes = await Store.query('expired-wastes', ew => H.isDateInRange(ew.date, from, to));
+      const totalWasteCost = expiredWastes.reduce((s, ew) => {
+        const cost = parseFloat(ew.totalCost) || ((parseFloat(ew.costPrice) || 0) * (parseFloat(ew.quantity) || 0));
+        const comp = parseFloat(ew.compensationAmount) || 0;
+        return s + Math.max(0, cost - comp);
+      }, 0);
+
+      // Report Settings
+      const settings = (await Store.getSettings()) || {};
+      const isSupplierAsExpense = settings.supplier_as_expense === '1';
+      const isIngredientAsExpense = settings.ingredient_as_expense === '1';
+      const isWasteAsExpense = settings.waste_as_expense === '1';
+
+      let totalExpenses = totalOpExpenses;
       let combinedExpensesList = expenses.map(e => ({
         date: e.date,
-        name: e.reason || e.name,
+        name: e.reason || e.name || 'Operational Expense',
+        category: 'Operating Expense',
         amount: parseFloat(e.amount) || 0
       }));
 
-      const settings = await Store.getSettings();
-      const isSupplierAsExpense = settings.supplier_as_expense === '1';
-
       if (isSupplierAsExpense) {
-        const supplierPayments = await Store.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
-        const totalSP = supplierPayments.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
-        totalExpenses += totalSP;
+        totalExpenses += totalSupplierPayments;
         supplierPayments.forEach(sp => {
           combinedExpensesList.push({
             date: sp.date,
-            name: `${sp.supplier_name} - ${sp.reason} (Supplier Payment)`,
+            name: `${sp.supplier_name || 'Supplier'} - ${sp.reason || 'Payment'}`,
+            category: 'Supplier Payment',
             amount: parseFloat(sp.amount) || 0
+          });
+        });
+      }
+
+      if (isIngredientAsExpense) {
+        totalExpenses += totalIngredientCost;
+        ingredientCosts.forEach(ic => {
+          combinedExpensesList.push({
+            date: ic.date,
+            name: `${ic.name || ic.reason || 'Ingredient'} (${ic.supplier_name || 'Kitchen Supply'})`,
+            category: 'Ingredient Cost',
+            amount: parseFloat(ic.amount) || 0
+          });
+        });
+      }
+
+      if (isWasteAsExpense) {
+        totalExpenses += totalWasteCost;
+        expiredWastes.forEach(ew => {
+          const cost = parseFloat(ew.totalCost) || ((parseFloat(ew.costPrice) || 0) * (parseFloat(ew.quantity) || 0));
+          const comp = parseFloat(ew.compensationAmount) || 0;
+          const netLoss = Math.max(0, cost - comp);
+          combinedExpensesList.push({
+            date: ew.date,
+            name: `${ew.itemName || 'Item'} (${ew.quantity || 1} units waste)`,
+            category: 'Expired & Waste',
+            amount: netLoss
           });
         });
       }
@@ -1024,12 +1073,13 @@
       const netProfitColor = overallNetProfit >= 0 ? 'text-success' : 'text-danger';
 
       container.innerHTML = `
-        <div class="stats-grid fade-in mb-2" style="grid-template-columns: repeat(4, 1fr);">
+        <!-- Row 1: Primary Financial Summary -->
+        <div class="stats-grid fade-in mb-2" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
           <div class="stat-card purple" style="padding: 15px;">
             <div class="stat-icon">💰</div>
             <div class="stat-info">
               <div class="stat-label">Total Sales</div>
-              <div class="stat-value" style="font-size:16px;">${H.formatCurrency(totalSales)}</div>
+              <div class="stat-value" style="font-size:18px;">${H.formatCurrency(totalSales)}</div>
               <div class="stat-sub">${orders.length} Invoice(s)</div>
             </div>
           </div>
@@ -1037,24 +1087,79 @@
             <div class="stat-icon">📈</div>
             <div class="stat-info">
               <div class="stat-label">Product Profit</div>
-              <div class="stat-value" style="font-size:16px;">${H.formatCurrency(productProfit)}</div>
+              <div class="stat-value" style="font-size:18px;">${H.formatCurrency(productProfit)}</div>
               <div class="stat-sub">From Catalog Sales</div>
             </div>
           </div>
           <div class="stat-card orange" style="padding: 15px;">
-            <div class="stat-icon">💸</div>
+            <div class="stat-icon">📊</div>
             <div class="stat-info">
-              <div class="stat-label">Total Expenses ${isSupplierAsExpense ? '<span style="font-size:10px; color:#10b981;">(+Suppliers)</span>' : ''}</div>
-              <div class="stat-value" style="font-size:16px;">${H.formatCurrency(totalExpenses)}</div>
-              <div class="stat-sub">${combinedExpensesList.length} Expense logs</div>
+              <div class="stat-label">Consolidated Expenses</div>
+              <div class="stat-value" style="font-size:18px;">${H.formatCurrency(totalExpenses)}</div>
+              <div class="stat-sub">${combinedExpensesList.length} Active entries</div>
             </div>
           </div>
           <div class="stat-card blue" style="padding: 15px;">
             <div class="stat-icon">⚖️</div>
             <div class="stat-info">
               <div class="stat-label">Overall Net Profit</div>
-              <div class="stat-value ${netProfitColor}" style="font-size:16px; font-weight:800;">${H.formatCurrency(overallNetProfit)}</div>
+              <div class="stat-value ${netProfitColor}" style="font-size:18px; font-weight:800;">${H.formatCurrency(overallNetProfit)}</div>
               <div class="stat-sub">Profit minus Expenses</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Detailed Outflows & Costs (Ingredient Cost, Expenses, Suppliers, Expired & Waste) -->
+        <div class="stats-grid fade-in mb-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:12px;">
+          <!-- Ingredient Cost Card -->
+          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #10B981; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#ecfdf5; display:flex; align-items:center; justify-content:center;">🥬</div>
+            <div class="stat-info">
+              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700;">Ingredient Cost</span>
+                ${isIngredientAsExpense ? '<span class="badge" style="background:#ecfdf5; color:#059669; font-size:10px; font-weight:700;">In Expenses</span>' : '<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px;">Separate</span>'}
+              </div>
+              <div class="stat-value text-success" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalIngredientCost)}</div>
+              <div class="stat-sub">${ingredientCosts.length} purchases recorded</div>
+            </div>
+          </div>
+
+          <!-- Operational Expenses Card -->
+          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #EF4444; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fef2f2; display:flex; align-items:center; justify-content:center;">💸</div>
+            <div class="stat-info">
+              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700;">Operating Expenses</span>
+                <span class="badge" style="background:#fef2f2; color:#dc2626; font-size:10px; font-weight:700;">Direct Cost</span>
+              </div>
+              <div class="stat-value text-danger" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalOpExpenses)}</div>
+              <div class="stat-sub">${expenses.length} operating expense logs</div>
+            </div>
+          </div>
+
+          <!-- Suppliers Payments Card -->
+          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #3B82F6; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#eff6ff; display:flex; align-items:center; justify-content:center;">🏢</div>
+            <div class="stat-info">
+              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700;">Suppliers Payment</span>
+                ${isSupplierAsExpense ? '<span class="badge" style="background:#ecfdf5; color:#059669; font-size:10px; font-weight:700;">In Expenses</span>' : '<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px;">Separate</span>'}
+              </div>
+              <div class="stat-value text-primary" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalSupplierPayments)}</div>
+              <div class="stat-sub">${supplierPayments.length} payment records</div>
+            </div>
+          </div>
+
+          <!-- Expired & Waste Card -->
+          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #F59E0B; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fffbeb; display:flex; align-items:center; justify-content:center;">🗑️</div>
+            <div class="stat-info">
+              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700;">Expired & Waste</span>
+                ${isWasteAsExpense ? '<span class="badge" style="background:#ecfdf5; color:#059669; font-size:10px; font-weight:700;">In Expenses</span>' : '<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px;">Separate</span>'}
+              </div>
+              <div class="stat-value" style="font-size:18px; font-weight:800; color:#d97706; margin-top:2px;">${H.formatCurrency(totalWasteCost)}</div>
+              <div class="stat-sub">${expiredWastes.length} waste log entries</div>
             </div>
           </div>
         </div>
@@ -1083,7 +1188,8 @@
                   <thead>
                     <tr>
                       <th>Date</th>
-                      <th>Expense Name</th>
+                      <th>Expense Description</th>
+                      <th>Category</th>
                       <th class="text-right">Amount</th>
                     </tr>
                   </thead>
@@ -1141,7 +1247,7 @@
 
         const totalItems = combinedExpensesList.length;
         if (totalItems === 0) {
-          tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No expenses in this period.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No expenses in this period.</td></tr>';
           pag.innerHTML = '';
           return;
         }
@@ -1157,8 +1263,9 @@
         tbody.innerHTML = pageItems.map(e => `
           <tr>
             <td>${H.formatDateTime(e.date)}</td>
-            <td>${H.esc(e.name)}</td>
-            <td class="text-right text-danger">${H.formatCurrency(e.amount)}</td>
+            <td style="font-weight:600;">${H.esc(e.name)}</td>
+            <td><span class="badge" style="font-size:10.5px; background:#f1f5f9; color:#475569;">${H.esc(e.category || 'Expense')}</span></td>
+            <td class="text-right text-danger" style="font-weight:700;">${H.formatCurrency(e.amount)}</td>
           </tr>
         `).join('');
 
@@ -1462,14 +1569,35 @@
         const productProfit = totalSubtotal - totalCostOfGoods - totalDiscount;
 
         const expenses = await S.query('expenses', e => H.isDateInRange(e.date, from, to));
-        let totalExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+        const totalOpExpenses = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+        let totalExpenses = totalOpExpenses;
         let totalExpenseItems = expenses.length;
 
-        const settings = await S.getSettings();
+        const ingredientCosts = await S.query('ingredient-costs', ic => H.isDateInRange(ic.date, from, to));
+        const totalIngredientCost = ingredientCosts.reduce((s, ic) => s + (parseFloat(ic.amount) || 0), 0);
+
+        const supplierPayments = await S.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
+        const totalSupplierPayments = supplierPayments.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
+
+        const expiredWastes = await S.query('expired-wastes', ew => H.isDateInRange(ew.date, from, to));
+        const totalWasteCost = expiredWastes.reduce((s, ew) => {
+          const cost = parseFloat(ew.totalCost) || ((parseFloat(ew.costPrice) || 0) * (parseFloat(ew.quantity) || 0));
+          const comp = parseFloat(ew.compensationAmount) || 0;
+          return s + Math.max(0, cost - comp);
+        }, 0);
+
+        const settings = (await S.getSettings()) || {};
         if (settings.supplier_as_expense === '1') {
-          const supplierPayments = await S.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
-          totalExpenses += supplierPayments.reduce((s, sp) => s + (parseFloat(sp.amount) || 0), 0);
+          totalExpenses += totalSupplierPayments;
           totalExpenseItems += supplierPayments.length;
+        }
+        if (settings.ingredient_as_expense === '1') {
+          totalExpenses += totalIngredientCost;
+          totalExpenseItems += ingredientCosts.length;
+        }
+        if (settings.waste_as_expense === '1') {
+          totalExpenses += totalWasteCost;
+          totalExpenseItems += expiredWastes.length;
         }
 
         const overallNetProfit = productProfit - totalExpenses;
@@ -1477,7 +1605,11 @@
         csvData = [{
           'Total Sales': totalSales,
           'Product Profit': productProfit,
-          'Total Expenses': totalExpenses,
+          'Ingredient Cost': totalIngredientCost,
+          'Operating Expenses': totalOpExpenses,
+          'Supplier Payments': totalSupplierPayments,
+          'Expired & Waste Loss': totalWasteCost,
+          'Consolidated Expenses': totalExpenses,
           'Overall Net Profit': overallNetProfit,
           'Sales Invoices Qty': orders.length,
           'Expense Items Qty': totalExpenseItems
