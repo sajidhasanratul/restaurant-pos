@@ -49,9 +49,9 @@
 
       const customers = await S.query('customers', c => {
         if (search) {
-          const nameMatch = c.name.toLowerCase().includes(search);
-          const phoneMatch = c.phone.includes(search);
-          const labelMatch = c.label ? c.label.toLowerCase().includes(search) : false;
+          const nameMatch = (c.name || '').toLowerCase().includes(search);
+          const phoneMatch = (c.phone || '').includes(search);
+          const labelMatch = c.label ? (c.label || '').toLowerCase().includes(search) : false;
           if (!nameMatch && !phoneMatch && !labelMatch) return false;
         }
         return true;
@@ -71,13 +71,9 @@
         return;
       }
 
-      const orders = await S.getAll('orders');
-
       customers.forEach(c => {
-        // Calculate totals for customer
-        // We match by customerId or phone number to catch guest checkouts where guest updated details
-        const custOrders = orders.filter(o => o.customerId === c.id || (c.phone && o.customerPhone === c.phone));
-        const totalSpent = custOrders.reduce((s, o) => s + o.grandTotal, 0);
+        const orderCount = c.orderCount !== undefined ? c.orderCount : 0;
+        const totalSpent = c.totalSpent !== undefined ? parseFloat(c.totalSpent) : 0;
 
         const avatarChar = c.name ? c.name.charAt(0).toUpperCase() : '?';
         const labelStyle = c.label ? `background:${H.labelColors[c.label] || '#64748b'};` : 'background:#64748b;';
@@ -88,7 +84,7 @@
               <div class="customer-avatar" style="${labelStyle}">${avatarChar}</div>
               <div>
                 <div class="customer-name">${H.esc(c.name)}</div>
-                <div class="customer-phone">📞 ${H.esc(c.phone)}</div>
+                <div class="customer-phone">📞 ${H.esc(c.phone || 'No phone recorded')}</div>
               </div>
               <div style="margin-left:auto; display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
                 ${c.label ? `<span class="badge-label" style="${labelStyle}">${c.label}</span>` : ''}
@@ -96,7 +92,7 @@
               </div>
             </div>
             <div class="customer-meta" style="margin-top: 10px; padding-top: 10px; border-top:1px solid var(--border-light)">
-              <span>🛍️ <strong>${custOrders.length}</strong> Orders</span>
+              <span>🛍️ <strong>${orderCount}</strong> Orders</span>
               <span>💰 Spent <strong>${H.formatCurrency(totalSpent)}</strong></span>
             </div>
             <div class="customer-actions" style="margin-top: 8px;">
@@ -213,9 +209,17 @@
       const H = POS.Helpers;
       const overlay = document.getElementById('cust-modal-overlay');
 
-      const orders = await S.getAll('orders');
-      // Match orders by customer ID or Phone number
-      const custOrders = orders.filter(o => o.customerId === customer.id || (customer.phone && o.customerPhone === customer.phone));
+      let custOrders = [];
+      try {
+        const queryTerm = customer.phone || customer.name || '';
+        const res = await fetch(`/api/orders?search=${encodeURIComponent(queryTerm)}&limit=100`);
+        if (res.ok) {
+          const list = await res.json();
+          custOrders = list.filter(o => o.customerId === customer.id || (customer.phone && o.customerPhone === customer.phone) || (customer.name && o.customerName === customer.name));
+        }
+      } catch (e) {
+        console.warn('Error fetching customer orders:', e);
+      }
 
       let ordersHtml = '';
       if (custOrders.length === 0) {

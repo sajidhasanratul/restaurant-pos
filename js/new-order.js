@@ -9,10 +9,12 @@
     searchQuery: '',
     orderType: 'Dine In', // 'Dine In' or 'Take Away'
     selectedTable: 'Table 01',
-    customerInfo: { name: 'Walk-in Guest', phone: '' },
+    customerInfo: { name: '', phone: '' },
     discount: { type: 'none', value: 0, amount: 0, code: '' },
     taxPercent: 5.0, // Default restaurant sales tax 5%
     savedBills: [],
+    cachedTables: null,
+    _gridDelegated: false,
 
     async render() {
       const mc = document.getElementById('main-content');
@@ -25,8 +27,9 @@
       this.searchQuery = '';
       this.orderType = 'Dine In';
       this.selectedTable = 'Table 01';
-      this.customerInfo = { name: 'Walk-in Guest', phone: '' };
+      this.customerInfo = { name: '', phone: '' };
       this.discount = { type: 'none', value: 0, amount: 0, code: '' };
+      this._gridDelegated = false;
 
       // Preload payment methods
       await H.loadPaymentMethods();
@@ -203,12 +206,17 @@
 
     async loadCatalog() {
       try {
-        const [catRes, prodRes] = await Promise.all([
+        const [catRes, prodRes, tableRes] = await Promise.all([
           fetch('/api/categories'),
-          fetch('/api/products')
+          fetch('/api/products'),
+          fetch('/api/tables')
         ]);
         this.categories = catRes.ok ? await catRes.json() : [];
         this.products = prodRes.ok ? await prodRes.json() : [];
+        if (tableRes && tableRes.ok) {
+          const allTables = await tableRes.json();
+          this.cachedTables = allTables.filter(t => t.status === 'active');
+        }
       } catch (err) {
         console.error('Error loading catalog:', err);
       }
@@ -334,33 +342,66 @@
         `;
       }).join('');
 
-      // Bind card click & controls
-      grid.querySelectorAll('.clapos-card').forEach(card => {
-        card.onclick = () => {
-          this.addToCart(card.dataset.id);
-        };
-      });
+      // Bind event delegation on grid container once for super-fast response
+      if (!this._gridDelegated) {
+        grid.addEventListener('click', (e) => {
+          const incBtn = e.target.closest('.btn-card-inc');
+          if (incBtn) {
+            e.stopPropagation();
+            this.updateCartQty(incBtn.dataset.id, 1);
+            return;
+          }
+          const decBtn = e.target.closest('.btn-card-dec');
+          if (decBtn) {
+            e.stopPropagation();
+            this.updateCartQty(decBtn.dataset.id, -1);
+            return;
+          }
+          const addBtn = e.target.closest('.btn-card-add');
+          if (addBtn) {
+            e.stopPropagation();
+            this.addToCart(addBtn.dataset.id);
+            return;
+          }
+          const card = e.target.closest('.clapos-card');
+          if (card) {
+            this.addToCart(card.dataset.id);
+          }
+        });
+        this._gridDelegated = true;
+      }
+    },
 
-      grid.querySelectorAll('.btn-card-add').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          this.addToCart(btn.dataset.id);
-        };
-      });
+    updateSingleCard(productId) {
+      const card = document.querySelector(`.clapos-card[data-id="${productId}"]`);
+      if (!card) return;
+      const inCartItem = this.cart.find(c => c.productId === productId);
+      const qty = inCartItem ? inCartItem.qty : 0;
+      const bottom = card.querySelector('.clapos-card-bottom');
+      const item = this.products.find(p => p.id === productId);
+      const price = parseFloat(item?.sellingPrice || 0);
 
-      grid.querySelectorAll('.btn-card-inc').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          this.updateCartQty(btn.dataset.id, 1);
-        };
-      });
-
-      grid.querySelectorAll('.btn-card-dec').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          this.updateCartQty(btn.dataset.id, -1);
-        };
-      });
+      if (qty > 0) {
+        card.classList.add('in-cart');
+        if (bottom) {
+          bottom.innerHTML = `
+            <span class="clapos-card-price">৳${price.toFixed(2)}</span>
+            <div class="clapos-qty-pill" onclick="event.stopPropagation();">
+              <button class="clapos-qty-btn btn-card-dec" data-id="${productId}">-</button>
+              <span>${qty}</span>
+              <button class="clapos-qty-btn btn-card-inc" data-id="${productId}">+</button>
+            </div>
+          `;
+        }
+      } else {
+        card.classList.remove('in-cart');
+        if (bottom) {
+          bottom.innerHTML = `
+            <span class="clapos-card-price">৳${price.toFixed(2)}</span>
+            <button class="clapos-card-add-btn btn-card-add" data-id="${productId}" title="Add to Order">+</button>
+          `;
+        }
+      }
     },
 
     addToCart(productId) {
@@ -384,7 +425,7 @@
       }
 
       this.renderCart();
-      this.renderProductCards();
+      this.updateSingleCard(productId);
     },
 
     updateCartQty(productId, delta) {
@@ -399,7 +440,7 @@
       }
 
       this.renderCart();
-      this.renderProductCards();
+      this.updateSingleCard(productId);
     },
 
     renderCart() {
@@ -432,9 +473,10 @@
 
         listEl.querySelectorAll('.btn-cart-remove').forEach(btn => {
           btn.onclick = () => {
-            this.cart = this.cart.filter(c => c.productId !== btn.dataset.id);
+            const pid = btn.dataset.id;
+            this.cart = this.cart.filter(c => c.productId !== pid);
             this.renderCart();
-            this.renderProductCards();
+            this.updateSingleCard(pid);
           };
         });
 
@@ -558,11 +600,11 @@
             </p>
             <div class="form-group mb-2">
               <label class="form-label">Guest / Customer Name</label>
-              <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || 'Walk-in Guest')}" placeholder="e.g. John Doe / Walk-in Guest">
+              <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || '')}" placeholder="Customer name (optional)">
             </div>
             <div class="form-group mb-0">
               <label class="form-label">Phone Number (Optional)</label>
-              <input type="text" class="form-input" id="cust-modal-phone" value="${H.escapeHtml(this.customerInfo.phone || '')}" placeholder="e.g. +1 555-0192">
+              <input type="text" class="form-input" id="cust-modal-phone" value="${H.escapeHtml(this.customerInfo.phone || '')}" placeholder="Phone number (optional)">
             </div>
           </div>
           <div class="modal-footer" style="padding:12px 24px;">
@@ -574,29 +616,79 @@
 
       H.showModal(modalHtml);
 
+      const nameInput = document.getElementById('cust-modal-name');
+      const phoneInput = document.getElementById('cust-modal-phone');
+
+      const autoSaveCustomer = H.debounce(async () => {
+        const name = nameInput.value.trim();
+        const phone = phoneInput.value.trim();
+        if (name || phone) {
+          try {
+            await fetch('/api/customers/quick-save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: name || 'Guest', phone: phone || '' })
+            });
+          } catch (e) {
+            console.warn('Customer auto-save notice:', e);
+          }
+        }
+      }, 350);
+
+      nameInput.addEventListener('input', autoSaveCustomer);
+      phoneInput.addEventListener('input', autoSaveCustomer);
+
       document.getElementById('btn-close-cust').onclick = () => H.hideModal();
       document.getElementById('btn-cancel-cust').onclick = () => H.hideModal();
-      document.getElementById('btn-save-cust').onclick = () => {
-        const name = document.getElementById('cust-modal-name').value.trim() || 'Walk-in Guest';
-        const phone = document.getElementById('cust-modal-phone').value.trim();
+      document.getElementById('btn-save-cust').onclick = async () => {
+        const name = nameInput.value.trim();
+        const phone = phoneInput.value.trim();
         this.customerInfo = { name, phone };
-        H.showToast(`Guest set to: ${name}`, 'success');
+
+        if (name || phone) {
+          try {
+            await fetch('/api/customers/quick-save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: name || 'Guest', phone: phone || '' })
+            });
+          } catch (e) {
+            console.warn('Customer quick-save error:', e);
+          }
+        }
+
+        const label = name ? `Guest set to: ${name}` : 'Customer details saved';
+        H.showToast(label, 'success');
+        this.updateCustomerButton();
         H.hideModal();
       };
+    },
+
+    updateCustomerButton() {
+      const btn = document.getElementById('btn-order-customer');
+      if (btn) {
+        const span = btn.querySelector('span:last-child');
+        if (span) {
+          span.textContent = this.customerInfo && this.customerInfo.name ? this.customerInfo.name : 'Customer';
+        }
+      }
     },
 
     // ── 2. Tables Modal ──
     async showTablesModal() {
       const H = POS.Helpers;
-      let tablesList = [];
-      try {
-        const res = await fetch('/api/tables');
-        if (res.ok) {
-          const all = await res.json();
-          tablesList = all.filter(t => t.status === 'active');
+      let tablesList = this.cachedTables || [];
+      if (!tablesList || tablesList.length === 0) {
+        try {
+          const res = await fetch('/api/tables');
+          if (res.ok) {
+            const all = await res.json();
+            tablesList = all.filter(t => t.status === 'active');
+            this.cachedTables = tablesList;
+          }
+        } catch (e) {
+          console.warn('Error fetching tables:', e);
         }
-      } catch (e) {
-        console.warn('Error fetching tables:', e);
       }
 
       if (tablesList.length === 0) {
@@ -760,9 +852,12 @@
       const taxAmount = discountedSub * (this.taxPercent / 100);
       const grandTotal = discountedSub + taxAmount;
 
-      // Load active payment methods from settings
-      await H.loadPaymentMethods();
+      // Load active payment methods from settings if not cached
       let activeMethods = (H.paymentMethodsList || []).filter(m => m.status === 'active');
+      if (activeMethods.length === 0) {
+        await H.loadPaymentMethods();
+        activeMethods = (H.paymentMethodsList || []).filter(m => m.status === 'active');
+      }
       if (activeMethods.length === 0) {
         const fallbackNames = (H.paymentMethods && H.paymentMethods.length > 0) 
           ? H.paymentMethods 
@@ -781,7 +876,7 @@
           <div class="modal-header" style="background:#FAF8F5; border-bottom:1px solid #E8E2D8;">
             <div>
               <h3 style="font-size:18px; font-weight:800; color:#1C1714;">💳 Process Payment</h3>
-              <p style="font-size:12px; color:#64748B; margin:0;">${this.orderType === 'Dine In' ? this.selectedTable : 'Take Away'} • ${this.customerInfo.name || 'Walk-in Guest'}</p>
+              <p style="font-size:12px; color:#64748B; margin:0;">${this.orderType === 'Dine In' ? this.selectedTable : 'Take Away'}${this.customerInfo.name ? ' • ' + H.escapeHtml(this.customerInfo.name) : ''}</p>
             </div>
             <button class="modal-close" id="btn-close-tx">&times;</button>
           </div>
@@ -916,8 +1011,8 @@
           id: orderId,
           invoiceId: invoiceId,
           customerId: null,
-          customerName: this.customerInfo.name || 'Walk-in Guest',
-          customerPhone: this.customerInfo.phone || '',
+          customerName: this.customerInfo.name ? this.customerInfo.name.trim() : '',
+          customerPhone: this.customerInfo.phone ? this.customerInfo.phone.trim() : '',
           orderType: this.orderType,
           tableName: this.selectedTable,
           date: H.getBangladeshDateTimeString ? H.getBangladeshDateTimeString(new Date()) : new Date().toISOString(),

@@ -114,7 +114,20 @@
       const paidEl = document.getElementById('stats-paid-expenses');
       const unpaidEl = document.getElementById('stats-unpaid-expenses');
 
-      const list = await S.query('expenses', e => H.isDateInRange(e.date, from, to));
+      let list = [];
+      try {
+        const q = new URLSearchParams();
+        if (from) q.set('from', from);
+        if (to) q.set('to', to);
+        const res = await fetch('/api/expenses?' + q.toString());
+        if (res.ok) {
+          list = await res.json();
+        } else {
+          list = await S.query('expenses', e => H.isDateInRange(e.date, from, to));
+        }
+      } catch (err) {
+        list = await S.query('expenses', e => H.isDateInRange(e.date, from, to));
+      }
       this.currentExpensesList = list;
 
       let sumAmount = 0;

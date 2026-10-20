@@ -24,7 +24,6 @@
             <h2 class="page-title" style="display:flex; align-items:center; gap:8px;">
               <span>🍽️</span> Restaurant Items & Menu
             </h2>
-            <p class="page-subtitle">Manage menu dishes, appetizers, drinks, and categories. Made to order with no stock or cost limits.</p>
           </div>
           <div class="page-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" id="btn-export-products" style="font-weight:700;">📥 Export</button>

@@ -7,49 +7,38 @@
       const H = POS.Helpers;
       const today = H.today();
 
-      // Get initial date range filters
-      let fromDate = localStorage.getItem('dash_from') || today;
-      let toDate = localStorage.getItem('dash_to') || today;
+      // Always default to today's overview when opening dashboard
+      let fromDate = today;
+      let toDate = today;
 
       mc.innerHTML = `
-        <div class="page-header fade-in" style="margin-bottom: 20px;">
-          <div>
-            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-              <h2 class="page-title" style="margin:0; font-size:24px; font-weight:800; color:#0f172a;">Executive POS Dashboard</h2>
-              <span class="badge" style="background:#ecfdf5; color:#059669; font-weight:700; border:1px solid #a7f3d0; font-size:11px; padding:3px 10px; border-radius:20px; display:inline-flex; align-items:center; gap:6px;">
-                <span style="width:7px; height:7px; background:#10b981; border-radius:50%; display:inline-block;"></span>
-                Live Register • Ready
-              </span>
+        <!-- Streamlined Top Header: Date Range, Apply Button, Presets & Sync -->
+        <div class="dash-top-header fade-in" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 18px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+          
+          <!-- Date Range Inputs + Apply Button directly on top -->
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:12px; font-weight:700; color:#475569;">From:</span>
+              <input type="date" class="form-input" id="dash-from" value="${fromDate}" style="font-size:12.5px; padding:6px 10px; height:36px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc;">
             </div>
-            <p class="page-subtitle" style="margin-top:4px; font-size:13px; color:#ffffff;">Real-time sales performance, revenue analytics, and multi-channel payment reconciliation.</p>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:12px; font-weight:700; color:#475569;">To:</span>
+              <input type="date" class="form-input" id="dash-to" value="${toDate}" style="font-size:12.5px; padding:6px 10px; height:36px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc;">
+            </div>
+            <button class="btn btn-primary" id="btn-filter" style="padding:6px 18px; height:36px; font-size:13px; font-weight:700; border-radius:8px; background:linear-gradient(135deg, #10b981 0%, #059669 100%); border:none; box-shadow:0 2px 6px rgba(16,185,129,0.25); cursor:pointer;">Apply Range</button>
+            <span id="dash-last-updated" style="font-size:11px; color:#94a3b8; margin-left:6px;"></span>
           </div>
-          <div class="page-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button class="btn btn-secondary btn-sm" id="btn-today">Today</button>
-            <button class="btn btn-secondary btn-sm" id="btn-yesterday">Yesterday</button>
-            <button class="btn btn-secondary btn-sm" id="btn-this-week">This Week</button>
-            <button class="btn btn-secondary btn-sm" id="btn-this-month">This Month</button>
-            <button class="btn btn-secondary btn-sm" id="btn-refresh-dash" title="Refresh data" style="display:inline-flex; align-items:center; gap:6px;">
+
+          <!-- Quick Date Presets & Sync -->
+          <div class="page-actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" id="btn-today" style="font-size:12px; font-weight:700; height:34px;">Today</button>
+            <button class="btn btn-secondary btn-sm" id="btn-yesterday" style="font-size:12px; font-weight:600; height:34px;">Yesterday</button>
+            <button class="btn btn-secondary btn-sm" id="btn-this-week" style="font-size:12px; font-weight:600; height:34px;">This Week</button>
+            <button class="btn btn-secondary btn-sm" id="btn-this-month" style="font-size:12px; font-weight:600; height:34px;">This Month</button>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-dash" title="Refresh data" style="display:inline-flex; align-items:center; gap:6px; height:34px; font-weight:700;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Sync</span>
             </button>
-          </div>
-        </div>
-
-        <!-- Filter Bar -->
-        <div class="filter-bar fade-in" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-          <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:260px; flex-wrap:wrap;">
-            <div class="form-group" style="margin-bottom:0; flex:1; min-width:130px;">
-              <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:3px;">From Date</label>
-              <input type="date" class="form-input" id="dash-from" value="${fromDate}" style="font-size:13px; padding:7px 10px;">
-            </div>
-            <div class="form-group" style="margin-bottom:0; flex:1; min-width:130px;">
-              <label class="form-label" style="font-size:11px; font-weight:700; color:#475569; margin-bottom:3px;">To Date</label>
-              <input type="date" class="form-input" id="dash-to" value="${toDate}" style="font-size:13px; padding:7px 10px;">
-            </div>
-          </div>
-          <div style="display:flex; align-items:flex-end; gap:8px;">
-            <button class="btn btn-primary" id="btn-filter" style="padding:7px 18px; font-size:13px; font-weight:600;">Apply Range</button>
-            <span id="dash-last-updated" style="font-size:11px; color:#94a3b8; align-self:center; margin-left:6px;"></span>
           </div>
         </div>
 
@@ -266,138 +255,69 @@
 
       await H.loadPaymentMethods();
 
-      const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
-      const orderItems = await S.getAll('orderItems');
-      const payments = await S.getAll('payments');
-      const products = await S.getAll('products');
-      const expenses = await S.query('expenses', e => H.isDateInRange(e.date, from, to));
-      const supplierPayments = await S.query('supplier-payments', sp => H.isDateInRange(sp.date, from, to));
-      const settings = await S.getSettings();
-      const isSupplierAsExpense = settings.supplier_as_expense === '1';
-
-      let totalSales = 0;
-      let totalDue = 0;
-      let dueOrdersCount = 0;
-      let cashSales = 0;
-      let cardSales = 0;
-      const paymentBreakdown = {};
-      const paymentCount = {};
-
-      H.paymentMethods.forEach(method => {
-        paymentBreakdown[method] = 0;
-        paymentCount[method] = 0;
-      });
-
-      orders.forEach(order => {
-        const gTotal = parseFloat(order.grandTotal) || 0;
-        const dAmt = parseFloat(order.dueAmount) || 0;
-        totalSales += gTotal;
-        totalDue += dAmt;
-        if (dAmt > 0.01) dueOrdersCount++;
-
-        // Sum payment methods for this order
-        const ordPayments = payments.filter(p => p.orderId === order.id);
-        if (ordPayments.length > 0) {
-          ordPayments.forEach(p => {
-            const amt = parseFloat(p.amount) || 0;
-            const m = p.method || 'Cash';
-            if (paymentBreakdown[m] !== undefined) {
-              paymentBreakdown[m] += amt;
-              paymentCount[m] = (paymentCount[m] || 0) + 1;
-            } else {
-              paymentBreakdown[m] = amt;
-              paymentCount[m] = 1;
-            }
-            if (m === 'Cash') cashSales += amt;
-            if (m === 'Card') cardSales += amt;
-          });
-        } else {
-          // Fallback if order has direct paymentMethod
-          const m = order.paymentMethod || 'Cash';
-          const paid = parseFloat(order.paidAmount) || gTotal;
-          if (paid > 0) {
-            if (paymentBreakdown[m] !== undefined) {
-              paymentBreakdown[m] += paid;
-              paymentCount[m] = (paymentCount[m] || 0) + 1;
-            } else {
-              paymentBreakdown[m] = paid;
-              paymentCount[m] = 1;
-            }
-            if (m === 'Cash') cashSales += paid;
-            if (m === 'Card') cardSales += paid;
-          }
-        }
-      });
-
-      // Calculate profit: Sell Price - Cost Price
-      let totalProfit = 0;
-      let totalUnitsSold = 0;
-      const uniqueSkusSold = new Set();
-
-      orders.forEach(order => {
-        const items = orderItems.filter(i => i.orderId === order.id);
-        let orderCost = 0;
-        items.forEach(item => {
-          totalUnitsSold += (parseInt(item.qty) || 0);
-          if (item.productId) uniqueSkusSold.add(item.productId);
-
-          const product = products.find(p => p.id === item.productId);
-          let cost = parseFloat(item.costPrice) || 0;
-          if (product) {
-            if (product.variations && product.variations.length > 0) {
-              const variant = product.variations.find(v => v.name === item.variationName || (product.name + ' ' + v.name) === item.productName);
-              cost = variant ? variant.costPrice : product.costPrice;
-            } else {
-              cost = product.costPrice;
-            }
-          }
-          orderCost += (cost * item.qty);
-        });
-
-        const discountAllocated = parseFloat(order.discountAmount) || 0;
-        const profitForOrder = (parseFloat(order.subtotal) || 0) - orderCost - discountAllocated;
-        totalProfit += profitForOrder;
-      });
-
-      const aov = orders.length > 0 ? (totalSales / orders.length) : 0;
-      const marginPct = totalSales > 0 ? ((totalProfit / totalSales) * 100).toFixed(1) : '0.0';
-
-      // Update timestamp (Bangladesh Time)
       const lastUpdatedEl = document.getElementById('dash-last-updated');
       if (lastUpdatedEl) {
         lastUpdatedEl.textContent = `Sync: ${H.formatTime(new Date())}`;
       }
 
-      // Expenses calculation
-      let directExpenses = 0;
-      let directPaidExpenses = 0;
-      expenses.forEach(e => {
-        const amt = parseFloat(e.amount) || 0;
-        const paid = parseFloat(e.paid_amount) || (e.status === 'Paid' ? amt : 0);
-        directExpenses += amt;
-        directPaidExpenses += paid;
-      });
-      let directUnpaidExpenses = Math.max(0, directExpenses - directPaidExpenses);
-
-      // Supplier payments calculation
+      // ── 1. Fetch High-Speed Server-Side Aggregated Metrics (Under 5ms) ──
+      let totalSales = 0;
+      let orderCount = 0;
+      let aov = 0;
+      let totalIngredientCost = 0;
+      let paidIngredientCost = 0;
+      let unpaidIngredientCost = 0;
+      let totalWasteCost = 0;
+      let totalCompensation = 0;
+      let netWasteLoss = 0;
+      let wasteQuantity = 0;
+      let wasteCount = 0;
+      let displayedExpenseTotal = 0;
+      let displayedExpensePaid = 0;
+      let displayedExpenseUnpaid = 0;
       let totalSupplierPayments = 0;
       let paidSupplierPayments = 0;
-      supplierPayments.forEach(sp => {
-        const amt = parseFloat(sp.amount) || 0;
-        const paid = parseFloat(sp.paid_amount) || (sp.status === 'Paid' ? amt : 0);
-        totalSupplierPayments += amt;
-        paidSupplierPayments += paid;
+      let unpaidSupplierPayments = 0;
+      let totalUnitsSold = 0;
+      let uniqueSkusSold = 0;
+      let paymentBreakdown = {};
+      let paymentCount = {};
+
+      try {
+        const mRes = await fetch(`/api/dashboard/metrics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        if (mRes.ok) {
+          const m = await mRes.json();
+          totalSales = m.totalSales || 0;
+          orderCount = m.orderCount || 0;
+          aov = m.aov || 0;
+          totalIngredientCost = m.totalIngredientCost || 0;
+          paidIngredientCost = m.paidIngredientCost || 0;
+          unpaidIngredientCost = m.unpaidIngredientCost || 0;
+          totalWasteCost = m.totalWasteCost || 0;
+          totalCompensation = m.totalCompensation || 0;
+          netWasteLoss = m.netWasteLoss || 0;
+          wasteQuantity = m.wasteQuantity || 0;
+          wasteCount = m.wasteCount || 0;
+          displayedExpenseTotal = m.totalExpenses || 0;
+          displayedExpensePaid = m.paidExpenses || 0;
+          displayedExpenseUnpaid = m.unpaidExpenses || 0;
+          totalSupplierPayments = m.totalSupplierPayments || 0;
+          paidSupplierPayments = m.paidSupplierPayments || 0;
+          unpaidSupplierPayments = m.unpaidSupplierPayments || 0;
+          totalUnitsSold = m.totalUnitsSold || 0;
+          uniqueSkusSold = m.uniqueSkusSold || 0;
+          paymentBreakdown = m.paymentBreakdown || {};
+          paymentCount = m.paymentCount || {};
+        }
+      } catch (err) {
+        console.warn('Could not fetch server-side metrics:', err);
+      }
+
+      // Initialize active payment methods with zero if missing from breakdown
+      H.paymentMethods.forEach(method => {
+        if (paymentBreakdown[method] === undefined) paymentBreakdown[method] = 0;
+        if (paymentCount[method] === undefined) paymentCount[method] = 0;
       });
-      let unpaidSupplierPayments = Math.max(0, totalSupplierPayments - paidSupplierPayments);
-
-      // If supplier_as_expense is turned on, reflect in expenses
-      const displayedExpenseTotal = isSupplierAsExpense ? (directExpenses + totalSupplierPayments) : directExpenses;
-      const displayedExpensePaid = isSupplierAsExpense ? (directPaidExpenses + paidSupplierPayments) : directPaidExpenses;
-      const displayedExpenseUnpaid = isSupplierAsExpense ? (directUnpaidExpenses + unpaidSupplierPayments) : directUnpaidExpenses;
-
-      const overallNetProfit = totalProfit - displayedExpenseTotal;
-      const netMarginPct = totalSales > 0 ? ((overallNetProfit / totalSales) * 100).toFixed(1) : '0.0';
-      const isNetProfitPositive = overallNetProfit >= 0;
 
       // ── 1. Render Executive KPI Cards (High-Contrast Metrics) ─────
       const statsGrid = document.getElementById('dashboard-stats');
@@ -411,21 +331,49 @@
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#ede9fe; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Gross Revenue</div>
             <div class="stat-value" style="font-size:22px; font-weight:800; color:#ffffff; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalSales)}</div>
             <div style="font-size:11px; color:#ffffff; background:rgba(255,255,255,0.2); font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
-              <span>${orders.length} Completed Invoices</span>
+              <span>${orderCount} Completed Invoices</span>
             </div>
           </div>
         </div>
 
-        <!-- Estimated Gross Profit -->
+        <!-- Ingredient Cost Card -->
         <div class="stat-card green" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
-          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; font-size:22px;">
+            🥗
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Gross Profit</div>
-            <div class="stat-value" style="font-size:22px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalProfit)}</div>
-            <div style="font-size:11px; color:#065f46; background:#d1fae5; border:1px solid #a7f3d0; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
-              <span>Margin: <strong>${marginPct}%</strong></span>
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Ingredient Cost</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalIngredientCost)}</div>
+            <div style="margin-top:8px; padding-top:6px; border-top:1px solid #d1fae5; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Paid:</span>
+                <span style="font-weight:700; color:#059669;">${H.formatCurrency(paidIngredientCost)}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Unpaid:</span>
+                <span style="font-weight:700; color:#dc2626;">${H.formatCurrency(unpaidIngredientCost)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Expired & Waste Card -->
+        <div class="stat-card rose" style="background:#fff; border:1.5px solid #f43f5e; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(244,63,94,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fff1f2; color:#e11d48; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; font-size:22px;">
+            🗑️
+          </div>
+          <div class="stat-info" style="min-width:0; flex:1;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Expired & Waste</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#9f1239; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalWasteCost)}</div>
+            <div style="margin-top:8px; padding-top:6px; border-top:1px solid #ffe4e6; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Net Loss:</span>
+                <span style="font-weight:700; color:#e11d48;">${H.formatCurrency(netWasteLoss)}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Discarded:</span>
+                <span style="font-weight:700; color:#475569;">${wasteQuantity} units (${wasteCount} logs)</span>
+              </div>
             </div>
           </div>
         </div>
@@ -438,7 +386,6 @@
           <div class="stat-info" style="min-width:0; flex:1;">
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
               <span style="overflow:hidden; text-overflow:ellipsis;">Expenses Amount</span>
-              ${isSupplierAsExpense ? '<span style="font-size:9px; background:#ecfdf5; color:#059669; padding:1px 5px; border-radius:4px; font-weight:700; flex-shrink:0;">+Suppliers</span>' : ''}
             </div>
             <div class="stat-value" style="font-size:22px; font-weight:800; color:#b91c1c; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(displayedExpenseTotal)}</div>
             <div style="margin-top:8px; padding-top:6px; border-top:1px solid #fee2e2; display:flex; flex-direction:column; gap:4px;">
@@ -475,20 +422,6 @@
           </div>
         </div>
 
-        <!-- Overall Profit Card -->
-        <div class="stat-card ${isNetProfitPositive ? 'green' : 'red'}" style="background:#fff; border:1.5px solid ${isNetProfitPositive ? '#10b981' : '#ef4444'}; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px ${isNetProfitPositive ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
-          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:${isNetProfitPositive ? '#ecfdf5' : '#fef2f2'}; color:${isNetProfitPositive ? '#059669' : '#dc2626'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
-          </div>
-          <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Overall Profit</div>
-            <div class="stat-value" style="font-size:22px; font-weight:800; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(overallNetProfit)}</div>
-            <div style="font-size:11px; color:${isNetProfitPositive ? '#065f46' : '#b91c1c'}; background:${isNetProfitPositive ? '#d1fae5' : '#fee2e2'}; border:1px solid ${isNetProfitPositive ? '#a7f3d0' : '#fca5a5'}; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
-              <span>Net Margin: <strong>${netMarginPct}%</strong></span>
-            </div>
-          </div>
-        </div>
-
         <!-- Average Order Value (AOV) -->
         <div class="stat-card blue" style="background:#fff; border:1.5px solid #3b82f6; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(59,130,246,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#eff6ff; color:#2563eb; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
@@ -512,7 +445,7 @@
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Units Sold</div>
             <div class="stat-value" style="font-size:22px; font-weight:800; color:#115e59; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${totalUnitsSold} <span style="font-size:13px; font-weight:600; color:#0d9488;">pcs</span></div>
             <div style="font-size:11px; color:#115e59; background:#ccfbf1; border:1px solid #99f6e4; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
-              <span>Across ${uniqueSkusSold.size} SKUs</span>
+              <span>Across ${uniqueSkusSold} SKUs</span>
             </div>
           </div>
         </div>
@@ -527,10 +460,8 @@
       if (pmPill) pmPill.textContent = `Total Collections: ${H.formatCurrency(totalCollected)}`;
 
       if (pmGrid) {
-        const displayMethods = [...H.paymentMethods];
-        Object.keys(paymentBreakdown).forEach(m => {
-          if (!displayMethods.includes(m)) displayMethods.push(m);
-        });
+        // Only display active configured payment methods so renamed methods never show stale cards
+        const displayMethods = [...H.paymentMethods].filter(Boolean);
 
         pmGrid.innerHTML = displayMethods.map(method => {
           const amt = paymentBreakdown[method] || 0;

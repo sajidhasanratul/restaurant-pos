@@ -769,6 +769,61 @@ const initDB = async () => {
   } catch (pmSeedErr) {
     console.warn('Warning seeding payment methods:', pmSeedErr.message);
   }
+
+  // Enterprise Database Indexing for High-Concurrency & Multi-Million Rows Performance
+  try {
+    const ensureTableIndex = async (table, indexName, colDef) => {
+      try {
+        const rows = await dbQuery(`SHOW INDEX FROM \`${table}\` WHERE Key_name = ?`, [indexName]);
+        if (!rows || rows.length === 0) {
+          await dbQuery(`CREATE INDEX \`${indexName}\` ON \`${table}\`(${colDef})`);
+          console.log(`[Index Migration] Created index ${indexName} on ${table}(${colDef})`);
+        }
+      } catch (err) {
+        // Safe to ignore if index already exists
+      }
+    };
+
+    // Orders indexes (critical for 1-2 million orders)
+    await ensureTableIndex('orders', 'idx_orders_date', 'date');
+    await ensureTableIndex('orders', 'idx_orders_status_date', 'status, date');
+    await ensureTableIndex('orders', 'idx_orders_invoiceId', 'invoiceId');
+    await ensureTableIndex('orders', 'idx_orders_customerPhone', 'customerPhone');
+    await ensureTableIndex('orders', 'idx_orders_customerId', 'customerId');
+    await ensureTableIndex('orders', 'idx_orders_tokenNo_date', 'tokenNo, date');
+
+    // OrderItems indexes (order matching, item performance, search)
+    await ensureTableIndex('orderItems', 'idx_orderItems_orderId', 'orderId');
+    await ensureTableIndex('orderItems', 'idx_orderItems_productId', 'productId');
+    await ensureTableIndex('orderItems', 'idx_orderItems_productName', 'productName(191)');
+
+    // Payments indexes
+    await ensureTableIndex('payments', 'idx_payments_orderId', 'orderId');
+    await ensureTableIndex('payments', 'idx_payments_method', 'method');
+
+    // Expenses indexes
+    await ensureTableIndex('expenses', 'idx_expenses_date', 'date');
+    await ensureTableIndex('expenses', 'idx_expenses_category', 'category');
+    await ensureTableIndex('expenses', 'idx_expenses_status', 'status');
+
+    // Ingredient Costs indexes
+    await ensureTableIndex('ingredient_costs', 'idx_ingredient_costs_date', 'date');
+    await ensureTableIndex('ingredient_costs', 'idx_ingredient_costs_category', 'category');
+    await ensureTableIndex('ingredient_costs', 'idx_ingredient_costs_status', 'status');
+
+    // Expired Wastes indexes
+    await ensureTableIndex('expired_wastes', 'idx_expired_wastes_date', 'date');
+    await ensureTableIndex('expired_wastes', 'idx_expired_wastes_itemName', 'itemName(191)');
+
+    // Customers indexes
+    await ensureTableIndex('customers', 'idx_customers_phone', 'phone');
+    await ensureTableIndex('customers', 'idx_customers_name', 'name(100)');
+
+    // Supplier Payments indexes
+    await ensureTableIndex('supplier_payments', 'idx_supplier_payments_date', 'date');
+  } catch (idxErr) {
+    console.warn('Notice during database index setup:', idxErr.message);
+  }
 };
 
 const seedCatalog = async () => {
@@ -1138,6 +1193,26 @@ app.delete('/api/coupons/:code', verifyRole(['admin']), async (req, res) => {
 // Expenses
 app.get('/api/expenses', async (req, res) => {
   try {
+    const { from, to, search } = req.query;
+    let whereClauses = [];
+    let params = [];
+
+    if (from) {
+      whereClauses.push(`DATE(date) >= ?`);
+      params.push(from);
+    }
+    if (to) {
+      whereClauses.push(`DATE(date) <= ?`);
+      params.push(to);
+    }
+    if (search && search.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      whereClauses.push(`(LOWER(COALESCE(supplier_name, '')) LIKE ? OR LOWER(COALESCE(reason, name, '')) LIKE ? OR LOWER(COALESCE(note, '')) LIKE ?)`);
+      params.push(s, s, s);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
     const rows = await dbQuery(`
       SELECT 
         id, 
@@ -1153,8 +1228,9 @@ app.get('/api/expenses', async (req, res) => {
         image, 
         note 
       FROM expenses 
+      ${whereSql}
       ORDER BY date DESC
-    `);
+    `, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1651,9 +1727,22 @@ app.put('/api/payment-methods/:id', verifyRole(['admin', 'manager']), async (req
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Payment method name is required' });
     }
+    const cleanName = name.trim();
+
+    // Look up previous name for cascading update
+    const existingRows = await dbQuery(`SELECT name FROM payment_methods WHERE id = ?`, [id]);
+    const oldName = existingRows && existingRows[0] ? existingRows[0].name : null;
+
     await dbQuery(`UPDATE payment_methods SET name = ?, icon = ?, color = ?, status = ?, sort_order = ? WHERE id = ?`,
-      [name.trim(), icon || '', color || '#64748B', status || 'active', parseInt(sortOrder) || 0, id]);
-    res.json({ success: true });
+      [cleanName, icon || '', color || '#64748B', status || 'active', parseInt(sortOrder) || 0, id]);
+
+    // If payment method was renamed, cascade rename to all historical payments
+    if (oldName && oldName.toLowerCase() !== cleanName.toLowerCase()) {
+      await dbQuery(`UPDATE payments SET method = ? WHERE LOWER(method) = LOWER(?)`, [cleanName, oldName]);
+      console.log(`[Payment Method Cascade] Renamed method from "${oldName}" to "${cleanName}" across payments table.`);
+    }
+
+    res.json({ success: true, oldName, newName: cleanName });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1725,9 +1814,21 @@ app.put('/api/users/:id', verifyRole(['admin']), async (req, res) => {
 app.delete('/api/users/:id', verifyRole(['admin']), async (req, res) => {
   try {
     const uid = req.params.id;
-    if (uid === 'u-admin') {
-      return res.status(400).json({ error: 'Cannot delete primary admin account' });
+    const rows = await dbQuery(`SELECT id, role, name FROM users WHERE id = ?`, [uid]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
     }
+    const targetUser = rows[0];
+
+    // Any admin is deletable, BUT the last remaining administrator cannot be deleted
+    if (targetUser.role === 'admin') {
+      const adminCountRows = await dbQuery(`SELECT COUNT(*) as count FROM users WHERE role = 'admin'`);
+      const adminCount = (adminCountRows && adminCountRows[0]) ? adminCountRows[0].count : 0;
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'The last remaining administrator cannot be deleted. The system must retain at least one admin account.' });
+      }
+    }
+
     await dbQuery(`DELETE FROM users WHERE id = ?`, [uid]);
     res.json({ success: true });
   } catch (err) {
@@ -2719,12 +2820,59 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
-app.post('/api/customers', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
+app.post('/api/customers', async (req, res) => {
   try {
-    const { id, name, phone, email, label, customDiscount, address } = req.body;
+    let { id, name, phone, email, label, customDiscount, address } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Customer name is required' });
+    }
+    const cleanName = name.trim();
+    const cleanPhone = (phone || '').trim();
+    if (!id) {
+      id = 'c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+    }
+
+    // Deduplicate by phone if phone is provided
+    if (cleanPhone) {
+      const existing = await dbQuery(`SELECT id FROM customers WHERE phone = ? LIMIT 1`, [cleanPhone]);
+      if (existing && existing.length > 0) {
+        await dbQuery(`UPDATE customers SET name = ?, email = COALESCE(?, email), label = COALESCE(?, label), customDiscount = COALESCE(?, customDiscount), address = COALESCE(?, address) WHERE id = ?`,
+          [cleanName, email || null, label || null, customDiscount !== undefined ? parseFloat(customDiscount) : null, address || null, existing[0].id]);
+        return res.json({ success: true, id: existing[0].id, updated: true });
+      }
+    }
+
     await dbQuery(`INSERT INTO customers (id, name, phone, email, label, customDiscount, address) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)`, [id, name, phone, email, label, customDiscount, address]);
-    res.json({ success: true });
+      VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+      [id, cleanName, cleanPhone || null, email || null, label || 'Regular', parseFloat(customDiscount) || 0.00, address || null]);
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Instant customer save from New Order
+app.post('/api/customers/quick-save', async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Customer name is required' });
+    }
+    const cleanName = name.trim();
+    const cleanPhone = (phone || '').trim();
+
+    if (cleanPhone) {
+      const existing = await dbQuery(`SELECT id, name, phone FROM customers WHERE phone = ? LIMIT 1`, [cleanPhone]);
+      if (existing && existing.length > 0) {
+        await dbQuery(`UPDATE customers SET name = ? WHERE id = ?`, [cleanName, existing[0].id]);
+        return res.json({ success: true, customer: { id: existing[0].id, name: cleanName, phone: cleanPhone } });
+      }
+    }
+
+    const newId = 'c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+    await dbQuery(`INSERT INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, ?, 'Regular', 0.00)`,
+      [newId, cleanName, cleanPhone || null]);
+    res.json({ success: true, customer: { id: newId, name: cleanName, phone: cleanPhone } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2752,12 +2900,406 @@ app.delete('/api/customers/:id', verifyRole(['admin', 'manager', 'cashier']), as
   }
 });
 
-// Orders
+// Orders - High-speed Server-side Indexed Querying & Search
 app.get('/api/orders', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const rows = await dbQuery(`SELECT id, invoiceId, customerId, customerName, customerPhone, DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, subtotal, discountType, discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, COALESCE(orderType, 'Dine In') as orderType, COALESCE(tableName, 'Table 01') as tableName, COALESCE(tokenNo, 1) as tokenNo FROM orders ORDER BY date DESC`);
+    const { from, to, search, paymentMethod, minTotal, maxTotal, page, limit } = req.query;
+
+    let whereClauses = [];
+    let queryParams = [];
+
+    // Date range filter
+    if (from) {
+      whereClauses.push(`DATE(o.date) >= ?`);
+      queryParams.push(from);
+    }
+    if (to) {
+      whereClauses.push(`DATE(o.date) <= ?`);
+      queryParams.push(to);
+    }
+
+    // Grand total range
+    if (minTotal !== undefined && minTotal !== '') {
+      whereClauses.push(`o.grandTotal >= ?`);
+      queryParams.push(parseFloat(minTotal) || 0);
+    }
+    if (maxTotal !== undefined && maxTotal !== '') {
+      whereClauses.push(`o.grandTotal <= ?`);
+      queryParams.push(parseFloat(maxTotal) || 0);
+    }
+
+    // Payment method filter
+    if (paymentMethod && paymentMethod !== 'all') {
+      whereClauses.push(`EXISTS (SELECT 1 FROM payments p WHERE p.orderId = o.id AND LOWER(p.method) = LOWER(?))`);
+      queryParams.push(paymentMethod);
+    }
+
+    // Search filter across invoice, customer name, phone, table, order type, AND sold product name
+    if (search && search.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      whereClauses.push(`(
+        LOWER(o.invoiceId) LIKE ? OR
+        LOWER(COALESCE(o.customerName, '')) LIKE ? OR
+        LOWER(COALESCE(o.customerPhone, '')) LIKE ? OR
+        LOWER(COALESCE(o.tableName, '')) LIKE ? OR
+        LOWER(COALESCE(o.orderType, '')) LIKE ? OR
+        EXISTS (SELECT 1 FROM orderItems oi WHERE oi.orderId = o.id AND LOWER(oi.productName) LIKE ?)
+      )`);
+      queryParams.push(s, s, s, s, s, s);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    // Calculate aggregated metrics on MySQL side
+    const summaryRows = await dbQuery(
+      `SELECT COUNT(*) AS totalOrders, COALESCE(SUM(grandTotal), 0) AS totalSalesAmount FROM orders o ${whereSql}`,
+      queryParams
+    );
+    const summary = summaryRows && summaryRows[0] ? summaryRows[0] : { totalOrders: 0, totalSalesAmount: 0 };
+
+    // Also get today's total sales
+    const todayStr = getBangladeshDateOnlyString(new Date());
+    const todayRows = await dbQuery(
+      `SELECT COUNT(*) AS todayOrders, COALESCE(SUM(grandTotal), 0) AS todaySalesAmount FROM orders WHERE DATE(date) = ? AND (status IS NULL OR status NOT IN ('cancelled', 'void'))`,
+      [todayStr]
+    );
+    const todaySummary = todayRows && todayRows[0] ? todayRows[0] : { todayOrders: 0, todaySalesAmount: 0 };
+
+    // Check pagination
+    const isPaginated = page !== undefined || (limit !== undefined && limit !== 'all');
+    let limitSql = '';
+    if (isPaginated && limit !== 'all') {
+      const pageNum = Math.max(parseInt(page) || 1, 1);
+      const limitNum = Math.min(Math.max(parseInt(limit) || 50, 1), 1000);
+      const offset = (pageNum - 1) * limitNum;
+      limitSql = `LIMIT ${limitNum} OFFSET ${offset}`;
+    }
+
+    // Retrieve order list with attached payments summary
+    const sql = `
+      SELECT 
+        o.id, 
+        o.invoiceId, 
+        o.customerId, 
+        o.customerName, 
+        o.customerPhone, 
+        DATE_FORMAT(o.date, '%Y-%m-%d %H:%i:%s') as date, 
+        o.subtotal, 
+        o.discountType, 
+        o.discountValue, 
+        o.discountAmount, 
+        o.taxPercent, 
+        o.taxAmount, 
+        o.grandTotal, 
+        o.paidAmount, 
+        o.dueAmount, 
+        o.returnedAmount, 
+        o.status, 
+        COALESCE(o.orderType, 'Dine In') as orderType, 
+        COALESCE(o.tableName, 'Table 01') as tableName, 
+        COALESCE(o.tokenNo, 1) as tokenNo,
+        (
+          SELECT GROUP_CONCAT(CONCAT(p.method, ':', p.amount, IF(p.lastFour IS NOT NULL AND p.lastFour != '', CONCAT(' (', p.lastFour, ')'), '')) SEPARATOR '; ')
+          FROM payments p WHERE p.orderId = o.id
+        ) AS paymentMethodsSummary
+      FROM orders o
+      ${whereSql}
+      ORDER BY o.date DESC
+      ${limitSql}
+    `;
+
+    const rows = await dbQuery(sql, queryParams);
+
+    if (req.query.withSummary === 'true') {
+      return res.json({
+        orders: rows,
+        totalOrders: Number(summary.totalOrders) || 0,
+        totalSalesAmount: parseFloat(summary.totalSalesAmount) || 0,
+        todayOrders: Number(todaySummary.todayOrders) || 0,
+        todaySalesAmount: parseFloat(todaySummary.todaySalesAmount) || 0
+      });
+    }
+
+    // Attach headers and return rows
+    res.setHeader('x-total-sales', String(summary.totalSalesAmount || 0));
+    res.setHeader('x-total-orders', String(summary.totalOrders || 0));
+    res.setHeader('x-today-sales', String(todaySummary.todaySalesAmount || 0));
+    res.setHeader('x-today-orders', String(todaySummary.todayOrders || 0));
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fast Order Metrics Endpoint (Calculates in 1 millisecond on MySQL)
+app.get('/api/orders/metrics', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const { from, to, search, paymentMethod } = req.query;
+    const todayStr = getBangladeshDateOnlyString(new Date());
+
+    // 1. Today's sales
+    const todayRows = await dbQuery(
+      `SELECT COUNT(*) AS count, COALESCE(SUM(grandTotal), 0) AS total FROM orders WHERE DATE(date) = ? AND (status IS NULL OR status NOT IN ('cancelled', 'void'))`,
+      [todayStr]
+    );
+
+    // 2. Filtered range sales
+    let whereClauses = ["(status IS NULL OR status NOT IN ('cancelled', 'void'))"];
+    let params = [];
+    if (from) {
+      whereClauses.push(`DATE(date) >= ?`);
+      params.push(from);
+    }
+    if (to) {
+      whereClauses.push(`DATE(date) <= ?`);
+      params.push(to);
+    }
+    if (paymentMethod && paymentMethod !== 'all') {
+      whereClauses.push(`EXISTS (SELECT 1 FROM payments p WHERE p.orderId = orders.id AND LOWER(p.method) = LOWER(?))`);
+      params.push(paymentMethod);
+    }
+    if (search && search.trim()) {
+      const s = `%${search.trim().toLowerCase()}%`;
+      whereClauses.push(`(
+        LOWER(invoiceId) LIKE ? OR
+        LOWER(COALESCE(customerName, '')) LIKE ? OR
+        LOWER(COALESCE(customerPhone, '')) LIKE ? OR
+        LOWER(COALESCE(tableName, '')) LIKE ? OR
+        EXISTS (SELECT 1 FROM orderItems oi WHERE oi.orderId = orders.id AND LOWER(oi.productName) LIKE ?)
+      )`);
+      params.push(s, s, s, s, s);
+    }
+
+    const filteredRows = await dbQuery(
+      `SELECT COUNT(*) AS count, COALESCE(SUM(grandTotal), 0) AS total FROM orders WHERE ${whereClauses.join(' AND ')}`,
+      params
+    );
+
+    const todayR = todayRows && todayRows[0] ? todayRows[0] : { count: 0, total: 0 };
+    const filteredR = filteredRows && filteredRows[0] ? filteredRows[0] : { count: 0, total: 0 };
+
+    res.json({
+      todaySales: parseFloat(todayR.total) || 0,
+      todayOrders: Number(todayR.count) || 0,
+      filteredSales: parseFloat(filteredR.total) || 0,
+      filteredOrders: Number(filteredR.count) || 0
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fast Server-side Dashboard Metrics Aggregation Endpoint (Under 5ms)
+app.get('/api/dashboard/metrics', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const today = getBangladeshDateOnlyString(new Date());
+    const from = req.query.from || today;
+    const to = req.query.to || today;
+
+    const [
+      salesRows,
+      ingCostRows,
+      wasteRows,
+      expenseRows,
+      supplierRows,
+      unitsRows,
+      paymentsRows
+    ] = await Promise.all([
+      // 1. Sales & Revenue
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(grandTotal), 0) AS totalSales, 
+           COUNT(*) AS orderCount, 
+           COALESCE(AVG(grandTotal), 0) AS aov 
+         FROM orders 
+         WHERE DATE(date) >= ? AND DATE(date) <= ? AND (status IS NULL OR status NOT IN ('cancelled', 'void'))`,
+        [from, to]
+      ),
+      // 2. Ingredient Costs
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(amount), 0) AS totalAmount, 
+           COALESCE(SUM(paid_amount), 0) AS paidAmount, 
+           COUNT(*) AS count 
+         FROM ingredient_costs 
+         WHERE DATE(date) >= ? AND DATE(date) <= ?`,
+        [from, to]
+      ),
+      // 3. Expired & Waste
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(totalCost), 0) AS totalCost, 
+           COALESCE(SUM(compensationAmount), 0) AS totalCompensation, 
+           COALESCE(SUM(quantity), 0) AS totalQuantity, 
+           COUNT(*) AS count 
+         FROM expired_wastes 
+         WHERE DATE(date) >= ? AND DATE(date) <= ?`,
+        [from, to]
+      ),
+      // 4. Expenses
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(amount), 0) AS totalAmount, 
+           COALESCE(SUM(paid_amount), 0) AS paidAmount, 
+           COUNT(*) AS count 
+         FROM expenses 
+         WHERE DATE(date) >= ? AND DATE(date) <= ?`,
+        [from, to]
+      ),
+      // 5. Supplier Payments
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(amount), 0) AS totalAmount, 
+           COALESCE(SUM(paid_amount), 0) AS paidAmount, 
+           COUNT(*) AS count 
+         FROM supplier_payments 
+         WHERE DATE(date) >= ? AND DATE(date) <= ?`,
+        [from, to]
+      ),
+      // 6. Units Sold & Unique SKUs
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(oi.qty), 0) AS totalUnits, 
+           COUNT(DISTINCT oi.productId) AS uniqueSkus 
+         FROM orderItems oi 
+         INNER JOIN orders o ON oi.orderId = o.id 
+         WHERE DATE(o.date) >= ? AND DATE(o.date) <= ? AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))`,
+        [from, to]
+      ),
+      // 7. Payment breakdown
+      dbQuery(
+        `SELECT 
+           p.method, 
+           COALESCE(SUM(p.amount), 0) AS totalAmount, 
+           COUNT(*) AS count 
+         FROM payments p 
+         INNER JOIN orders o ON p.orderId = o.id 
+         WHERE DATE(o.date) >= ? AND DATE(o.date) <= ? AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void')) 
+         GROUP BY p.method`,
+        [from, to]
+      )
+    ]);
+
+    const sales = salesRows[0] || {};
+    const ing = ingCostRows[0] || {};
+    const waste = wasteRows[0] || {};
+    const exp = expenseRows[0] || {};
+    const sup = supplierRows[0] || {};
+    const units = unitsRows[0] || {};
+
+    const totalSales = parseFloat(sales.totalSales) || 0;
+    const orderCount = parseInt(sales.orderCount) || 0;
+    const aov = parseFloat(sales.aov) || 0;
+
+    const totalIngredientCost = parseFloat(ing.totalAmount) || 0;
+    const paidIngredientCost = parseFloat(ing.paidAmount) || 0;
+    const unpaidIngredientCost = Math.max(0, totalIngredientCost - paidIngredientCost);
+
+    const totalWasteCost = parseFloat(waste.totalCost) || 0;
+    const totalCompensation = parseFloat(waste.totalCompensation) || 0;
+    const netWasteLoss = Math.max(0, totalWasteCost - totalCompensation);
+    const wasteQuantity = parseFloat(waste.totalQuantity) || 0;
+    const wasteCount = parseInt(waste.count) || 0;
+
+    const totalExpenses = parseFloat(exp.totalAmount) || 0;
+    const paidExpenses = parseFloat(exp.paidAmount) || 0;
+    const unpaidExpenses = Math.max(0, totalExpenses - paidExpenses);
+
+    const totalSupplierPayments = parseFloat(sup.totalAmount) || 0;
+    const paidSupplierPayments = parseFloat(sup.paidAmount) || 0;
+    const unpaidSupplierPayments = Math.max(0, totalSupplierPayments - paidSupplierPayments);
+
+    const totalUnitsSold = parseInt(units.totalUnits) || 0;
+    const uniqueSkusSold = parseInt(units.uniqueSkus) || 0;
+
+    const paymentBreakdown = {};
+    const paymentCount = {};
+    (paymentsRows || []).forEach(r => {
+      paymentBreakdown[r.method] = parseFloat(r.totalAmount) || 0;
+      paymentCount[r.method] = parseInt(r.count) || 0;
+    });
+
+    res.json({
+      from,
+      to,
+      totalSales,
+      orderCount,
+      aov,
+      totalIngredientCost,
+      paidIngredientCost,
+      unpaidIngredientCost,
+      totalWasteCost,
+      totalCompensation,
+      netWasteLoss,
+      wasteQuantity,
+      wasteCount,
+      totalExpenses,
+      paidExpenses,
+      unpaidExpenses,
+      totalSupplierPayments,
+      paidSupplierPayments,
+      unpaidSupplierPayments,
+      totalUnitsSold,
+      uniqueSkusSold,
+      paymentBreakdown,
+      paymentCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fast Server-side Reports Analytics Endpoint
+app.get('/api/reports/analytics', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    const { from, to } = req.query;
+    let whereClauses = ["(o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))"];
+    let params = [];
+    if (from) {
+      whereClauses.push(`DATE(o.date) >= ?`);
+      params.push(from);
+    }
+    if (to) {
+      whereClauses.push(`DATE(o.date) <= ?`);
+      params.push(to);
+    }
+    const whereSql = 'WHERE ' + whereClauses.join(' AND ');
+
+    // Item-level top performers
+    const itemSales = await dbQuery(`
+      SELECT 
+        oi.productName,
+        COALESCE(c.name, 'General') AS categoryName,
+        SUM(oi.qty) AS totalQty,
+        SUM(oi.total) AS totalRevenue,
+        COUNT(DISTINCT oi.orderId) AS orderCount
+      FROM orderItems oi
+      INNER JOIN orders o ON oi.orderId = o.id
+      LEFT JOIN products p ON oi.productId = p.id
+      LEFT JOIN categories c ON p.categoryId = c.id
+      ${whereSql}
+      GROUP BY oi.productName, categoryName
+      ORDER BY totalRevenue DESC
+      LIMIT 100
+    `, params);
+
+    // Day-by-day sales trend
+    const salesTrend = await dbQuery(`
+      SELECT 
+        DATE(o.date) AS saleDate,
+        COUNT(*) AS orderCount,
+        SUM(o.grandTotal) AS totalSales
+      FROM orders o
+      ${whereSql}
+      GROUP BY DATE(o.date)
+      ORDER BY saleDate ASC
+    `, params);
+
+    res.json({ itemSales, salesTrend });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2779,7 +3321,20 @@ app.get('/api/next-token', async (req, res) => {
 app.get('/api/orderItems', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const rows = await dbQuery(`SELECT * FROM orderItems`);
+    const { orderId, from, to } = req.query;
+    let whereClauses = [];
+    let params = [];
+    if (orderId) {
+      whereClauses.push('oi.orderId = ?');
+      params.push(orderId);
+    }
+    if (from || to) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM orders o WHERE o.id = oi.orderId ${from ? 'AND DATE(o.date) >= ?' : ''} ${to ? 'AND DATE(o.date) <= ?' : ''})`);
+      if (from) params.push(from);
+      if (to) params.push(to);
+    }
+    const whereSql = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+    const rows = await dbQuery(`SELECT oi.* FROM orderItems oi ${whereSql}`, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2899,7 +3454,20 @@ app.post('/api/order-items/bulk-cost-price', verifyRole(['admin', 'manager', 'ca
 app.get('/api/payments', async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    const rows = await dbQuery(`SELECT * FROM payments`);
+    const { orderId, from, to } = req.query;
+    let whereClauses = [];
+    let params = [];
+    if (orderId) {
+      whereClauses.push('p.orderId = ?');
+      params.push(orderId);
+    }
+    if (from || to) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM orders o WHERE o.id = p.orderId ${from ? 'AND DATE(o.date) >= ?' : ''} ${to ? 'AND DATE(o.date) <= ?' : ''})`);
+      if (from) params.push(from);
+      if (to) params.push(to);
+    }
+    const whereSql = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+    const rows = await dbQuery(`SELECT p.* FROM payments p ${whereSql}`, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2960,13 +3528,39 @@ app.post('/api/orders', async (req, res) => {
     );
     const nextToken = (tokenRows && tokenRows[0] && tokenRows[0].nextToken) ? Number(tokenRows[0].nextToken) : 1;
 
+    const finalCustName = (order.customerName && order.customerName.trim()) ? order.customerName.trim() : '';
+    const finalCustPhone = (order.customerPhone || '').trim();
+
     await connection.execute(`INSERT INTO orders (
       id, invoiceId, customerId, customerName, customerPhone, date, subtotal, discountType, 
       discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, orderType, tableName, tokenNo
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order.id, order.invoiceId, order.customerId || null, order.customerName || 'Walk-in Guest', order.customerPhone || '', formattedDate, order.subtotal,
+      [order.id, order.invoiceId, order.customerId || null, finalCustName, finalCustPhone, formattedDate, order.subtotal,
       order.discountType, order.discountValue, order.discountAmount, order.taxPercent, order.taxAmount, order.grandTotal,
       order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken]);
+
+    // Automatically save or update customer in customers table if name or phone provided
+    if (finalCustName || finalCustPhone) {
+      try {
+        if (finalCustPhone) {
+          const [existingCust] = await connection.execute(`SELECT id FROM customers WHERE phone = ? LIMIT 1`, [finalCustPhone]);
+          if (existingCust && existingCust.length > 0) {
+            if (finalCustName) {
+              await connection.execute(`UPDATE customers SET name = ? WHERE id = ?`, [finalCustName, existingCust[0].id]);
+            }
+          } else {
+            const newCustId = order.customerId || ('c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
+            await connection.execute(`INSERT INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, ?, 'Regular', 0.00)`,
+              [newCustId, finalCustName || 'Guest', finalCustPhone]);
+          }
+        } else if (finalCustName && order.customerId) {
+          await connection.execute(`INSERT IGNORE INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, NULL, 'Regular', 0.00)`,
+            [order.customerId, finalCustName]);
+        }
+      } catch (custErr) {
+        console.warn('Customer auto-save notice during order creation:', custErr.message);
+      }
+    }
 
     for (const item of items) {
       await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 

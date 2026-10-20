@@ -154,15 +154,62 @@
       await this.generateReport(type, fromDate, toDate);
     },
 
+    async getRangeOrders(from, to) {
+      const S = POS.Store;
+      const H = POS.Helpers;
+      try {
+        if (from || to) {
+          const q = new URLSearchParams();
+          if (from) q.set('from', from);
+          if (to) q.set('to', to);
+          q.set('limit', '50000');
+          const res = await fetch('/api/orders?' + q.toString());
+          if (res.ok) {
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data.orders || []);
+          }
+        }
+      } catch (e) {}
+      return await S.query('orders', o => H.isDateInRange(o.date, from, to));
+    },
+
+    async getRangeOrderItems(from, to) {
+      const S = POS.Store;
+      try {
+        if (from || to) {
+          const q = new URLSearchParams();
+          if (from) q.set('from', from);
+          if (to) q.set('to', to);
+          const res = await fetch('/api/orderItems?' + q.toString());
+          if (res.ok) return await res.json();
+        }
+      } catch (e) {}
+      return await S.getAll('orderItems');
+    },
+
+    async getRangePayments(from, to) {
+      const S = POS.Store;
+      try {
+        if (from || to) {
+          const q = new URLSearchParams();
+          if (from) q.set('from', from);
+          if (to) q.set('to', to);
+          const res = await fetch('/api/payments?' + q.toString());
+          if (res.ok) return await res.json();
+        }
+      } catch (e) {}
+      return await S.getAll('payments');
+    },
+
     async generateReport(type, from, to) {
       const container = document.getElementById('report-output-container');
       const S = POS.Store;
       const H = POS.Helpers;
 
-      const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
-      const orderItems = await S.getAll('orderItems');
+      const orders = await this.getRangeOrders(from, to);
+      const orderItems = await this.getRangeOrderItems(from, to);
       const products = await S.getAll('products');
-      const payments = await S.getAll('payments');
+      const payments = await this.getRangePayments(from, to);
 
       switch (type) {
         case 'daily-sale':
@@ -1239,10 +1286,10 @@
     async exportReportCSV(type, from, to) {
       const S = POS.Store;
       const H = POS.Helpers;
-      const orders = await S.query('orders', o => H.isDateInRange(o.date, from, to));
-      const orderItems = await S.getAll('orderItems');
+      const orders = await this.getRangeOrders(from, to);
+      const orderItems = await this.getRangeOrderItems(from, to);
       const products = await S.getAll('products');
-      const payments = await S.getAll('payments');
+      const payments = await this.getRangePayments(from, to);
       const categories = await S.getAll('categories');
 
       let csvData = [];
