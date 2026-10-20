@@ -745,26 +745,6 @@
         searchCustomers(e.target.value);
       });
 
-      // Auto-save customer if new
-      const autoSaveCustomer = H.debounce(async () => {
-        const name = nameInput.value.trim();
-        const phone = phoneInput.value.trim();
-        if (name || phone) {
-          try {
-            await fetch('/api/customers/quick-save', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: name || 'Guest', phone: phone || '' })
-            });
-          } catch (e) {
-            console.warn('Customer auto-save notice:', e);
-          }
-        }
-      }, 400);
-
-      nameInput.addEventListener('input', autoSaveCustomer);
-      phoneInput.addEventListener('input', autoSaveCustomer);
-
       // Hide suggestions on blur or clicking outside
       phoneInput.addEventListener('blur', () => {
         setTimeout(() => { suggestionsBox.style.display = 'none'; }, 200);
@@ -775,9 +755,10 @@
       document.getElementById('btn-save-cust').onclick = async () => {
         const name = nameInput.value.trim();
         const phone = phoneInput.value.trim();
+        const cleanDigits = phone.replace(/\D/g, '');
         
         // If user didn't click dropdown but phone matches a known customer, apply discount
-        if (phone && (!selectedCustomer || selectedCustomer.phone !== phone)) {
+        if (cleanDigits.length >= 7 && (!selectedCustomer || selectedCustomer.phone !== phone)) {
           try {
             const checkRes = await fetch(`/api/customers?search=${encodeURIComponent(phone)}&limit=5`);
             if (checkRes.ok) {
@@ -797,19 +778,26 @@
           customDiscount: (selectedCustomer && selectedCustomer.customDiscount) || this.customerInfo.customDiscount || 0
         };
 
-        if (name || phone) {
+        // ONLY save new customer to database if BOTH full phone (at least 7 digits) and real name are provided
+        if (name && cleanDigits.length >= 7 && name.toLowerCase() !== 'guest') {
           try {
-            await fetch('/api/customers/quick-save', {
+            const saveRes = await fetch('/api/customers/quick-save', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: name || 'Guest', phone: phone || '' })
+              body: JSON.stringify({ name, phone })
             });
+            if (saveRes.ok) {
+              const resData = await saveRes.json();
+              if (resData && resData.customer && resData.customer.id) {
+                this.customerInfo.id = resData.customer.id;
+              }
+            }
           } catch (e) {
             console.warn('Customer quick-save error:', e);
           }
         }
 
-        const label = name ? `Guest set to: ${name}` : 'Customer details saved';
+        const label = name ? `Guest set to: ${name}` : (phone ? `Phone set: ${phone}` : 'Customer details saved');
         H.showToast(label, 'success');
         this.updateCustomerButton();
         H.hideModal();
@@ -1506,6 +1494,7 @@
           <div class="text-center" style="margin-top:8px;">
             ${settings.invoice_note ? `<div style="font-style:italic; margin-bottom:4px;">${H.escapeHtml(settings.invoice_note)}</div>` : '<div>Thank you for dining with us!</div>'}
             <div>Please visit again soon.</div>
+            <div style="font-size:10px; color:#666; margin-top:6px;">Software by ZenPlusIT</div>
           </div>
           <script>
             window.onload = function() {
@@ -1640,6 +1629,7 @@
           <div class="divider"></div>
           <div class="text-center" style="margin-top:8px;">
             <div>Thank you for dining with us!</div>
+            <div style="font-size:10px; color:#666; margin-top:4px;">Software by ZenPlusIT</div>
           </div>
 
           <!-- SECTION 2: KITCHEN TOKEN (KOT) WITH TEAR-OFF LINE -->

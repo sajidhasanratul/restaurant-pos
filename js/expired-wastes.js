@@ -15,20 +15,7 @@
       let toDate = localStorage.getItem('ew_to') || '';
 
       mc.innerHTML = `
-        <div class="page-header fade-in">
-          <div>
-            <h2 class="page-title" style="display:flex; align-items:center; gap:10px;">
-              <span>🗑️</span> Expired & Waste Tracking
-            </h2>
-            <p class="page-subtitle">Record damaged, spoiled, or expired ingredients & menu dishes. Monitor waste losses and supplier compensation claims.</p>
-          </div>
-          <div class="page-actions">
-            <button class="btn btn-primary btn-sm" id="btn-add-expired-waste" style="background:#EF4444; border-color:#EF4444; font-weight:700;">
-              + Record Expired / Waste
-            </button>
-          </div>
-        </div>
-
+        <!-- Top Bar: Date Range Filter + Action Buttons (Name Card Removed) -->
         <div class="filter-bar fade-in" style="display:flex; flex-direction:column; gap:12px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -42,9 +29,13 @@
               </div>
             </div>
 
-            <!-- Search box -->
-            <div style="flex:1; min-width:200px; max-width:360px;">
-              <input type="text" class="form-input" id="ew-search" placeholder="Search item, supplier, reason..." style="height:36px; font-size:12.5px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
+              <div style="flex:1; min-width:180px; max-width:280px;">
+                <input type="text" class="form-input" id="ew-search" placeholder="Search item, supplier, reason..." style="height:36px; font-size:12.5px;">
+              </div>
+              <button class="btn btn-primary btn-sm" id="btn-add-expired-waste" style="background:#EF4444; border-color:#EF4444; height:36px; padding:0 14px; font-weight:700; white-space:nowrap;">
+                + Record Expired / Waste
+              </button>
             </div>
           </div>
 

@@ -553,7 +553,7 @@
 
                   <div style="text-align:center; font-size:11px; margin-top:6px;">
                     <div id="prev-note" style="font-style:italic; margin-bottom:4px;">Thank you for dining with us!</div>
-                    <div style="font-size:10px; color:#555;">Software by ZenPos</div>
+                    <div style="font-size:10px; color:#555;">Software by ZenPlusIT</div>
                   </div>
 
                 </div>

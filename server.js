@@ -3553,23 +3553,16 @@ app.post('/api/orders', async (req, res) => {
       order.discountType, order.discountValue, order.discountAmount, order.taxPercent, order.taxAmount, order.grandTotal,
       order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken]);
 
-    // Automatically save or update customer in customers table if name or phone provided
-    if (finalCustName || finalCustPhone) {
+    // Automatically save or update customer in customers table ONLY if full phone and real name provided
+    if (finalCustName && finalCustPhone && finalCustPhone.replace(/\D/g, '').length >= 7 && finalCustName.toLowerCase() !== 'guest') {
       try {
-        if (finalCustPhone) {
-          const [existingCust] = await connection.execute(`SELECT id FROM customers WHERE phone = ? LIMIT 1`, [finalCustPhone]);
-          if (existingCust && existingCust.length > 0) {
-            if (finalCustName) {
-              await connection.execute(`UPDATE customers SET name = ? WHERE id = ?`, [finalCustName, existingCust[0].id]);
-            }
-          } else {
-            const newCustId = order.customerId || ('c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
-            await connection.execute(`INSERT INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, ?, 'Regular', 0.00)`,
-              [newCustId, finalCustName || 'Guest', finalCustPhone]);
-          }
-        } else if (finalCustName && order.customerId) {
-          await connection.execute(`INSERT IGNORE INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, NULL, 'Regular', 0.00)`,
-            [order.customerId, finalCustName]);
+        const [existingCust] = await connection.execute(`SELECT id FROM customers WHERE phone = ? LIMIT 1`, [finalCustPhone]);
+        if (existingCust && existingCust.length > 0) {
+          await connection.execute(`UPDATE customers SET name = ? WHERE id = ?`, [finalCustName, existingCust[0].id]);
+        } else {
+          const newCustId = order.customerId || ('c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
+          await connection.execute(`INSERT INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, ?, 'Regular', 0.00)`,
+            [newCustId, finalCustName, finalCustPhone]);
         }
       } catch (custErr) {
         console.warn('Customer auto-save notice during order creation:', custErr.message);

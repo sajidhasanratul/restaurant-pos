@@ -733,7 +733,7 @@
               ${settings.invoice_note ? `<p style="margin-bottom: 8px; font-style: italic; color:#333;">${this.esc(settings.invoice_note)}</p>` : ''}
               <p style="font-weight:700;">Thank you for shopping with us!</p>
               ${settings.store_website ? `<p style="font-size: 8pt; margin-top:4px; color:#555;">${this.esc(settings.store_website)}</p>` : ''}
-              <p style="font-size: 7.5pt; margin-top:6px; color:#888;">Software by Zen IT</p>
+              <p style="font-size: 7.5pt; margin-top:6px; color:#888;">Software by ZenPlusIT</p>
             </div>
           </div>
         `;
@@ -831,6 +831,7 @@
                 <div style="border-top:1px solid #94a3b8; width:180px; margin-top:50px;">Authorized Signature</div>
               </div>
             </div>
+            <div style="text-align:center; font-size:10px; color:#64748b; margin-top:20px; padding-top:8px; border-top:1px dashed #cbd5e1;">Software by ZenPlusIT</div>
           </div>
         `;
       }

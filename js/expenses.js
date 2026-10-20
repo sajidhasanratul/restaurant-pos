@@ -13,19 +13,7 @@
       let toDate = localStorage.getItem('exp_to') || today;
 
       mc.innerHTML = `
-        <div class="page-header fade-in">
-          <div>
-            <h2 class="page-title">💸 Expenses Management</h2>
-            <p class="page-subtitle">Track operation fees, rent, payrolls, supplier bills, and payment records.</p>
-          </div>
-          <div class="page-actions">
-            ${user && (user.role === 'admin' || user.role === 'manager') ? `
-              <button class="btn btn-secondary btn-sm" id="btn-manage-categories" style="margin-right:8px;">📂 Manage Categories</button>
-            ` : ''}
-            <button class="btn btn-primary btn-sm" id="btn-add-expense">+ Add Expense</button>
-          </div>
-        </div>
-
+        <!-- Top Bar: Date Range Filter + Action Buttons (Name Card Removed) -->
         <div class="filter-bar fade-in" style="display:flex; flex-direction:column; gap:12px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -39,9 +27,16 @@
               </div>
             </div>
 
-            <!-- Search box -->
-            <div style="flex:1; min-width:220px; max-width:380px;">
-              <input type="text" class="form-input" id="exp-search" placeholder="Search supplier, reason, or note..." style="height:36px; font-size:12.5px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
+              <div style="flex:1; min-width:180px; max-width:280px;">
+                <input type="text" class="form-input" id="exp-search" placeholder="Search supplier, reason, or note..." style="height:36px; font-size:12.5px;">
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${user && (user.role === 'admin' || user.role === 'manager') ? `
+                  <button class="btn btn-secondary btn-sm" id="btn-manage-categories" style="height:36px; padding:0 12px; font-weight:600;">📂 Categories</button>
+                ` : ''}
+                <button class="btn btn-primary btn-sm" id="btn-add-expense" style="height:36px; padding:0 14px; font-weight:700;">+ Add Expense</button>
+              </div>
             </div>
           </div>
 

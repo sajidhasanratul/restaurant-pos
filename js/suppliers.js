@@ -15,19 +15,7 @@
       let toDate = localStorage.getItem('sp_to') || today;
 
       mc.innerHTML = `
-        <div class="page-header fade-in">
-          <div>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <h2 class="page-title" style="margin:0;">🏢 Suppliers Payment Records</h2>
-              <span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;">Suppliers Ledger</span>
-            </div>
-            <p class="page-subtitle" style="margin-top:4px;">Record supplier vouchers, reconcile procurement dues, and track payment receipts.</p>
-          </div>
-          <div class="page-actions">
-            <button class="btn btn-primary btn-sm" id="btn-add-supplier-payment">+ Add Supplier Payment</button>
-          </div>
-        </div>
-
+        <!-- Top Bar: Date Range Filter + Action Buttons (Name Card Removed) -->
         <div class="filter-bar fade-in" style="display:flex; flex-direction:column; gap:12px; background:#fff; padding:14px 18px; border-radius:12px; border:1px solid #EAE4D9; margin-bottom:16px;">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -42,7 +30,7 @@
             </div>
 
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
-              <div style="width:140px;">
+              <div style="width:130px;">
                 <select class="form-select" id="sp-filter-status" style="height:36px; font-size:12.5px;">
                   <option value="">All Statuses</option>
                   <option value="Paid">Paid</option>
@@ -50,9 +38,10 @@
                   <option value="Unpaid">Unpaid</option>
                 </select>
               </div>
-              <div style="flex:1; min-width:180px; max-width:320px;">
+              <div style="flex:1; min-width:160px; max-width:240px;">
                 <input type="text" class="form-input" id="sp-search" placeholder="Supplier / Reason..." style="height:36px; font-size:12.5px;">
               </div>
+              <button class="btn btn-primary btn-sm" id="btn-add-supplier-payment" style="height:36px; padding:0 14px; font-weight:700; white-space:nowrap;">+ Add Supplier Payment</button>
             </div>
           </div>
 
