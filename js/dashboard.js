@@ -6,10 +6,12 @@
       const mc = document.getElementById('main-content');
       const H = POS.Helpers;
       const today = H.today();
+      const savedFrom = localStorage.getItem('dash_from');
+      const savedTo = localStorage.getItem('dash_to');
 
-      // Always default to today's overview when opening dashboard
-      let fromDate = today;
-      let toDate = today;
+      // Use saved range if available, otherwise default to today
+      let fromDate = savedFrom || today;
+      let toDate = savedTo || today;
 
       mc.innerHTML = `
         <!-- Streamlined Top Header: Date Range, Apply Button, Presets & Sync -->
@@ -35,6 +37,7 @@
             <button class="btn btn-secondary btn-sm" id="btn-yesterday" style="font-size:12px; font-weight:600; height:34px;">Yesterday</button>
             <button class="btn btn-secondary btn-sm" id="btn-this-week" style="font-size:12px; font-weight:600; height:34px;">This Week</button>
             <button class="btn btn-secondary btn-sm" id="btn-this-month" style="font-size:12px; font-weight:600; height:34px;">This Month</button>
+            <button class="btn btn-secondary btn-sm" id="btn-all-time" style="font-size:12px; font-weight:600; height:34px;">All Time</button>
             <button class="btn btn-secondary btn-sm" id="btn-refresh-dash" title="Refresh data" style="display:inline-flex; align-items:center; gap:6px; height:34px; font-weight:700;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Sync</span>
@@ -235,6 +238,15 @@
         document.getElementById('btn-filter').click();
       };
 
+      const btnAllTime = document.getElementById('btn-all-time');
+      if (btnAllTime) {
+        btnAllTime.onclick = () => {
+          document.getElementById('dash-from').value = '2020-01-01';
+          document.getElementById('dash-to').value = H.today();
+          document.getElementById('btn-filter').click();
+        };
+      }
+
       document.getElementById('btn-refresh-dash').onclick = async () => {
         const btn = document.getElementById('btn-refresh-dash');
         btn.classList.add('disabled');
@@ -261,6 +273,7 @@
       }
 
       // ── 1. Fetch High-Speed Server-Side Aggregated Metrics (Under 5ms) ──
+      let m = {};
       let totalSales = 0;
       let orderCount = 0;
       let aov = 0;
@@ -286,7 +299,7 @@
       try {
         const mRes = await fetch(`/api/dashboard/metrics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
         if (mRes.ok) {
-          const m = await mRes.json();
+          m = await mRes.json();
           totalSales = m.totalSales || 0;
           orderCount = m.orderCount || 0;
           aov = m.aov || 0;
@@ -505,42 +518,27 @@
       }
 
       // ── 3. Charts & Operational Insights ─────────────
-      await this.renderCharts(orders, paymentBreakdown, from, to);
-      this.renderTopSelling(orders, orderItems);
+      await this.renderCharts(m, paymentBreakdown, from, to);
+      this.renderTopSelling(m.topSelling || []);
     },
 
-    async renderCharts(orders, paymentBreakdown, from, to) {
+    async renderCharts(metrics = {}, paymentBreakdown = {}, from, to) {
       const H = POS.Helpers;
 
       const diffTime = Math.abs(new Date(to) - new Date(from));
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
       // ── 1. Sales by Category (Executive Donut / Pie Chart) ──
-      let catData = [];
-      try {
-        const resp = await fetch(`/api/dashboard/category-sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-        if (resp.ok) {
-          catData = await resp.json();
+      let catData = Array.isArray(metrics.categorySales) ? metrics.categorySales : [];
+      if (catData.length === 0) {
+        try {
+          const resp = await fetch(`/api/dashboard/category-sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+          if (resp.ok) {
+            catData = await resp.json();
+          }
+        } catch (err) {
+          console.warn('Could not fetch server category sales:', err);
         }
-      } catch (err) {
-        console.warn('Could not fetch server category sales, falling back to client calculation:', err);
-      }
-
-      // Fallback if API returned empty or failed
-      if (!Array.isArray(catData) || catData.length === 0) {
-        const catMap = {};
-        orders.forEach(o => {
-          if (o.status === 'cancelled' || o.status === 'void') return;
-          (o.items || []).forEach(it => {
-            const cName = it.category || 'General';
-            const amt = parseFloat(it.total) || 0;
-            const q = parseInt(it.qty) || 0;
-            if (!catMap[cName]) catMap[cName] = { categoryName: cName, totalAmount: 0, totalQty: 0 };
-            catMap[cName].totalAmount += amt;
-            catMap[cName].totalQty += q;
-          });
-        });
-        catData = Object.values(catMap).sort((a, b) => b.totalAmount - a.totalAmount);
       }
 
       // Modern cohesive executive palette
@@ -608,53 +606,58 @@
         ? catData.map((_, i) => modernCatPalette[i % modernCatPalette.length]) 
         : ['#e2e8f0'];
 
-      const ctxCat = document.getElementById('categoryPieChart').getContext('2d');
-      if (window.categoryChart) window.categoryChart.destroy();
-      window.categoryChart = new Chart(ctxCat, {
-        type: 'doughnut',
-        data: {
-          labels: catLabels,
-          datasets: [{
-            data: catChartData,
-            backgroundColor: catColors,
-            borderWidth: 2,
-            borderColor: '#ffffff',
-            hoverOffset: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '72%',
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              enabled: catData.length > 0,
-              backgroundColor: '#0f172a',
-              titleFont: { size: 13, weight: '700' },
-              bodyFont: { size: 12, weight: '600' },
-              padding: 10,
-              cornerRadius: 8,
-              boxPadding: 4,
-              callbacks: {
-                label: (context) => {
-                  const val = context.raw || 0;
-                  const pct = totalCatAmount > 0 ? ((val / totalCatAmount) * 100).toFixed(1) : '0.0';
-                  return ` Sales: ${H.formatCurrency(val)} (${pct}%)`;
+      const catCanvas = document.getElementById('categoryPieChart');
+      if (catCanvas && typeof Chart !== 'undefined') {
+        const ctxCat = catCanvas.getContext('2d');
+        if (window.categoryChart && typeof window.categoryChart.destroy === 'function') {
+          window.categoryChart.destroy();
+        }
+        window.categoryChart = new Chart(ctxCat, {
+          type: 'doughnut',
+          data: {
+            labels: catLabels,
+            datasets: [{
+              data: catChartData,
+              backgroundColor: catColors,
+              borderWidth: 2,
+              borderColor: '#ffffff',
+              hoverOffset: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                enabled: catData.length > 0,
+                backgroundColor: '#0f172a',
+                titleFont: { size: 13, weight: '700' },
+                bodyFont: { size: 12, weight: '600' },
+                padding: 10,
+                cornerRadius: 8,
+                boxPadding: 4,
+                callbacks: {
+                  label: (context) => {
+                    const val = context.raw || 0;
+                    const pct = totalCatAmount > 0 ? ((val / totalCatAmount) * 100).toFixed(1) : '0.0';
+                    return ` Sales: ${H.formatCurrency(val)} (${pct}%)`;
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
+      }
 
       // ── 2. Payment Method Share (Executive Donut Chart) ──
-      const payLabels = Object.keys(paymentBreakdown).filter(k => paymentBreakdown[k] > 0);
+      const payLabels = Object.keys(paymentBreakdown).filter(k => (paymentBreakdown[k] || 0) > 0);
       const payData = payLabels.map(k => paymentBreakdown[k]);
       const payColors = payLabels.map(k => H.getPaymentMethodColor(k));
 
       let totalCollected = 0;
-      Object.values(paymentBreakdown).forEach(amt => totalCollected += amt);
+      Object.values(paymentBreakdown).forEach(amt => totalCollected += (amt || 0));
 
       const payBadge = document.getElementById('payment-summary-badge');
       if (payBadge) {
@@ -697,55 +700,55 @@
         }
       }
 
-      const ctxPay = document.getElementById('paymentMethodChart').getContext('2d');
-      if (window.payChart) window.payChart.destroy();
-      window.payChart = new Chart(ctxPay, {
-        type: 'doughnut',
-        data: {
-          labels: payLabels.length ? payLabels : ['No Transactions'],
-          datasets: [{
-            data: payData.length ? payData : [1],
-            backgroundColor: payColors.length ? payColors : ['#e2e8f0'],
-            borderWidth: 2,
-            borderColor: '#ffffff',
-            hoverOffset: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '72%',
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              enabled: payLabels.length > 0,
-              backgroundColor: '#0f172a',
-              titleFont: { size: 13, weight: '700' },
-              bodyFont: { size: 12, weight: '600' },
-              padding: 10,
-              cornerRadius: 8,
-              boxPadding: 4,
-              callbacks: {
-                label: (context) => {
-                  const val = context.raw || 0;
-                  const pct = totalCollected > 0 ? ((val / totalCollected) * 100).toFixed(1) : '0.0';
-                  return ` Share: ${H.formatCurrency(val)} (${pct}%)`;
+      const payCanvas = document.getElementById('paymentMethodChart');
+      if (payCanvas && typeof Chart !== 'undefined') {
+        const ctxPay = payCanvas.getContext('2d');
+        if (window.payChart && typeof window.payChart.destroy === 'function') {
+          window.payChart.destroy();
+        }
+        window.payChart = new Chart(ctxPay, {
+          type: 'doughnut',
+          data: {
+            labels: payLabels.length ? payLabels : ['No Transactions'],
+            datasets: [{
+              data: payData.length ? payData : [1],
+              backgroundColor: payColors.length ? payColors : ['#e2e8f0'],
+              borderWidth: 2,
+              borderColor: '#ffffff',
+              hoverOffset: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                enabled: payLabels.length > 0,
+                backgroundColor: '#0f172a',
+                titleFont: { size: 13, weight: '700' },
+                bodyFont: { size: 12, weight: '600' },
+                padding: 10,
+                cornerRadius: 8,
+                boxPadding: 4,
+                callbacks: {
+                  label: (context) => {
+                    const val = context.raw || 0;
+                    const pct = totalCollected > 0 ? ((val / totalCollected) * 100).toFixed(1) : '0.0';
+                    return ` Share: ${H.formatCurrency(val)} (${pct}%)`;
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
+      }
 
       // ── 3. 24-Hour Distribution (Hourly Traffic & Rush Identification) ──
-      const hourlyCounts = Array(24).fill(0);
-      orders.forEach(o => {
-        const p = H.getBDDateParts(o.date);
-        const hr = p.hour;
-        if (hr >= 0 && hr < 24) {
-          hourlyCounts[hr]++;
-        }
-      });
+      const hourlyCounts = Array.isArray(metrics.hourlyTraffic) && metrics.hourlyTraffic.length === 24
+        ? metrics.hourlyTraffic
+        : Array(24).fill(0);
 
       const hourlyData = diffDays > 2 
         ? hourlyCounts.map(c => parseFloat((c / diffDays).toFixed(2))) 
@@ -783,73 +786,64 @@
         val === maxHourly && val > 0 ? '#6d28d9' : '#6366f1'
       );
 
-      const ctxHour = document.getElementById('hourlySalesChart').getContext('2d');
-      if (window.hourChart) window.hourChart.destroy();
-      window.hourChart = new Chart(ctxHour, {
-        type: 'bar',
-        data: {
-          labels: hourLabels,
-          datasets: [{
-            label: diffDays > 2 ? 'Avg Hourly Invoices' : 'Hourly Invoices',
-            data: hourlyData,
-            backgroundColor: barBgColors,
-            borderColor: barBorderColors,
-            borderWidth: 1.5,
-            borderRadius: 6,
-            hoverBackgroundColor: '#4f46e5'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: '#0f172a',
-              titleFont: { size: 13, weight: '700' },
-              bodyFont: { size: 12, weight: '600' },
-              padding: 10,
-              cornerRadius: 8,
-              callbacks: {
-                label: (context) => `Traffic Volume: ${context.raw} invoice(s)`
+      const hourCanvas = document.getElementById('hourlySalesChart');
+      if (hourCanvas && typeof Chart !== 'undefined') {
+        const ctxHour = hourCanvas.getContext('2d');
+        if (window.hourChart && typeof window.hourChart.destroy === 'function') {
+          window.hourChart.destroy();
+        }
+        window.hourChart = new Chart(ctxHour, {
+          type: 'bar',
+          data: {
+            labels: hourLabels,
+            datasets: [{
+              label: diffDays > 2 ? 'Avg Hourly Invoices' : 'Hourly Invoices',
+              data: hourlyData,
+              backgroundColor: barBgColors,
+              borderColor: barBorderColors,
+              borderWidth: 1.5,
+              borderRadius: 6,
+              hoverBackgroundColor: '#4f46e5'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#0f172a',
+                titleFont: { size: 13, weight: '700' },
+                bodyFont: { size: 12, weight: '600' },
+                padding: 10,
+                cornerRadius: 8,
+                callbacks: {
+                  label: (context) => `Traffic Volume: ${context.raw} invoice(s)`
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { precision: 0, font: { size: 11, weight: '600' }, color: '#64748b' },
+                grid: { color: 'rgba(226, 232, 240, 0.6)' }
+              },
+              x: {
+                ticks: { font: { size: 10.5, weight: '600' }, color: '#64748b' },
+                grid: { display: false }
               }
             }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: { precision: 0, font: { size: 11, weight: '600' }, color: '#64748b' },
-              grid: { color: 'rgba(226, 232, 240, 0.6)' }
-            },
-            x: {
-              ticks: { font: { size: 10.5, weight: '600' }, color: '#64748b' },
-              grid: { display: false }
-            }
           }
-        }
-      });
+        });
+      }
     },
 
-    renderTopSelling(orders, orderItems) {
+    renderTopSelling(topSellingData = []) {
       const H = POS.Helpers;
-      const orderIds = orders.map(o => o.id);
-      const items = orderItems.filter(i => orderIds.includes(i.orderId));
-
-      const totals = {};
-      items.forEach(i => {
-        const key = i.productName + (i.variationName ? ` (${i.variationName})` : '');
-        if (!totals[key]) {
-          totals[key] = { qty: 0, amount: 0 };
-        }
-        totals[key].qty += (parseInt(i.qty) || 0);
-        totals[key].amount += (parseFloat(i.total) || 0);
-      });
-
-      const sorted = Object.entries(totals)
-        .sort((a, b) => b[1].qty - a[1].qty)
-        .slice(0, 5);
+      const sorted = Array.isArray(topSellingData) ? topSellingData.slice(0, 5) : [];
 
       const tbody = document.getElementById('top-selling-tbody');
+      if (!tbody) return;
       tbody.innerHTML = '';
 
       if (sorted.length === 0) {
@@ -857,29 +851,30 @@
         return;
       }
 
-      const maxQty = sorted[0][1].qty || 1;
+      const maxQty = sorted[0].qty || 1;
 
-      sorted.forEach(([name, data], idx) => {
+      sorted.forEach((item, idx) => {
         const rankMedals = ['🥇 1st', '🥈 2nd', '🥉 3rd', '4th', '5th'];
         const medal = rankMedals[idx] || `${idx + 1}th`;
-        const barWidth = Math.round((data.qty / maxQty) * 100);
+        const barWidth = Math.round(((item.qty || 0) / maxQty) * 100);
+        const displayName = item.productName + (item.variationName ? ` (${item.variationName})` : '');
 
         tbody.innerHTML += `
           <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s ease;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
             <td style="text-align:center; font-weight:800; font-size:13px; vertical-align:middle; color:#475569;">${medal}</td>
             <td style="padding:12px 14px;">
-              <div style="font-weight:700; color:#1e293b; font-size:13.5px;">${H.esc(name)}</div>
+              <div style="font-weight:700; color:#1e293b; font-size:13.5px;">${H.esc(displayName)}</div>
               <div style="width:100%; height:5px; background:#f1f5f9; border-radius:4px; margin-top:6px; overflow:hidden;">
                 <div style="width:${barWidth}%; height:100%; background:linear-gradient(90deg, #f59e0b, #fbbf24); border-radius:4px; transition:width 0.3s ease;"></div>
               </div>
             </td>
             <td style="text-align:center; vertical-align:middle;">
               <span style="display:inline-block; padding:3px 10px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:12px; font-weight:700; color:#334155; font-size:12px;">
-                ${data.qty} pcs
+                ${item.qty} pcs
               </span>
             </td>
             <td style="text-align:right; font-weight:800; color:#059669; font-size:13.5px; vertical-align:middle; padding-right:16px;">
-              ${H.formatCurrency(data.amount)}
+              ${H.formatCurrency(item.amount)}
             </td>
           </tr>
         `;

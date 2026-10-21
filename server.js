@@ -3206,7 +3206,10 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       expenseRows,
       supplierRows,
       unitsRows,
-      paymentsRows
+      paymentsRows,
+      hourlyRows,
+      topSellingRows,
+      categoryRows
     ] = await Promise.all([
       // 1. Sales & Revenue
       dbQuery(
@@ -3280,6 +3283,49 @@ app.get('/api/dashboard/metrics', async (req, res) => {
          WHERE DATE(o.date) >= ? AND DATE(o.date) <= ? AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void')) 
          GROUP BY p.method`,
         [from, to]
+      ),
+      // 8. 24-Hour Peak Customer Traffic
+      dbQuery(
+        `SELECT HOUR(o.date) AS hour, COUNT(*) AS count 
+         FROM orders o 
+         WHERE DATE(o.date) >= ? AND DATE(o.date) <= ? AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))
+         GROUP BY HOUR(o.date)`,
+        [from, to]
+      ),
+      // 9. Top Selling Products
+      dbQuery(
+        `SELECT 
+           oi.productName,
+           COALESCE(oi.variationName, '') AS variationName,
+           SUM(oi.qty) AS qty,
+           ROUND(SUM(oi.total), 2) AS amount
+         FROM orderItems oi
+         INNER JOIN orders o ON oi.orderId = o.id
+         WHERE DATE(o.date) >= ? AND DATE(o.date) <= ? AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))
+         GROUP BY oi.productName, oi.variationName
+         ORDER BY qty DESC, amount DESC
+         LIMIT 10`,
+        [from, to]
+      ),
+      // 10. Sales by Category
+      dbQuery(
+        `SELECT 
+           COALESCE(
+             NULLIF(TRIM(c.name), ''), 
+             NULLIF(TRIM(p.category), ''), 
+             'General'
+           ) AS categoryName,
+           ROUND(SUM(oi.total), 2) AS totalAmount,
+           SUM(oi.qty) AS totalQty,
+           COUNT(DISTINCT oi.orderId) AS orderCount
+         FROM orderItems oi
+         INNER JOIN orders o ON oi.orderId = o.id
+         LEFT JOIN products p ON oi.productId = p.id
+         LEFT JOIN categories c ON p.categoryId = c.id
+         WHERE DATE(o.date) >= ? AND DATE(o.date) <= ? AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))
+         GROUP BY categoryName
+         ORDER BY totalAmount DESC`,
+        [from, to]
       )
     ]);
 
@@ -3322,6 +3368,28 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       paymentCount[r.method] = parseInt(r.count) || 0;
     });
 
+    const hourlyTraffic = Array(24).fill(0);
+    (hourlyRows || []).forEach(r => {
+      const h = parseInt(r.hour);
+      if (h >= 0 && h < 24) {
+        hourlyTraffic[h] = parseInt(r.count) || 0;
+      }
+    });
+
+    const topSelling = (topSellingRows || []).map(r => ({
+      productName: r.productName,
+      variationName: r.variationName || '',
+      qty: parseInt(r.qty) || 0,
+      amount: parseFloat(r.amount) || 0
+    }));
+
+    const categorySales = (categoryRows || []).map(r => ({
+      categoryName: r.categoryName,
+      totalAmount: parseFloat(r.totalAmount) || 0,
+      totalQty: parseInt(r.totalQty) || 0,
+      orderCount: parseInt(r.orderCount) || 0
+    }));
+
     res.json({
       from,
       to,
@@ -3345,7 +3413,10 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       totalUnitsSold,
       uniqueSkusSold,
       paymentBreakdown,
-      paymentCount
+      paymentCount,
+      hourlyTraffic,
+      topSelling,
+      categorySales
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
