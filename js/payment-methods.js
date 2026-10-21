@@ -103,7 +103,7 @@
 
       list.forEach((pm, idx) => {
         const isActive = pm.status === 'active';
-        const color = pm.color || H.getPaymentMethodColor(pm.name);
+        const color = pm.color || H.getPaymentMethodColor(pm);
         const iconHtml = H.getPaymentMethodIcon(pm.name, 38);
         const sortOrder = pm.sortOrder !== undefined ? pm.sortOrder : (idx + 1);
 
@@ -180,8 +180,19 @@
       const S = POS.Store;
       const isEdit = !!pm;
 
+      const formatHex = (val, fallback = '#10B981') => {
+        if (!val || typeof val !== 'string') return fallback;
+        let s = val.trim();
+        if (!s.startsWith('#')) s = '#' + s;
+        if (/^#[0-9A-Fa-f]{6}$/.test(s)) return s.toUpperCase();
+        if (/^#[0-9A-Fa-f]{3}$/.test(s)) {
+          return (`#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`).toUpperCase();
+        }
+        return fallback;
+      };
+
       let currentName = pm ? pm.name : '';
-      let currentColor = pm ? (pm.color || H.getPaymentMethodColor(pm.name)) : '#E2136E';
+      let currentColor = formatHex(pm ? (pm.color || H.getPaymentMethodColor(pm)) : '#10B981', '#10B981');
       let currentSort = pm ? (pm.sortOrder !== undefined ? pm.sortOrder : 10) : 10;
       let currentStatus = pm ? (pm.status || 'active') : 'active';
       let currentIcon = pm ? (pm.icon || '') : '';
@@ -207,13 +218,13 @@
               <div class="form-group" style="flex:1;">
                 <label class="form-label" style="font-weight:700;">Brand Color</label>
                 <div style="display:flex; align-items:center; gap:8px;">
-                  <input type="color" id="pm-modal-color" value="${currentColor}" style="width:40px; height:38px; padding:0; border:1px solid var(--border); border-radius:var(--radius-xs); cursor:pointer;">
-                  <input type="text" class="form-input" id="pm-modal-color-hex" value="${currentColor}" maxlength="7" style="font-family:monospace; font-weight:700; text-transform:uppercase;">
+                  <input type="color" id="pm-modal-color" value="${currentColor}" style="width:42px; height:38px; padding:2px; border:1px solid #cbd5e1; border-radius:8px; cursor:pointer; background:#fff;">
+                  <input type="text" class="form-input" id="pm-modal-color-hex" value="${currentColor}" maxlength="7" placeholder="#10B981" style="font-family:monospace; font-weight:700; text-transform:uppercase;">
                 </div>
                 <!-- Quick Palette -->
-                <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
-                  ${['#10B981', '#3B82F6', '#E2136E', '#F7941D', '#8C3494', '#1E40AF', '#06B6D4', '#F59E0B', '#64748B'].map(c => 
-                    `<button type="button" class="btn-color-swatch" data-color="${c}" style="width:20px; height:20px; border-radius:50%; background:${c}; border:1px solid rgba(0,0,0,0.15); cursor:pointer; padding:0;" title="${c}"></button>`
+                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                  ${['#10B981', '#3B82F6', '#E2136E', '#F7941D', '#8C3494', '#1E40AF', '#06B6D4', '#F59E0B', '#64748B', '#EF4444', '#8B5CF6', '#14B8A6'].map(c => 
+                    `<button type="button" class="btn-color-swatch" data-color="${c}" style="width:22px; height:22px; border-radius:50%; background:${c}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,0.2); cursor:pointer; padding:0; transition:transform 0.15s ease;" title="${c}"></button>`
                   ).join('')}
                 </div>
               </div>
@@ -313,14 +324,8 @@
       const colorHexInput = overlay.querySelector('#pm-modal-color-hex');
       const sortInput = overlay.querySelector('#pm-modal-sort');
       const statusSelect = overlay.querySelector('#pm-modal-status');
-      const fileInput = overlay.querySelector('#pm-modal-file');
       const urlInput = overlay.querySelector('#pm-modal-url');
 
-      const tabBtnFile = overlay.querySelector('#tab-btn-file');
-      const tabBtnUrl = overlay.querySelector('#tab-btn-url');
-      const tabBtnPreset = overlay.querySelector('#tab-btn-preset');
-      const tabContentFile = overlay.querySelector('#tab-content-file');
-      const tabContentUrl = overlay.querySelector('#tab-content-url');
       const tabContentPreset = overlay.querySelector('#tab-content-preset');
 
       const previewIconSmall = overlay.querySelector('#preview-icon-small');
@@ -334,7 +339,7 @@
       // Render live preview
       const updatePreview = () => {
         const name = nameInput.value.trim() || 'Channel';
-        const color = colorHexInput.value.trim() || '#E2136E';
+        const color = formatHex(colorHexInput.value || colorPicker.value, '#10B981');
         previewNameSmall.textContent = name;
         previewNameCard.textContent = name;
         previewCardBar.style.backgroundColor = color;
@@ -361,20 +366,52 @@
         }
       };
 
-      updatePreview();
-
-      // Tab switcher
-      const setTab = (activeBtn, activeContent) => {
-        [tabBtnFile, tabBtnUrl, tabBtnPreset].forEach(b => {
-          b.classList.remove('btn-primary', 'active');
-          b.classList.add('btn-secondary');
-        });
-        activeBtn.classList.remove('btn-secondary');
-        activeBtn.classList.add('btn-primary', 'active');
-
-        [tabContentFile, tabContentUrl, tabContentPreset].forEach(c => c.style.display = 'none');
-        activeContent.style.display = 'block';
+      const setColor = (newColor) => {
+        const hex = formatHex(newColor, colorPicker.value || '#10B981');
+        colorPicker.value = hex;
+        colorHexInput.value = hex;
+        updatePreview();
       };
+
+      // Two-way synchronization for color picker and hex text input
+      colorPicker.addEventListener('input', () => {
+        colorHexInput.value = colorPicker.value.toUpperCase();
+        updatePreview();
+      });
+      colorPicker.addEventListener('change', () => {
+        colorHexInput.value = colorPicker.value.toUpperCase();
+        updatePreview();
+      });
+
+      colorHexInput.addEventListener('input', () => {
+        let val = colorHexInput.value.trim();
+        if (val && !val.startsWith('#')) val = '#' + val;
+        if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+          colorPicker.value = val;
+        }
+        updatePreview();
+      });
+      colorHexInput.addEventListener('blur', () => {
+        setColor(colorHexInput.value);
+      });
+
+      // Quick palette swatch buttons
+      overlay.querySelectorAll('.btn-color-swatch').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const c = btn.dataset.color;
+          if (c) setColor(c);
+        });
+      });
+
+      // Name & URL live preview updates
+      nameInput.addEventListener('input', () => updatePreview());
+      urlInput.addEventListener('input', () => {
+        currentIcon = urlInput.value.trim();
+        updatePreview();
+      });
+
+      updatePreview();
 
       // Gallery & Device Upload handlers
       const btnPmGallery = overlay.querySelector('#btn-pm-pick-gallery');
@@ -431,9 +468,7 @@
             nameInput.value = presetName;
           }
           const c = H.getPaymentMethodColor(presetName);
-          colorPicker.value = c;
-          colorHexInput.value = c.toUpperCase();
-          updatePreview();
+          setColor(c);
           H.showToast(`Selected ${presetName} icon preset`);
         };
       });
@@ -451,7 +486,7 @@
           return;
         }
 
-        const color = colorHexInput.value.trim() || '#64748B';
+        const color = formatHex(colorHexInput.value || colorPicker.value, '#10B981');
         const sortOrder = parseInt(sortInput.value) || 10;
         const status = statusSelect.value;
         const id = pm ? pm.id : ('pm_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_'));

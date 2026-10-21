@@ -1035,12 +1035,23 @@
     },
 
     getPaymentMethodColor(method) {
+      if (typeof method === 'object' && method !== null && method.color) {
+        return method.color;
+      }
+      const mId = (typeof method === 'object' && method !== null) 
+        ? String(method.id || '') 
+        : String(method || '');
       const mName = (typeof method === 'object' && method !== null) 
         ? String(method.name || '') 
         : String(method || '');
       const m = mName.toLowerCase().trim();
+      const mIdLower = mId.toLowerCase().trim();
+
       if (this.paymentMethodsList && this.paymentMethodsList.length > 0) {
-        const matched = this.paymentMethodsList.find(p => String(p.name || '').toLowerCase().trim() === m);
+        const matched = this.paymentMethodsList.find(p => 
+          (p.id && String(p.id).toLowerCase().trim() === mIdLower) ||
+          (p.name && String(p.name).toLowerCase().trim() === m)
+        );
         if (matched && matched.color) return matched.color;
       }
       switch (m) {
