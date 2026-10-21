@@ -717,19 +717,19 @@
               <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || '')}" placeholder="Customer name">
             </div>
 
-            <!-- Reward Points Notice in Modal -->
-            <div id="cust-rp-notice" style="display:none; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; font-size:12.5px; color:#166534; margin-top:8px;">
-              <div style="font-weight:700; display:flex; justify-content:space-between; align-items:center;">
-                <span style="display:flex; align-items:center; gap:6px;">
-                  <span>🎁</span>
-                  <span>Customer Reward Points:</span>
-                  <span id="cust-rp-notice-pts" style="background:#dcfce7; padding:1px 6px; border-radius:10px; font-weight:800; color:#15803d;">0 pts</span>
-                </span>
-                <span id="cust-rp-notice-worth" style="font-size:11.5px; color:#15803d; font-weight:700;">Worth ৳0.00</span>
+            <!-- Reward Points Confirmation Notice in Customer Details Modal -->
+            <div id="cust-rp-notice" style="display:none; padding:12px 14px; background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:10px; margin-top:10px;">
+              <div style="font-weight:800; font-size:13px; color:#166534; display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <span style="font-size:16px;">🎁</span>
+                <span>Customer Reward Points:</span>
               </div>
-              <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #bbf7d0; display:flex; align-items:center; gap:8px;">
-                <input type="checkbox" id="chk-modal-use-points" style="width:16px; height:16px; accent-color:#10b981; cursor:pointer;">
-                <label for="chk-modal-use-points" style="cursor:pointer; font-weight:700; color:#166534; font-size:12px;">
+              <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;">
+                <span id="cust-rp-notice-pts" style="font-size:18px; font-weight:900; color:#15803D;">0 pts</span>
+                <span id="cust-rp-notice-worth" style="font-size:13px; font-weight:700; color:#166534;">Worth ৳0.00</span>
+              </div>
+              <div style="padding-top:8px; border-top:1px dashed #86EFAC; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="chk-modal-use-points" style="width:18px; height:18px; accent-color:#10B981; cursor:pointer;">
+                <label for="chk-modal-use-points" style="cursor:pointer; font-weight:700; color:#166534; font-size:13px; margin:0; user-select:none;">
                   Use available reward points for this order
                 </label>
               </div>
@@ -797,15 +797,9 @@
             chkUsePoints.checked = this.useRewardPoints;
           } else {
             rpNotice.style.display = 'none';
+            chkUsePoints.checked = false;
+            this.useRewardPoints = false;
           }
-        }
-
-        // Show prompt asking if they want to use reward points
-        if (rpEnabled && custPts > 0) {
-          const worthAmount = (custPts * pointVal).toFixed(2);
-          const wantToUse = confirm(`Customer "${c.name || 'Saved Customer'}" has ${custPts} reward points (Worth ৳${worthAmount}).\n\nDo you want to use reward points for this order?`);
-          this.useRewardPoints = wantToUse;
-          if (chkUsePoints) chkUsePoints.checked = wantToUse;
         }
 
         const disc = parseFloat(c.customDiscount) || 0;
@@ -976,14 +970,6 @@
 
         const custPts = parseFloat(this.customerInfo.points) || 0;
         const rpEnabled = this.rewardPointsSettings && this.rewardPointsSettings.enabled;
-        const pointVal = (this.rewardPointsSettings && this.rewardPointsSettings.pointValue) || 1.00;
-
-        if (rpEnabled && custPts > 0 && !this.useRewardPoints && (!chkUsePointsModal || !chkUsePointsModal.checked)) {
-          const worthAmount = (custPts * pointVal).toFixed(2);
-          if (confirm(`This customer has ${custPts} reward points (Worth ৳${worthAmount}).\n\nDo you want to use reward points for this order?`)) {
-            this.useRewardPoints = true;
-          }
-        }
 
         // ONLY save new customer to database if BOTH full phone (at least 7 digits) and real name are provided
         if (name && cleanDigits.length >= 7 && name.toLowerCase() !== 'guest') {
