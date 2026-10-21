@@ -348,7 +348,7 @@
         const price = parseFloat(item.sellingPrice || 0);
 
         return `
-          <div class="clapos-card ${qty > 0 ? 'in-cart' : ''}" data-id="${item.id}">
+          <div class="clapos-card ${qty > 0 ? 'in-cart selected' : ''}" data-id="${item.id}">
             <div class="clapos-card-img-wrap">
               ${item.image ? `
                 <img src="${item.image}" alt="${POS.Helpers.escapeHtml(item.name)}" class="clapos-card-img" loading="lazy">
@@ -419,7 +419,7 @@
       const price = parseFloat(item?.sellingPrice || 0);
 
       if (qty > 0) {
-        card.classList.add('in-cart');
+        card.classList.add('in-cart', 'selected');
         if (bottom) {
           bottom.innerHTML = `
             <span class="clapos-card-price">৳${price.toFixed(2)}</span>
@@ -431,11 +431,11 @@
           `;
         }
       } else {
-        card.classList.remove('in-cart');
+        card.classList.remove('in-cart', 'selected');
         if (bottom) {
           bottom.innerHTML = `
             <span class="clapos-card-price">৳${price.toFixed(2)}</span>
-            <button class="clapos-card-add-btn btn-card-add" data-id="${productId}" title="Add to Order">+</button>
+            <button type="button" class="clapos-card-add-btn btn-card-add" data-id="${productId}" title="Add to Order">+</button>
           `;
         }
       }
@@ -574,6 +574,13 @@
       const discountRow = document.getElementById('clapos-summary-discount-row');
       const discountEl = document.getElementById('clapos-summary-discount');
       const totalEl = document.getElementById('clapos-summary-total');
+
+      const rpBadge = document.getElementById('clapos-rp-available-badge');
+      const rpWorth = document.getElementById('clapos-rp-worth-desc');
+      const btnUsePoints = document.getElementById('btn-toggle-use-points');
+      const rpDiscountRow = document.getElementById('clapos-summary-rp-discount-row');
+      const rpDiscountEl = document.getElementById('clapos-summary-rp-discount');
+      const rpLabelEl = document.getElementById('clapos-summary-rp-label');
 
       if (subtotalEl) subtotalEl.textContent = `৳${subtotal.toFixed(2)}`;
 

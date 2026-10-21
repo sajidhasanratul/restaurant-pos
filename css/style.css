@@ -1952,10 +1952,18 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   border-color: #D6CEC3;
 }
 
-.clapos-card.in-cart {
-  border-color: #10B981;
-  box-shadow: 0 4px 12px rgba(16,185,129,0.12);
-  background: #FAFCF9;
+.clapos-card.in-cart,
+.clapos-card.selected {
+  border: 2px solid #10B981 !important;
+  box-shadow: 0 4px 14px rgba(16,185,129,0.22) !important;
+  background: #F0FDF4 !important;
+}
+
+.clapos-card.in-cart:hover,
+.clapos-card.selected:hover {
+  border: 2px solid #059669 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16,185,129,0.28) !important;
 }
 
 .clapos-card-img-wrap {
