@@ -27,10 +27,22 @@
                 <button type="button" class="btn btn-sm ew-period-btn" data-period="this_month" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Month</button>
                 <button type="button" class="btn btn-sm ew-period-btn" data-period="custom" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Custom</button>
               </div>
+              <div id="ew-date-indicator" style="display:inline-flex; align-items:center; gap:6px; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:4px 10px; font-size:12px; font-weight:700; color:#B91C1C;">
+                <span>📅 Filtered:</span>
+                <span id="ew-active-date-text">Today (${H.formatDate(today)})</span>
+              </div>
             </div>
 
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
-              <div style="flex:1; min-width:180px; max-width:280px;">
+              <div style="width:130px;">
+                <select class="form-select" id="ew-filter-status" style="height:36px; font-size:12.5px;">
+                  <option value="">All Statuses</option>
+                  <option value="Paid">Paid (Recovered)</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Unpaid">Unpaid (Loss)</option>
+                </select>
+              </div>
+              <div style="flex:1; min-width:160px; max-width:240px;">
                 <input type="text" class="form-input" id="ew-search" placeholder="Search item, supplier, reason..." style="height:36px; font-size:12.5px;">
               </div>
               <button class="btn btn-primary btn-sm" id="btn-add-expired-waste" style="background:#EF4444; border-color:#EF4444; height:36px; padding:0 14px; font-weight:700; white-space:nowrap;">
@@ -102,6 +114,7 @@
                     <th>Supplier Name</th>
                     <th class="text-right" style="width: 120px;">Compensation</th>
                     <th class="text-right" style="width: 120px;">Net Loss</th>
+                    <th>Payment Status</th>
                     <th>Note / Reason</th>
                     <th style="width: 110px; text-align: center;">Actions</th>
                   </tr>
@@ -144,6 +157,16 @@
         return { from: today, to: today };
       };
 
+      const updateEwDateIndicator = (from, to, period) => {
+        const dateEl = document.getElementById('ew-active-date-text');
+        if (!dateEl) return;
+        if (period === 'today') dateEl.textContent = `Today (${H.formatDate(from)})`;
+        else if (period === 'yesterday') dateEl.textContent = `Yesterday (${H.formatDate(from)})`;
+        else if (period === 'this_week') dateEl.textContent = `This Week (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else if (period === 'this_month') dateEl.textContent = `This Month (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else dateEl.textContent = `${H.formatDate(from)} to ${H.formatDate(to)}`;
+      };
+
       document.querySelectorAll('.ew-period-btn').forEach(btn => {
         btn.onclick = async () => {
           document.querySelectorAll('.ew-period-btn').forEach(b => b.classList.remove('active'));
@@ -160,6 +183,7 @@
             toInput.value = toDate;
             localStorage.setItem('ew_from', fromDate);
             localStorage.setItem('ew_to', toDate);
+            updateEwDateIndicator(fromDate, toDate, p);
             await this.updateList(fromDate, toDate);
           }
         };
@@ -170,12 +194,20 @@
         toDate = toInput.value;
         localStorage.setItem('ew_from', fromDate);
         localStorage.setItem('ew_to', toDate);
+        updateEwDateIndicator(fromDate, toDate, 'custom');
         await this.updateList(fromDate, toDate);
       };
 
       document.getElementById('ew-search').addEventListener('input', () => {
         this.filterTableLocally();
       });
+
+      const ewStatusSelect = document.getElementById('ew-filter-status');
+      if (ewStatusSelect) {
+        ewStatusSelect.addEventListener('change', () => {
+          this.filterTableLocally();
+        });
+      }
 
       await this.updateList(fromDate, toDate);
     },
@@ -221,7 +253,21 @@
       if (!tbody) return;
 
       const q = (document.getElementById('ew-search')?.value || '').toLowerCase().trim();
+      const statusVal = document.getElementById('ew-filter-status')?.value || '';
+
       const list = this.currentList.filter(e => {
+        const qty = parseFloat(e.quantity) || 0;
+        const costPrice = parseFloat(e.costPrice) || 0;
+        const totalCost = parseFloat(e.totalCost) || (qty * costPrice);
+        const comp = parseFloat(e.compensationAmount) || 0;
+        const isPaid = (e.status === 'Paid') || (comp >= totalCost && totalCost > 0);
+        const isPartial = (e.status === 'Partial') || (comp > 0 && !isPaid);
+        const isUnpaid = (e.status === 'Unpaid') || (!isPaid && !isPartial);
+
+        if (statusVal === 'Paid' && !isPaid) return false;
+        if (statusVal === 'Partial' && !isPartial) return false;
+        if (statusVal === 'Unpaid' && !isUnpaid) return false;
+
         if (!q) return true;
         const iMatch = (e.itemName || '').toLowerCase().includes(q);
         const sMatch = (e.supplierName || '').toLowerCase().includes(q);
@@ -232,7 +278,7 @@
       if (list.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="10" class="text-center text-muted" style="padding:28px;">
+            <td colspan="11" class="text-center text-muted" style="padding:28px;">
               No expired or waste records found matching the criteria.
             </td>
           </tr>
@@ -247,6 +293,15 @@
         const comp = parseFloat(item.compensationAmount) || 0;
         const netLoss = Math.max(0, totalCost - comp);
         const dateStr = item.date ? item.date.slice(0, 10) : '';
+
+        const isPaid = (item.status === 'Paid') || (comp >= totalCost && totalCost > 0);
+        const isPartial = (item.status === 'Partial') || (comp > 0 && !isPaid);
+        let statusBadge = `<span class="badge" style="background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; font-size:10.5px;">Unpaid</span>`;
+        if (isPaid) {
+          statusBadge = `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-size:10.5px;">Paid</span>`;
+        } else if (isPartial) {
+          statusBadge = `<span class="badge" style="background:#fef3c7; color:#d97706; border:1px solid #fcd34d; font-size:10.5px;">Partial</span>`;
+        }
 
         return `
           <tr>
@@ -269,6 +324,7 @@
             <td class="text-right" style="font-weight:800; color:#b45309;">
               ${H.formatCurrency(netLoss)}
             </td>
+            <td>${statusBadge}</td>
             <td style="max-width:200px; font-size:12px; color:#475569;">
               ${item.note ? H.escapeHtml(item.note) : '<span style="color:#cbd5e1;">None</span>'}
             </td>

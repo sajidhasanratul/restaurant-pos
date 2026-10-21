@@ -826,6 +826,18 @@
                     <span>-${H.formatCurrency(order.discountAmount)}</span>
                   </div>
                 ` : ''}
+                ${order.rewardPointsDiscount > 0 ? `
+                  <div class="flex justify-between" style="color:#059669; font-weight:600;">
+                    <span>Reward Points (${order.rewardPointsUsed || 0} pts):</span>
+                    <span>-${H.formatCurrency(order.rewardPointsDiscount)}</span>
+                  </div>
+                ` : ''}
+                ${order.rewardPointsEarned > 0 ? `
+                  <div class="flex justify-between" style="color:#2563eb; font-weight:600;">
+                    <span>Points Earned:</span>
+                    <span>+${order.rewardPointsEarned} pts</span>
+                  </div>
+                ` : ''}
                 ${order.taxAmount > 0 ? `
                   <div class="flex justify-between">
                     <span>Tax (${order.taxPercent}%):</span>
@@ -1045,6 +1057,9 @@
               'Payment Method': o.paymentMethodsSummary || 'N/A',
               'Subtotal': o.subtotal,
               'Discount Amount': o.discountAmount,
+              'Reward Points Used': o.rewardPointsUsed || 0,
+              'Reward Points Discount': o.rewardPointsDiscount || 0,
+              'Reward Points Earned': o.rewardPointsEarned || 0,
               'Tax Amount': o.taxAmount,
               'Grand Total': o.grandTotal,
               'Due Amount': o.dueAmount,

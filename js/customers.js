@@ -91,9 +91,10 @@
                 ${c.customDiscount > 0 ? `<span class="badge badge-success">${c.customDiscount}% Disc</span>` : ''}
               </div>
             </div>
-            <div class="customer-meta" style="margin-top: 10px; padding-top: 10px; border-top:1px solid var(--border-light)">
+            <div class="customer-meta" style="margin-top: 10px; padding-top: 10px; border-top:1px solid var(--border-light); display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between;">
               <span>🛍️ <strong>${orderCount}</strong> Orders</span>
               <span>💰 Spent <strong>${H.formatCurrency(totalSpent)}</strong></span>
+              <span>🎁 Points: <strong style="color:#2563eb;">${parseFloat(c.rewardPoints || c.points || 0)} pts</strong></span>
             </div>
             <div class="customer-actions" style="margin-top: 8px;">
               <button class="btn btn-secondary btn-sm btn-view-purchases" style="flex:1;">🛒 View Orders</button>
@@ -159,6 +160,10 @@
               <input type="number" class="form-input" id="c-discount" min="0" max="100" value="${customer ? customer.customDiscount : '0'}">
             </div>
             <div class="form-group">
+              <label class="form-label">🎁 Reward Points Balance</label>
+              <input type="number" class="form-input" id="c-points" min="0" step="1" value="${customer ? (parseFloat(customer.rewardPoints || customer.points) || 0) : '0'}">
+            </div>
+            <div class="form-group">
               <label class="form-label">Address</label>
               <textarea class="form-textarea" id="c-address">${customer ? H.esc(customer.address) : ''}</textarea>
             </div>
@@ -182,6 +187,7 @@
         const email = overlay.querySelector('#c-email').value.trim();
         const label = overlay.querySelector('#c-label').value;
         const discount = parseFloat(overlay.querySelector('#c-discount').value) || 0;
+        const points = parseFloat(overlay.querySelector('#c-points').value) || 0;
         const address = overlay.querySelector('#c-address').value.trim();
 
         if (!name || !phone) {
@@ -189,7 +195,7 @@
           return;
         }
 
-        const data = { name, phone, email, label, customDiscount: discount, address };
+        const data = { name, phone, email, label, customDiscount: discount, points, address };
 
         if (isEdit) {
           await S.update('customers', customer.id, data);

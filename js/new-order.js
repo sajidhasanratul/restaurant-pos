@@ -9,9 +9,13 @@
     searchQuery: '',
     orderType: 'Dine In', // 'Dine In' or 'Take Away'
     selectedTable: 'Table 01',
-    customerInfo: { name: '', phone: '' },
+    customerInfo: { id: null, name: '', phone: '', points: 0, customDiscount: 0 },
     discount: { type: 'none', value: 0, amount: 0, code: '' },
-    taxPercent: 5.0, // Default restaurant sales tax 5%
+    taxPercent: 0,
+    rewardPointsSettings: { enabled: false, spendUnit: 100, earnUnit: 1, pointValue: 1.00 },
+    useRewardPoints: false,
+    rewardPointsUsed: 0,
+    rewardPointsDiscount: 0,
     savedBills: [],
     cachedTables: null,
     _gridDelegated: false,
@@ -27,27 +31,30 @@
       this.searchQuery = '';
       this.orderType = 'Dine In';
       this.selectedTable = 'Table 01';
-      this.customerInfo = { name: '', phone: '' };
+      this.customerInfo = { id: null, name: '', phone: '', points: 0, customDiscount: 0 };
       this.discount = { type: 'none', value: 0, amount: 0, code: '' };
+      this.taxPercent = 0;
+      this.useRewardPoints = false;
+      this.rewardPointsUsed = 0;
+      this.rewardPointsDiscount = 0;
       this._gridDelegated = false;
 
       // Preload payment methods
       await H.loadPaymentMethods();
 
-      // Load configured tax settings from database
+      // Load configured reward points settings from database
       try {
         const settings = await S.getSettings();
         if (settings) {
-          const isEnabled = settings.order_tax_status !== 'disabled';
-          if (isEnabled && settings.order_tax_percent !== undefined) {
-            this.taxPercent = parseFloat(settings.order_tax_percent);
-            if (isNaN(this.taxPercent)) this.taxPercent = 5.0;
-          } else if (!isEnabled) {
-            this.taxPercent = 0;
-          }
+          this.rewardPointsSettings = {
+            enabled: settings.reward_points_enabled === '1',
+            spendUnit: parseFloat(settings.reward_points_spend_unit) || 100,
+            earnUnit: parseFloat(settings.reward_points_earn_unit) || 1,
+            pointValue: parseFloat(settings.reward_point_value) || 1.00
+          };
         }
       } catch (e) {
-        console.warn('Could not load tax settings, using default 5%:', e);
+        console.warn('Could not load reward points settings:', e);
       }
 
       // Load products and categories from backend
@@ -148,13 +155,25 @@
                   <span>Subtotal</span>
                   <span id="clapos-summary-subtotal" style="font-weight:700; color:#1E293B;">৳0.00</span>
                 </div>
-                <div class="clapos-summary-row">
-                  <span id="clapos-summary-tax-label">Vat / Tax (${this.taxPercent}%)</span>
-                  <span id="clapos-summary-tax">৳0.00</span>
+                <div class="clapos-summary-row" id="clapos-summary-rp-row" style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
+                  <div>
+                    <div style="font-weight:600; font-size:12px; color:#475569; display:flex; align-items:center; gap:5px;">
+                      <span>🎁 Reward Points</span>
+                      <span id="clapos-rp-available-badge" style="font-size:10.5px; font-weight:700; color:#059669; background:#ecfdf5; padding:1px 6px; border-radius:10px; border:1px solid #a7f3d0;">0 pts</span>
+                    </div>
+                    <div id="clapos-rp-worth-desc" style="font-size:10px; color:#64748b; margin-top:1px;">Worth ৳0.00</div>
+                  </div>
+                  <button type="button" class="btn btn-xs" id="btn-toggle-use-points" style="font-weight:700; font-size:11px; padding:3px 10px; border-radius:6px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; cursor:pointer;" disabled>
+                    Use Points
+                  </button>
                 </div>
                 <div class="clapos-summary-row" id="clapos-summary-discount-row" style="display:none;">
                   <span>Voucher / Discount</span>
                   <span id="clapos-summary-discount" style="color:#EF4444; font-weight:700;">-৳0.00</span>
+                </div>
+                <div class="clapos-summary-row" id="clapos-summary-rp-discount-row" style="display:none; color:#059669;">
+                  <span id="clapos-summary-rp-label" style="font-weight:600;">Reward Points Discount</span>
+                  <span id="clapos-summary-rp-discount" style="font-weight:700; color:#059669;">-৳0.00</span>
                 </div>
                 <div class="clapos-summary-row total-row">
                   <span>Total</span>
@@ -486,6 +505,10 @@
       this.updateSummary();
     },
 
+    updateOrderSummary() {
+      this.updateSummary();
+    },
+
     updateSummary() {
       let subtotal = 0;
       this.cart.forEach(item => {
@@ -502,19 +525,41 @@
       this.discount.amount = discountAmount;
 
       const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-      const taxAmount = discountedSubtotal * (this.taxPercent / 100);
-      const grandTotal = discountedSubtotal + taxAmount;
+
+      // Reward points calculation
+      const availPoints = parseFloat(this.customerInfo && this.customerInfo.points) || 0;
+      const pointVal = (this.rewardPointsSettings && this.rewardPointsSettings.pointValue) || 1.00;
+      const rpEnabled = this.rewardPointsSettings && this.rewardPointsSettings.enabled;
+
+      let pointsDiscount = 0;
+      let pointsUsed = 0;
+
+      if (rpEnabled && this.useRewardPoints && availPoints > 0) {
+        const maxPossibleDiscount = availPoints * pointVal;
+        pointsDiscount = Math.min(discountedSubtotal, maxPossibleDiscount);
+        pointsUsed = pointVal > 0 ? Math.min(availPoints, pointsDiscount / pointVal) : 0;
+        pointsUsed = Math.round(pointsUsed * 100) / 100;
+      }
+
+      this.rewardPointsUsed = pointsUsed;
+      this.rewardPointsDiscount = pointsDiscount;
+
+      // Tax field is removed per user request
+      const grandTotal = Math.max(0, discountedSubtotal - pointsDiscount);
 
       const subtotalEl = document.getElementById('clapos-summary-subtotal');
-      const taxLabelEl = document.getElementById('clapos-summary-tax-label');
-      const taxEl = document.getElementById('clapos-summary-tax');
       const discountRow = document.getElementById('clapos-summary-discount-row');
       const discountEl = document.getElementById('clapos-summary-discount');
       const totalEl = document.getElementById('clapos-summary-total');
 
+      const rpBadge = document.getElementById('clapos-rp-available-badge');
+      const rpWorth = document.getElementById('clapos-rp-worth-desc');
+      const btnUsePoints = document.getElementById('btn-toggle-use-points');
+      const rpDiscountRow = document.getElementById('clapos-summary-rp-discount-row');
+      const rpDiscountEl = document.getElementById('clapos-summary-rp-discount');
+      const rpLabelEl = document.getElementById('clapos-summary-rp-label');
+
       if (subtotalEl) subtotalEl.textContent = `৳${subtotal.toFixed(2)}`;
-      if (taxLabelEl) taxLabelEl.textContent = `Vat / Tax (${this.taxPercent}%)`;
-      if (taxEl) taxEl.textContent = `৳${taxAmount.toFixed(2)}`;
 
       if (discountRow && discountEl) {
         if (discountAmount > 0) {
@@ -522,6 +567,47 @@
           discountEl.textContent = `-৳${discountAmount.toFixed(2)}`;
         } else {
           discountRow.style.display = 'none';
+        }
+      }
+
+      // Update Reward Points summary UI
+      if (btnUsePoints && rpBadge && rpWorth) {
+        rpBadge.textContent = `${availPoints} pts`;
+        const potentialWorth = availPoints * pointVal;
+        rpWorth.textContent = `Worth ৳${potentialWorth.toFixed(2)}`;
+
+        if (!rpEnabled || availPoints <= 0 || discountedSubtotal <= 0) {
+          btnUsePoints.disabled = true;
+          btnUsePoints.style.opacity = '0.5';
+          btnUsePoints.style.background = '#f1f5f9';
+          btnUsePoints.style.color = '#94a3b8';
+          btnUsePoints.style.borderColor = '#e2e8f0';
+          btnUsePoints.textContent = 'Use Points';
+          if (availPoints <= 0) this.useRewardPoints = false;
+        } else {
+          btnUsePoints.disabled = false;
+          btnUsePoints.style.opacity = '1';
+          if (this.useRewardPoints) {
+            btnUsePoints.style.background = '#ecfdf5';
+            btnUsePoints.style.color = '#059669';
+            btnUsePoints.style.borderColor = '#a7f3d0';
+            btnUsePoints.textContent = '✓ Points Active';
+          } else {
+            btnUsePoints.style.background = '#eff6ff';
+            btnUsePoints.style.color = '#2563eb';
+            btnUsePoints.style.borderColor = '#bfdbfe';
+            btnUsePoints.textContent = 'Use Points';
+          }
+        }
+      }
+
+      if (rpDiscountRow && rpDiscountEl) {
+        if (this.useRewardPoints && pointsDiscount > 0) {
+          rpDiscountRow.style.display = 'flex';
+          rpDiscountEl.textContent = `-৳${pointsDiscount.toFixed(2)}`;
+          if (rpLabelEl) rpLabelEl.textContent = `Points Redeemed (${pointsUsed} pts)`;
+        } else {
+          rpDiscountRow.style.display = 'none';
         }
       }
 
@@ -580,12 +666,31 @@
       const discBtn = document.getElementById('btn-order-discount');
       if (discBtn) discBtn.onclick = () => this.showDiscountModal();
 
+      // Reward Points Use / Remove toggle button
+      const rpBtn = document.getElementById('btn-toggle-use-points');
+      if (rpBtn) {
+        rpBtn.onclick = () => {
+          const availPoints = parseFloat(this.customerInfo && this.customerInfo.points) || 0;
+          if (availPoints <= 0) {
+            H.showToast('Selected customer has no reward points', 'warning');
+            return;
+          }
+          this.useRewardPoints = !this.useRewardPoints;
+          this.updateOrderSummary();
+          if (this.useRewardPoints) {
+            H.showToast(`Applied ${this.rewardPointsUsed} reward points (-৳${this.rewardPointsDiscount.toFixed(2)})!`, 'success');
+          } else {
+            H.showToast('Removed reward points from this order', 'info');
+          }
+        };
+      }
+
       // Process Transaction checkout
       const processBtn = document.getElementById('btn-process-transaction');
       if (processBtn) processBtn.onclick = () => this.showTransactionModal();
     },
 
-    // ── 1. Customer Modal (Auto-fill by Phone, Suggestions & Custom Discount) ──
+    // ── 1. Customer Modal (Auto-fill by Phone, Suggestions, Reward Points & Custom Discount) ──
     showCustomerModal() {
       const H = POS.Helpers;
       const modalHtml = `
@@ -596,7 +701,7 @@
           </div>
           <div class="modal-body" style="padding:18px 24px;">
             <p style="font-size:12.5px; color:#64748B; margin-bottom:14px;">
-              Enter customer phone to auto-find customer and apply personalized discount.
+              Enter customer phone to auto-find customer and apply personalized discount or loyalty points.
             </p>
             <div class="form-group mb-2" style="position:relative;">
               <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
@@ -611,6 +716,25 @@
               <label class="form-label">Guest / Customer Name</label>
               <input type="text" class="form-input" id="cust-modal-name" value="${H.escapeHtml(this.customerInfo.name || '')}" placeholder="Customer name">
             </div>
+
+            <!-- Reward Points Notice in Modal -->
+            <div id="cust-rp-notice" style="display:none; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; font-size:12.5px; color:#166534; margin-top:8px;">
+              <div style="font-weight:700; display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span>🎁</span>
+                  <span>Customer Reward Points:</span>
+                  <span id="cust-rp-notice-pts" style="background:#dcfce7; padding:1px 6px; border-radius:10px; font-weight:800; color:#15803d;">0 pts</span>
+                </span>
+                <span id="cust-rp-notice-worth" style="font-size:11.5px; color:#15803d; font-weight:700;">Worth ৳0.00</span>
+              </div>
+              <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #bbf7d0; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="chk-modal-use-points" style="width:16px; height:16px; accent-color:#10b981; cursor:pointer;">
+                <label for="chk-modal-use-points" style="cursor:pointer; font-weight:700; color:#166534; font-size:12px;">
+                  Use available reward points for this order
+                </label>
+              </div>
+            </div>
+
             <div id="cust-discount-notice" style="display:none; padding:10px 14px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; font-size:12.5px; color:#065f46; margin-top:8px;">
               <div style="font-weight:700; display:flex; align-items:center; gap:6px;">
                 <span>🎉</span>
@@ -634,6 +758,10 @@
       const vipBadge = document.getElementById('cust-modal-vip-badge');
       const discountNotice = document.getElementById('cust-discount-notice');
       const discountNoticeDesc = document.getElementById('cust-discount-notice-desc');
+      const rpNotice = document.getElementById('cust-rp-notice');
+      const rpNoticePts = document.getElementById('cust-rp-notice-pts');
+      const rpNoticeWorth = document.getElementById('cust-rp-notice-worth');
+      const chkUsePoints = document.getElementById('chk-modal-use-points');
 
       let selectedCustomer = null;
       let isCustomerSelected = false;
@@ -643,16 +771,41 @@
         isCustomerSelected = true;
         if (c.name) nameInput.value = c.name;
         if (c.phone) phoneInput.value = c.phone;
+        const custPts = parseFloat(c.points || c.rewardPoints) || 0;
         this.customerInfo = {
           id: c.id || null,
           name: c.name || '',
           phone: c.phone || '',
+          points: custPts,
           customDiscount: parseFloat(c.customDiscount) || 0
         };
 
         if (vipBadge) {
           vipBadge.style.display = 'inline-block';
           vipBadge.textContent = c.label || 'Customer';
+        }
+
+        const pointVal = (this.rewardPointsSettings && this.rewardPointsSettings.pointValue) || 1.00;
+        const rpEnabled = this.rewardPointsSettings && this.rewardPointsSettings.enabled;
+
+        // Reward points notice in modal
+        if (rpNotice && rpNoticePts && rpNoticeWorth && chkUsePoints) {
+          if (rpEnabled && custPts > 0) {
+            rpNotice.style.display = 'block';
+            rpNoticePts.textContent = `${custPts} pts`;
+            rpNoticeWorth.textContent = `Worth ৳${(custPts * pointVal).toFixed(2)}`;
+            chkUsePoints.checked = this.useRewardPoints;
+          } else {
+            rpNotice.style.display = 'none';
+          }
+        }
+
+        // Show prompt asking if they want to use reward points
+        if (rpEnabled && custPts > 0) {
+          const worthAmount = (custPts * pointVal).toFixed(2);
+          const wantToUse = confirm(`Customer "${c.name || 'Saved Customer'}" has ${custPts} reward points (Worth ৳${worthAmount}).\n\nDo you want to use reward points for this order?`);
+          this.useRewardPoints = wantToUse;
+          if (chkUsePoints) chkUsePoints.checked = wantToUse;
         }
 
         const disc = parseFloat(c.customDiscount) || 0;
@@ -672,6 +825,8 @@
         } else {
           if (discountNotice) discountNotice.style.display = 'none';
         }
+
+        this.updateOrderSummary();
         suggestionsBox.style.display = 'none';
         suggestionsBox.innerHTML = '';
       };
@@ -682,6 +837,24 @@
           discountNotice.style.display = 'block';
           discountNoticeDesc.textContent = `${this.customerInfo.customDiscount}% custom discount active on this order.`;
         }
+      }
+
+      if (this.customerInfo && (parseFloat(this.customerInfo.points) || 0) > 0) {
+        const custPts = parseFloat(this.customerInfo.points) || 0;
+        const pointVal = (this.rewardPointsSettings && this.rewardPointsSettings.pointValue) || 1.00;
+        if (rpNotice && rpNoticePts && rpNoticeWorth && chkUsePoints) {
+          rpNotice.style.display = 'block';
+          rpNoticePts.textContent = `${custPts} pts`;
+          rpNoticeWorth.textContent = `Worth ৳${(custPts * pointVal).toFixed(2)}`;
+          chkUsePoints.checked = this.useRewardPoints;
+        }
+      }
+
+      // Checkbox listener in modal
+      if (chkUsePoints) {
+        chkUsePoints.onchange = (e) => {
+          this.useRewardPoints = e.target.checked;
+        };
       }
 
       // Phone input listener: only trigger search & suggestions once a full number is typed
@@ -720,6 +893,7 @@
             </div>
           ` + list.map(c => {
             const disc = parseFloat(c.customDiscount) || 0;
+            const pts = parseFloat(c.points || c.rewardPoints) || 0;
             return `
               <div class="cust-suggest-item" data-cust-id="${c.id}" style="padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
                 <div>
@@ -727,6 +901,7 @@
                   <div style="font-size:11.5px; color:#64748b;">📞 ${H.escapeHtml(c.phone || 'No phone recorded')}</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">
+                  ${pts > 0 ? `<span style="font-size:10.5px; font-weight:800; background:#f0fdf4; color:#15803d; padding:2px 7px; border-radius:6px; border:1px solid #bbf7d0;">🎁 ${pts} pts</span>` : ''}
                   ${c.label ? `<span style="font-size:10px; font-weight:700; background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px;">${H.escapeHtml(c.label)}</span>` : ''}
                   ${disc > 0 ? `<span style="font-size:10.5px; font-weight:800; background:#ecfdf5; color:#059669; padding:2px 8px; border-radius:6px; border:1px solid #a7f3d0;">${disc}% OFF</span>` : ''}
                 </div>
@@ -772,7 +947,7 @@
         const phone = phoneInput.value.trim();
         const cleanDigits = phone.replace(/\D/g, '');
         
-        // If user didn't click dropdown but phone matches a known customer, apply discount
+        // If user didn't click dropdown but phone matches a known customer, apply details
         if (cleanDigits.length >= 7 && (!selectedCustomer || selectedCustomer.phone !== phone)) {
           try {
             const checkRes = await fetch(`/api/customers?search=${encodeURIComponent(phone)}&limit=5`);
@@ -786,12 +961,29 @@
           } catch (e) {}
         }
 
+        const chkUsePointsModal = document.getElementById('chk-modal-use-points');
+        if (chkUsePointsModal && chkUsePointsModal.offsetParent !== null) {
+          this.useRewardPoints = chkUsePointsModal.checked;
+        }
+
         this.customerInfo = {
           id: (selectedCustomer && selectedCustomer.id) || this.customerInfo.id || null,
           name: name,
           phone: phone,
+          points: (selectedCustomer && (parseFloat(selectedCustomer.points || selectedCustomer.rewardPoints) || 0)) || this.customerInfo.points || 0,
           customDiscount: (selectedCustomer && selectedCustomer.customDiscount) || this.customerInfo.customDiscount || 0
         };
+
+        const custPts = parseFloat(this.customerInfo.points) || 0;
+        const rpEnabled = this.rewardPointsSettings && this.rewardPointsSettings.enabled;
+        const pointVal = (this.rewardPointsSettings && this.rewardPointsSettings.pointValue) || 1.00;
+
+        if (rpEnabled && custPts > 0 && !this.useRewardPoints && (!chkUsePointsModal || !chkUsePointsModal.checked)) {
+          const worthAmount = (custPts * pointVal).toFixed(2);
+          if (confirm(`This customer has ${custPts} reward points (Worth ৳${worthAmount}).\n\nDo you want to use reward points for this order?`)) {
+            this.useRewardPoints = true;
+          }
+        }
 
         // ONLY save new customer to database if BOTH full phone (at least 7 digits) and real name are provided
         if (name && cleanDigits.length >= 7 && name.toLowerCase() !== 'guest') {
@@ -815,6 +1007,7 @@
         const label = name ? `Guest set to: ${name}` : (phone ? `Phone set: ${phone}` : 'Customer details saved');
         H.showToast(label, 'success');
         this.updateCustomerButton();
+        this.updateOrderSummary();
         H.hideModal();
       };
     },
@@ -826,7 +1019,9 @@
         if (span) {
           if (this.customerInfo && this.customerInfo.name) {
             const disc = parseFloat(this.customerInfo.customDiscount) || 0;
-            span.textContent = disc > 0 ? `${this.customerInfo.name} (${disc}%)` : this.customerInfo.name;
+            const pts = parseFloat(this.customerInfo.points) || 0;
+            const ptsText = pts > 0 ? ` (🎁${pts}pts)` : '';
+            span.textContent = disc > 0 ? `${this.customerInfo.name} (${disc}%)${ptsText}` : `${this.customerInfo.name}${ptsText}`;
           } else {
             span.textContent = 'Customer';
           }
@@ -1009,8 +1204,27 @@
       this.cart.forEach(i => subtotal += i.total);
       const discountAmount = this.discount.amount || 0;
       const discountedSub = Math.max(0, subtotal - discountAmount);
-      const taxAmount = discountedSub * (this.taxPercent / 100);
-      const grandTotal = discountedSub + taxAmount;
+
+      // Reward points calculation
+      const availPoints = parseFloat(this.customerInfo && this.customerInfo.points) || 0;
+      const pointVal = (this.rewardPointsSettings && this.rewardPointsSettings.pointValue) || 1.00;
+      const rpEnabled = this.rewardPointsSettings && this.rewardPointsSettings.enabled;
+
+      let pointsDiscount = 0;
+      let pointsUsed = 0;
+
+      if (rpEnabled && this.useRewardPoints && availPoints > 0) {
+        const maxPossibleDiscount = availPoints * pointVal;
+        pointsDiscount = Math.min(discountedSub, maxPossibleDiscount);
+        pointsUsed = pointVal > 0 ? Math.min(availPoints, pointsDiscount / pointVal) : 0;
+        pointsUsed = Math.round(pointsUsed * 100) / 100;
+      }
+
+      this.rewardPointsUsed = pointsUsed;
+      this.rewardPointsDiscount = pointsDiscount;
+
+      const taxAmount = 0;
+      const grandTotal = Math.max(0, discountedSub - pointsDiscount);
 
       // Load active payment methods from settings if not cached
       let activeMethods = (H.paymentMethodsList || []).filter(m => m.status === 'active');
@@ -1045,6 +1259,7 @@
             <div style="background:#F0FDF4; border:1.5px solid #BBF7D0; border-radius:14px; padding:16px; text-align:center; margin-bottom:16px;">
               <div style="font-size:12px; font-weight:700; color:#166534; text-transform:uppercase; letter-spacing:0.5px;">Amount To Pay</div>
               <div style="font-size:32px; font-weight:900; color:#059669;">৳${grandTotal.toFixed(2)}</div>
+              ${pointsDiscount > 0 ? `<div style="font-size:12px; font-weight:700; color:#059669; margin-top:5px; background:#dcfce7; display:inline-block; padding:3px 10px; border-radius:12px;">🎁 Points Discount: -৳${pointsDiscount.toFixed(2)} (${pointsUsed} pts)</div>` : ''}
             </div>
 
             <!-- Dynamic Payment Methods from Settings -->
@@ -1170,7 +1385,7 @@
         const orderRecord = {
           id: orderId,
           invoiceId: invoiceId,
-          customerId: null,
+          customerId: (this.customerInfo && this.customerInfo.id) || null,
           customerName: this.customerInfo.name ? this.customerInfo.name.trim() : '',
           customerPhone: this.customerInfo.phone ? this.customerInfo.phone.trim() : '',
           orderType: this.orderType,
@@ -1180,8 +1395,11 @@
           discountType: this.discount.type,
           discountValue: this.discount.value,
           discountAmount: discountAmount,
-          taxPercent: this.taxPercent,
-          taxAmount: taxAmount,
+          taxPercent: 0,
+          taxAmount: 0,
+          rewardPointsUsed: pointsUsed,
+          rewardPointsDiscount: pointsDiscount,
+          rewardPointsEarned: 0,
           grandTotal: grandTotal,
           paidAmount: paidAmount,
           dueAmount: dueAmount,
@@ -1213,6 +1431,8 @@
 
         if (result && result.success) {
           orderRecord.tokenNo = (result && result.tokenNo) ? result.tokenNo : 1;
+          orderRecord.rewardPointsEarned = (result && result.rewardPointsEarned) || 0;
+          orderRecord.rewardPointsUsed = (result && result.rewardPointsUsed !== undefined) ? result.rewardPointsUsed : pointsUsed;
           H.showToast(`Order #${invoiceId} processed! Token #${orderRecord.tokenNo}`, 'success');
           H.hideModal();
 
@@ -1229,8 +1449,11 @@
 
           // Reset order
           this.cart = [];
-          this.customerInfo = { id: null, name: '', phone: '', customDiscount: 0 };
+          this.customerInfo = { id: null, name: '', phone: '', points: 0, customDiscount: 0 };
           this.discount = { type: 'none', value: 0, amount: 0, code: '' };
+          this.useRewardPoints = false;
+          this.rewardPointsUsed = 0;
+          this.rewardPointsDiscount = 0;
           this.updateCustomerButton();
           this.renderCart();
           this.renderProductCards();
@@ -1252,11 +1475,18 @@
             <h3 style="font-weight:900; font-size:22px; color:#1E293B; margin-bottom:4px;">Order Placed Successfully!</h3>
             <p style="color:#64748B; font-size:13px; margin-bottom:16px;">Invoice: <strong>${order.invoiceId}</strong></p>
             
-            <div style="background:#F8FAFC; border:2px dashed #059669; border-radius:14px; padding:16px; margin-bottom:20px;">
+            <div style="background:#F8FAFC; border:2px dashed #059669; border-radius:14px; padding:16px; margin-bottom:16px;">
               <div style="font-size:12px; font-weight:800; color:#065F46; text-transform:uppercase; letter-spacing:1px;">Today's Kitchen Token</div>
               <div style="font-size:44px; font-weight:900; color:#059669; line-height:1.1; margin:6px 0;">TOKEN #${String(order.tokenNo || 1).padStart(2, '0')}</div>
               <div style="font-size:13px; font-weight:700; color:#047857;">${order.orderType.toUpperCase()} • ${order.tableName}</div>
             </div>
+
+            ${(order.rewardPointsEarned > 0 || order.rewardPointsUsed > 0) ? `
+              <div style="background:#ECFDF5; border:1px solid #A7F3D0; border-radius:10px; padding:8px 12px; margin-bottom:16px; font-size:12px; color:#065F46; font-weight:700;">
+                ${order.rewardPointsUsed > 0 ? `<div>🎁 Redeemed ${order.rewardPointsUsed} pts (-৳${Number(order.rewardPointsDiscount).toFixed(2)})</div>` : ''}
+                ${order.rewardPointsEarned > 0 ? `<div style="color:#059669; font-weight:800;">✨ Customer Earned +${order.rewardPointsEarned} Loyalty Points!</div>` : ''}
+              </div>
+            ` : ''}
             
             <div style="display:flex; flex-direction:column; gap:10px;">
               <button class="btn btn-primary" id="btn-print-receipt-modal" style="height:44px; font-weight:800; background:#10B981; border-color:#10B981; font-size:14px;">
@@ -1484,6 +1714,12 @@
                 <td class="text-right">-৳${order.discountAmount.toFixed(2)}</td>
               </tr>
             ` : ''}
+            ${order.rewardPointsDiscount > 0 ? `
+              <tr>
+                <td>Reward Points (${order.rewardPointsUsed || 0} pts):</td>
+                <td class="text-right">-৳${Number(order.rewardPointsDiscount).toFixed(2)}</td>
+              </tr>
+            ` : ''}
             ${order.taxAmount > 0 ? `
               <tr>
                 <td>Vat / Tax (${order.taxPercent || 5}%):</td>
@@ -1494,6 +1730,12 @@
               <td style="padding-top: 4px;">TOTAL:</td>
               <td class="text-right" style="padding-top: 4px;">৳${total.toFixed(2)}</td>
             </tr>
+            ${order.rewardPointsEarned > 0 ? `
+              <tr>
+                <td>Points Earned:</td>
+                <td class="text-right">+${order.rewardPointsEarned} pts</td>
+              </tr>
+            ` : ''}
             <tr>
               <td>Paid (${payments && payments[0] ? payments[0].method : 'Cash'}):</td>
               <td class="text-right">৳${order.paidAmount.toFixed(2)}</td>
@@ -1622,14 +1864,28 @@
                 <td class="text-right">-৳${order.discountAmount.toFixed(2)}</td>
               </tr>
             ` : ''}
-            <tr>
-              <td>Vat / Tax (5%):</td>
-              <td class="text-right">৳${order.taxAmount.toFixed(2)}</td>
-            </tr>
+            ${order.rewardPointsDiscount > 0 ? `
+              <tr>
+                <td>Reward Points (${order.rewardPointsUsed || 0} pts):</td>
+                <td class="text-right">-৳${Number(order.rewardPointsDiscount).toFixed(2)}</td>
+              </tr>
+            ` : ''}
+            ${order.taxAmount > 0 ? `
+              <tr>
+                <td>Vat / Tax (${order.taxPercent || 5}%):</td>
+                <td class="text-right">৳${order.taxAmount.toFixed(2)}</td>
+              </tr>
+            ` : ''}
             <tr class="bold" style="font-size:14px;">
               <td>TOTAL:</td>
               <td class="text-right">৳${total.toFixed(2)}</td>
             </tr>
+            ${order.rewardPointsEarned > 0 ? `
+              <tr>
+                <td>Points Earned:</td>
+                <td class="text-right">+${order.rewardPointsEarned} pts</td>
+              </tr>
+            ` : ''}
             <tr>
               <td>Paid (${payments && payments[0] ? payments[0].method : 'Cash'}):</td>
               <td class="text-right">৳${order.paidAmount.toFixed(2)}</td>

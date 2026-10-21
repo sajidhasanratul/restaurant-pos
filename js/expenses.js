@@ -25,10 +25,22 @@
                 <button type="button" class="btn btn-sm exp-period-btn" data-period="this_month" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Month</button>
                 <button type="button" class="btn btn-sm exp-period-btn" data-period="custom" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Custom</button>
               </div>
+              <div id="exp-date-indicator" style="display:inline-flex; align-items:center; gap:6px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:4px 10px; font-size:12px; font-weight:700; color:#1E40AF;">
+                <span>📅 Filtered:</span>
+                <span id="exp-active-date-text">Today (${H.formatDate(today)})</span>
+              </div>
             </div>
 
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
-              <div style="flex:1; min-width:180px; max-width:280px;">
+              <div style="width:130px;">
+                <select class="form-select" id="exp-filter-status" style="height:36px; font-size:12.5px;">
+                  <option value="">All Statuses</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Unpaid">Unpaid</option>
+                </select>
+              </div>
+              <div style="flex:1; min-width:160px; max-width:240px;">
                 <input type="text" class="form-input" id="exp-search" placeholder="Search supplier, reason, or note..." style="height:36px; font-size:12.5px;">
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
@@ -127,6 +139,16 @@
         return { from: today, to: today };
       };
 
+      const updateDateIndicator = (from, to, period) => {
+        const dateEl = document.getElementById('exp-active-date-text');
+        if (!dateEl) return;
+        if (period === 'today') dateEl.textContent = `Today (${H.formatDate(from)})`;
+        else if (period === 'yesterday') dateEl.textContent = `Yesterday (${H.formatDate(from)})`;
+        else if (period === 'this_week') dateEl.textContent = `This Week (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else if (period === 'this_month') dateEl.textContent = `This Month (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else dateEl.textContent = `${H.formatDate(from)} to ${H.formatDate(to)}`;
+      };
+
       document.querySelectorAll('.exp-period-btn').forEach(btn => {
         btn.onclick = async () => {
           document.querySelectorAll('.exp-period-btn').forEach(b => b.classList.remove('active'));
@@ -143,6 +165,7 @@
             toInput.value = toDate;
             localStorage.setItem('exp_from', fromDate);
             localStorage.setItem('exp_to', toDate);
+            updateDateIndicator(fromDate, toDate, p);
             await this.updateList(fromDate, toDate);
           }
         };
@@ -153,12 +176,20 @@
         toDate = toInput.value;
         localStorage.setItem('exp_from', fromDate);
         localStorage.setItem('exp_to', toDate);
+        updateDateIndicator(fromDate, toDate, 'custom');
         await this.updateList(fromDate, toDate);
       };
 
       document.getElementById('exp-search').addEventListener('input', () => {
         this.filterTableLocally();
       });
+
+      const statusSelect = document.getElementById('exp-filter-status');
+      if (statusSelect) {
+        statusSelect.addEventListener('change', () => {
+          this.filterTableLocally();
+        });
+      }
 
       await this.updateList(fromDate, toDate);
     },
@@ -213,8 +244,19 @@
       if (!tbody) return;
       const user = S.getCurrentUser();
       const searchVal = (document.getElementById('exp-search')?.value || '').toLowerCase().trim();
+      const statusVal = document.getElementById('exp-filter-status')?.value || '';
 
       const filtered = this.currentExpensesList.filter(e => {
+        const amt = parseFloat(e.amount) || 0;
+        const paid = parseFloat(e.paid_amount) || (e.status === 'Paid' ? amt : 0);
+        const isPaid = (e.status === 'Paid') || (paid >= amt);
+        const isPartial = (e.status === 'Partial') || (paid > 0 && !isPaid);
+        const isUnpaid = (e.status === 'Unpaid') || (!isPaid && !isPartial);
+
+        if (statusVal === 'Paid' && !isPaid) return false;
+        if (statusVal === 'Partial' && !isPartial) return false;
+        if (statusVal === 'Unpaid' && !isUnpaid) return false;
+
         if (!searchVal) return true;
         const sup = (e.supplier_name || '').toLowerCase();
         const reason = (e.reason || e.name || '').toLowerCase();
@@ -225,7 +267,7 @@
       tbody.innerHTML = '';
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No expenses found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No expenses found matching the criteria.</td></tr>`;
         return;
       }
 

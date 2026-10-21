@@ -712,8 +712,10 @@
             <div class="totals" style="font-size: 8.5pt;">
               <p>Sub Total: <strong>${this.formatCurrency(order.subtotal)}</strong></p>
               ${order.discountAmount > 0 ? `<p>Discount: <strong style="color:#000">-${this.formatCurrency(order.discountAmount)}</strong></p>` : ''}
+              ${order.rewardPointsDiscount > 0 ? `<p>Reward Points (${order.rewardPointsUsed || 0} pts): <strong style="color:#000">-${this.formatCurrency(order.rewardPointsDiscount)}</strong></p>` : ''}
               ${order.taxAmount > 0 ? `<p>Tax (${order.taxPercent}%): <strong>${this.formatCurrency(order.taxAmount)}</strong></p>` : ''}
               <p style="font-size:10.5pt; font-weight:800; border-top:1px dashed #000; padding-top:4px; margin-top:4px;">Grand Total: <span>${this.formatCurrency(order.grandTotal)}</span></p>
+              ${order.rewardPointsEarned > 0 ? `<p style="color:#000; font-size:8pt; margin-top:3px;">Points Earned: <strong>+${order.rewardPointsEarned} pts</strong></p>` : ''}
             </div>
 
             ${paymentsList.length > 0 ? `
@@ -798,6 +800,12 @@
                     <strong>-${this.formatCurrency(order.discountAmount)}</strong>
                   </div>
                 ` : ''}
+                ${order.rewardPointsDiscount > 0 ? `
+                  <div class="totals-row" style="color:#059669;">
+                    <span>Reward Points (${order.rewardPointsUsed || 0} pts):</span>
+                    <strong>-${this.formatCurrency(order.rewardPointsDiscount)}</strong>
+                  </div>
+                ` : ''}
                 ${order.taxAmount > 0 ? `
                   <div class="totals-row">
                     <span>Tax (${order.taxPercent}%):</span>
@@ -808,6 +816,12 @@
                   <span>Grand Total:</span>
                   <strong>${this.formatCurrency(order.grandTotal)}</strong>
                 </div>
+                ${order.rewardPointsEarned > 0 ? `
+                  <div class="totals-row" style="color:#2563eb; font-size:11px; margin-top:3px;">
+                    <span>Points Earned:</span>
+                    <strong>+${order.rewardPointsEarned} pts</strong>
+                  </div>
+                ` : ''}
 
                 ${paymentsList.length > 0 ? `
                   <div style="margin-top:12px; border-top:1px dashed #cbd5e1; padding-top:8px; font-size:11px;">

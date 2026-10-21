@@ -27,6 +27,10 @@
                 <button type="button" class="btn btn-sm sp-period-btn" data-period="this_month" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Month</button>
                 <button type="button" class="btn btn-sm sp-period-btn" data-period="custom" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Custom</button>
               </div>
+              <div id="sp-date-indicator" style="display:inline-flex; align-items:center; gap:6px; background:#F5F3FF; border:1px solid #DDD6FE; border-radius:8px; padding:4px 10px; font-size:12px; font-weight:700; color:#6D28D9;">
+                <span>📅 Filtered:</span>
+                <span id="sp-active-date-text">Today (${H.formatDate(today)})</span>
+              </div>
             </div>
 
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
@@ -142,6 +146,16 @@
         return { from: today, to: today };
       };
 
+      const updateSpDateIndicator = (from, to, period) => {
+        const dateEl = document.getElementById('sp-active-date-text');
+        if (!dateEl) return;
+        if (period === 'today') dateEl.textContent = `Today (${H.formatDate(from)})`;
+        else if (period === 'yesterday') dateEl.textContent = `Yesterday (${H.formatDate(from)})`;
+        else if (period === 'this_week') dateEl.textContent = `This Week (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else if (period === 'this_month') dateEl.textContent = `This Month (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else dateEl.textContent = `${H.formatDate(from)} to ${H.formatDate(to)}`;
+      };
+
       document.querySelectorAll('.sp-period-btn').forEach(btn => {
         btn.onclick = async () => {
           document.querySelectorAll('.sp-period-btn').forEach(b => b.classList.remove('active'));
@@ -158,6 +172,7 @@
             toInput.value = toDate;
             localStorage.setItem('sp_from', fromDate);
             localStorage.setItem('sp_to', toDate);
+            updateSpDateIndicator(fromDate, toDate, p);
             await this.updateList(fromDate, toDate);
           }
         };
@@ -168,6 +183,7 @@
         toDate = toInput.value;
         localStorage.setItem('sp_from', fromDate);
         localStorage.setItem('sp_to', toDate);
+        updateSpDateIndicator(fromDate, toDate, 'custom');
         await this.updateList(fromDate, toDate);
       };
 

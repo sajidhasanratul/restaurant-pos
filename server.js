@@ -362,6 +362,38 @@ const initDB = async () => {
     console.warn('Warning during orderItems costPrice migration check:', migErr.message);
   }
 
+  // Auto-migration check: If customers lacks points column, add it.
+  try {
+    const columnsCustPts = await dbQuery(`SHOW COLUMNS FROM customers LIKE 'points'`);
+    if (columnsCustPts.length === 0) {
+      await dbQuery(`ALTER TABLE customers ADD COLUMN points DECIMAL(10,2) DEFAULT 0.00`);
+      console.log('Database Migration: Added "points" column to customers table.');
+    }
+  } catch (migErr) {
+    console.warn('Warning during customers points migration check:', migErr.message);
+  }
+
+  // Auto-migration check: If orders lacks reward points columns, add them.
+  try {
+    const colOrdersRPU = await dbQuery(`SHOW COLUMNS FROM orders LIKE 'rewardPointsUsed'`);
+    if (colOrdersRPU.length === 0) {
+      await dbQuery(`ALTER TABLE orders ADD COLUMN rewardPointsUsed DECIMAL(10,2) DEFAULT 0.00`);
+      console.log('Database Migration: Added "rewardPointsUsed" column to orders table.');
+    }
+    const colOrdersRPD = await dbQuery(`SHOW COLUMNS FROM orders LIKE 'rewardPointsDiscount'`);
+    if (colOrdersRPD.length === 0) {
+      await dbQuery(`ALTER TABLE orders ADD COLUMN rewardPointsDiscount DECIMAL(10,2) DEFAULT 0.00`);
+      console.log('Database Migration: Added "rewardPointsDiscount" column to orders table.');
+    }
+    const colOrdersRPE = await dbQuery(`SHOW COLUMNS FROM orders LIKE 'rewardPointsEarned'`);
+    if (colOrdersRPE.length === 0) {
+      await dbQuery(`ALTER TABLE orders ADD COLUMN rewardPointsEarned DECIMAL(10,2) DEFAULT 0.00`);
+      console.log('Database Migration: Added "rewardPointsEarned" column to orders table.');
+    }
+  } catch (migErr) {
+    console.warn('Warning during orders reward points migration check:', migErr.message);
+  }
+
   // Seeding Counters
   const counters = await dbQuery(`SELECT * FROM counters`);
   if (counters.length === 0) {
@@ -2832,6 +2864,7 @@ app.get('/api/customers', async (req, res) => {
       const rows = await dbQuery(
         `SELECT 
            c.id, c.name, c.phone, c.email, c.label, c.customDiscount, c.address,
+           COALESCE(c.points, 0) as points, COALESCE(c.points, 0) as rewardPoints,
            (
              SELECT COUNT(*) 
              FROM orders o 
@@ -2855,6 +2888,7 @@ app.get('/api/customers', async (req, res) => {
     const rows = await dbQuery(`
       SELECT 
         c.id, c.name, c.phone, c.email, c.label, c.customDiscount, c.address,
+        COALESCE(c.points, 0) as points, COALESCE(c.points, 0) as rewardPoints,
         (
           SELECT COUNT(*) 
           FROM orders o 
@@ -2878,7 +2912,7 @@ app.get('/api/customers', async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
   try {
-    let { id, name, phone, email, label, customDiscount, address } = req.body;
+    let { id, name, phone, email, label, customDiscount, address, points } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Customer name is required' });
     }
@@ -2892,15 +2926,15 @@ app.post('/api/customers', async (req, res) => {
     if (cleanPhone) {
       const existing = await dbQuery(`SELECT id FROM customers WHERE phone = ? LIMIT 1`, [cleanPhone]);
       if (existing && existing.length > 0) {
-        await dbQuery(`UPDATE customers SET name = ?, email = COALESCE(?, email), label = COALESCE(?, label), customDiscount = COALESCE(?, customDiscount), address = COALESCE(?, address) WHERE id = ?`,
-          [cleanName, email || null, label || null, customDiscount !== undefined ? parseFloat(customDiscount) : null, address || null, existing[0].id]);
+        await dbQuery(`UPDATE customers SET name = ?, email = COALESCE(?, email), label = COALESCE(?, label), customDiscount = COALESCE(?, customDiscount), address = COALESCE(?, address), points = COALESCE(?, points) WHERE id = ?`,
+          [cleanName, email || null, label || null, customDiscount !== undefined ? parseFloat(customDiscount) : null, address || null, points !== undefined ? parseFloat(points) : null, existing[0].id]);
         return res.json({ success: true, id: existing[0].id, updated: true });
       }
     }
 
-    await dbQuery(`INSERT INTO customers (id, name, phone, email, label, customDiscount, address) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)`, 
-      [id, cleanName, cleanPhone || null, email || null, label || 'Regular', parseFloat(customDiscount) || 0.00, address || null]);
+    await dbQuery(`INSERT INTO customers (id, name, phone, email, label, customDiscount, address, points) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+      [id, cleanName, cleanPhone || null, email || null, label || 'Regular', parseFloat(customDiscount) || 0.00, address || null, parseFloat(points) || 0.00]);
     res.json({ success: true, id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2918,17 +2952,17 @@ app.post('/api/customers/quick-save', async (req, res) => {
     const cleanPhone = (phone || '').trim();
 
     if (cleanPhone) {
-      const existing = await dbQuery(`SELECT id, name, phone FROM customers WHERE phone = ? LIMIT 1`, [cleanPhone]);
+      const existing = await dbQuery(`SELECT id, name, phone, COALESCE(points, 0) as points FROM customers WHERE phone = ? LIMIT 1`, [cleanPhone]);
       if (existing && existing.length > 0) {
         await dbQuery(`UPDATE customers SET name = ? WHERE id = ?`, [cleanName, existing[0].id]);
-        return res.json({ success: true, customer: { id: existing[0].id, name: cleanName, phone: cleanPhone } });
+        return res.json({ success: true, customer: { id: existing[0].id, name: cleanName, phone: cleanPhone, points: existing[0].points } });
       }
     }
 
     const newId = 'c_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-    await dbQuery(`INSERT INTO customers (id, name, phone, label, customDiscount) VALUES (?, ?, ?, 'Regular', 0.00)`,
+    await dbQuery(`INSERT INTO customers (id, name, phone, label, customDiscount, points) VALUES (?, ?, ?, 'Regular', 0.00, 0.00)`,
       [newId, cleanName, cleanPhone || null]);
-    res.json({ success: true, customer: { id: newId, name: cleanName, phone: cleanPhone } });
+    res.json({ success: true, customer: { id: newId, name: cleanName, phone: cleanPhone, points: 0 } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2937,9 +2971,10 @@ app.post('/api/customers/quick-save', async (req, res) => {
 app.put('/api/customers/:id', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
   try {
     const cid = req.params.id;
-    const { name, phone, email, label, customDiscount, address } = req.body;
+    const { name, phone, email, label, customDiscount, address, points } = req.body;
     await dbQuery(`UPDATE customers SET name = ?, phone = ?, email = ?, label = ?, 
-      customDiscount = ?, address = ? WHERE id = ?`, [name, phone, email, label, customDiscount, address, cid]);
+      customDiscount = ?, address = ?, points = COALESCE(?, points) WHERE id = ?`, 
+      [name, phone, email, label, customDiscount, address, points !== undefined ? parseFloat(points) : null, cid]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3064,6 +3099,9 @@ app.get('/api/orders', async (req, res) => {
         COALESCE(o.orderType, 'Dine In') as orderType, 
         COALESCE(o.tableName, 'Table 01') as tableName, 
         COALESCE(o.tokenNo, 1) as tokenNo,
+        COALESCE(o.rewardPointsUsed, 0) as rewardPointsUsed,
+        COALESCE(o.rewardPointsDiscount, 0) as rewardPointsDiscount,
+        COALESCE(o.rewardPointsEarned, 0) as rewardPointsEarned,
         (
           SELECT GROUP_CONCAT(CONCAT(p.method, ':', p.amount, IF(p.lastFour IS NOT NULL AND p.lastFour != '', CONCAT(' (', p.lastFour, ')'), '')) SEPARATOR '; ')
           FROM payments p WHERE p.orderId = o.id
@@ -3615,13 +3653,42 @@ app.post('/api/orders', async (req, res) => {
       }
     }
 
+    const rewardPointsUsed = parseFloat(order.rewardPointsUsed) || 0;
+    const rewardPointsDiscount = parseFloat(order.rewardPointsDiscount) || 0;
+    let rewardPointsEarned = parseFloat(order.rewardPointsEarned) || 0;
+
+    if (assignedCustId) {
+      try {
+        const [stRows] = await connection.execute(`SELECT key_name, val FROM settings WHERE key_name IN ('reward_points_enabled', 'reward_points_spend_unit', 'reward_points_earn_unit', 'reward_point_value')`);
+        const stMap = {};
+        (stRows || []).forEach(r => { stMap[r.key_name] = r.val; });
+        if (stMap.reward_points_enabled === '1') {
+          const spendUnit = parseFloat(stMap.reward_points_spend_unit) || 100;
+          const earnUnit = parseFloat(stMap.reward_points_earn_unit) || 1;
+          rewardPointsEarned = Math.floor((parseFloat(order.grandTotal) || 0) / spendUnit) * earnUnit;
+        }
+
+        const netPointsChange = rewardPointsEarned - rewardPointsUsed;
+        if (netPointsChange !== 0 || rewardPointsUsed > 0 || rewardPointsEarned > 0) {
+          await connection.execute(
+            `UPDATE customers SET points = GREATEST(0, COALESCE(points, 0) + ?) WHERE id = ?`,
+            [netPointsChange, assignedCustId]
+          );
+        }
+      } catch (rpErr) {
+        console.warn('Reward points processing error:', rpErr.message);
+      }
+    }
+
     await connection.execute(`INSERT INTO orders (
       id, invoiceId, customerId, customerName, customerPhone, date, subtotal, discountType, 
-      discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, orderType, tableName, tokenNo
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      discountValue, discountAmount, taxPercent, taxAmount, grandTotal, paidAmount, dueAmount, returnedAmount, status, orderType, tableName, tokenNo,
+      rewardPointsUsed, rewardPointsDiscount, rewardPointsEarned
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [order.id, order.invoiceId, assignedCustId, finalCustName, finalCustPhone, formattedDate, order.subtotal,
       order.discountType, order.discountValue, order.discountAmount, order.taxPercent, order.taxAmount, order.grandTotal,
-      order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken]);
+      order.paidAmount, order.dueAmount, order.returnedAmount, order.status || 'completed', order.orderType || 'Dine In', order.tableName || 'Table 01', nextToken,
+      rewardPointsUsed, rewardPointsDiscount, rewardPointsEarned]);
 
     for (const item of items) {
       await connection.execute(`INSERT INTO orderItems (id, orderId, productId, productName, variationName, qty, unitPrice, total, costPrice) 
@@ -3639,7 +3706,7 @@ app.post('/api/orders', async (req, res) => {
     await connection.execute(`UPDATE counters SET val = val + 1 WHERE key_name = 'invoice'`);
 
     await connection.commit();
-    res.json({ success: true, tokenNo: nextToken, invoiceId: order.invoiceId });
+    res.json({ success: true, tokenNo: nextToken, invoiceId: order.invoiceId, rewardPointsEarned, rewardPointsUsed });
   } catch (err) {
     await connection.rollback();
     res.status(500).json({ error: err.message });

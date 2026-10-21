@@ -35,7 +35,6 @@
 
       const titleMap = {
         'daily-sale': 'Daily Sale Report',
-        'product-profit': 'Product Profit Report',
         'top-selling': 'Top Selling Products Report',
         'slow-selling': 'Slow Selling Products Report',
         'payment-method': 'Payment Method Report',
@@ -1073,8 +1072,9 @@
       const netProfitColor = overallNetProfit >= 0 ? 'text-success' : 'text-danger';
 
       container.innerHTML = `
-        <!-- Row 1: Primary Financial Summary -->
-        <div class="stats-grid fade-in mb-2" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+        <!-- Primary Financial Cards Grid: Total Sales, Product Sold, Expenses, Ingredient Cost (if enabled), Suppliers Payments (if enabled), Expired & Waste (if enabled), Overall Net Profit -->
+        <div class="stats-grid fade-in mb-3" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:14px;">
+          <!-- 1. Total Sales -->
           <div class="stat-card purple" style="padding: 15px;">
             <div class="stat-icon">💰</div>
             <div class="stat-info">
@@ -1083,83 +1083,70 @@
               <div class="stat-sub">${orders.length} Invoice(s)</div>
             </div>
           </div>
+
+          <!-- 2. Product Sold (renamed from Product Profit) -->
           <div class="stat-card green" style="padding: 15px;">
             <div class="stat-icon">📈</div>
             <div class="stat-info">
-              <div class="stat-label">Product Profit</div>
+              <div class="stat-label">Product Sold</div>
               <div class="stat-value" style="font-size:18px;">${H.formatCurrency(productProfit)}</div>
               <div class="stat-sub">From Catalog Sales</div>
             </div>
           </div>
-          <div class="stat-card orange" style="padding: 15px;">
-            <div class="stat-icon">📊</div>
+
+          <!-- 3. Expenses (Direct Operating Expenses) -->
+          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #EF4444; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fef2f2; display:flex; align-items:center; justify-content:center;">💸</div>
             <div class="stat-info">
-              <div class="stat-label">Consolidated Expenses</div>
-              <div class="stat-value" style="font-size:18px;">${H.formatCurrency(totalExpenses)}</div>
-              <div class="stat-sub">${combinedExpensesList.length} Active entries</div>
+              <div class="stat-label" style="font-weight:700;">Expenses</div>
+              <div class="stat-value text-danger" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalOpExpenses)}</div>
+              <div class="stat-sub">${expenses.length} operating logs</div>
             </div>
           </div>
+
+          <!-- 4. Ingredient Cost (Only shown if enabled in Report Settings) -->
+          ${isIngredientAsExpense ? `
+            <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #10B981; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+              <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#ecfdf5; display:flex; align-items:center; justify-content:center;">🥬</div>
+              <div class="stat-info">
+                <div class="stat-label" style="font-weight:700;">Ingredient Cost</div>
+                <div class="stat-value text-success" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalIngredientCost)}</div>
+                <div class="stat-sub">${ingredientCosts.length} purchases</div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 5. Suppliers Payments (Only shown if enabled in Report Settings) -->
+          ${isSupplierAsExpense ? `
+            <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #3B82F6; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+              <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#eff6ff; display:flex; align-items:center; justify-content:center;">🏢</div>
+              <div class="stat-info">
+                <div class="stat-label" style="font-weight:700;">Suppliers Payments</div>
+                <div class="stat-value text-primary" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalSupplierPayments)}</div>
+                <div class="stat-sub">${supplierPayments.length} payment records</div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 6. Expired & Waste (Only shown if enabled in Report Settings) -->
+          ${isWasteAsExpense ? `
+            <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #F59E0B; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+              <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fffbeb; display:flex; align-items:center; justify-content:center;">🗑️</div>
+              <div class="stat-info">
+                <div class="stat-label" style="font-weight:700;">Expired & Waste</div>
+                <div class="stat-value" style="font-size:18px; font-weight:800; color:#d97706; margin-top:2px;">${H.formatCurrency(totalWasteCost)}</div>
+                <div class="stat-sub">${expiredWastes.length} waste entries</div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 7. Overall Net Profit -->
           <div class="stat-card blue" style="padding: 15px;">
             <div class="stat-icon">⚖️</div>
             <div class="stat-info">
               <div class="stat-label">Overall Net Profit</div>
               <div class="stat-value ${netProfitColor}" style="font-size:18px; font-weight:800;">${H.formatCurrency(overallNetProfit)}</div>
-              <div class="stat-sub">Profit minus Expenses</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 2: Detailed Outflows & Costs (Ingredient Cost, Expenses, Suppliers, Expired & Waste) -->
-        <div class="stats-grid fade-in mb-3" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:12px;">
-          <!-- Ingredient Cost Card -->
-          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #10B981; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#ecfdf5; display:flex; align-items:center; justify-content:center;">🥬</div>
-            <div class="stat-info">
-              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:700;">Ingredient Cost</span>
-                ${isIngredientAsExpense ? '<span class="badge" style="background:#ecfdf5; color:#059669; font-size:10px; font-weight:700;">In Expenses</span>' : '<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px;">Separate</span>'}
-              </div>
-              <div class="stat-value text-success" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalIngredientCost)}</div>
-              <div class="stat-sub">${ingredientCosts.length} purchases recorded</div>
-            </div>
-          </div>
-
-          <!-- Operational Expenses Card -->
-          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #EF4444; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fef2f2; display:flex; align-items:center; justify-content:center;">💸</div>
-            <div class="stat-info">
-              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:700;">Operating Expenses</span>
-                <span class="badge" style="background:#fef2f2; color:#dc2626; font-size:10px; font-weight:700;">Direct Cost</span>
-              </div>
-              <div class="stat-value text-danger" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalOpExpenses)}</div>
-              <div class="stat-sub">${expenses.length} operating expense logs</div>
-            </div>
-          </div>
-
-          <!-- Suppliers Payments Card -->
-          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #3B82F6; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#eff6ff; display:flex; align-items:center; justify-content:center;">🏢</div>
-            <div class="stat-info">
-              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:700;">Suppliers Payment</span>
-                ${isSupplierAsExpense ? '<span class="badge" style="background:#ecfdf5; color:#059669; font-size:10px; font-weight:700;">In Expenses</span>' : '<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px;">Separate</span>'}
-              </div>
-              <div class="stat-value text-primary" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalSupplierPayments)}</div>
-              <div class="stat-sub">${supplierPayments.length} payment records</div>
-            </div>
-          </div>
-
-          <!-- Expired & Waste Card -->
-          <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #F59E0B; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fffbeb; display:flex; align-items:center; justify-content:center;">🗑️</div>
-            <div class="stat-info">
-              <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:700;">Expired & Waste</span>
-                ${isWasteAsExpense ? '<span class="badge" style="background:#ecfdf5; color:#059669; font-size:10px; font-weight:700;">In Expenses</span>' : '<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px;">Separate</span>'}
-              </div>
-              <div class="stat-value" style="font-size:18px; font-weight:800; color:#d97706; margin-top:2px;">${H.formatCurrency(totalWasteCost)}</div>
-              <div class="stat-sub">${expiredWastes.length} waste log entries</div>
+              <div class="stat-sub">Product Sold minus Outflows</div>
             </div>
           </div>
         </div>
@@ -1604,7 +1591,7 @@
 
         csvData = [{
           'Total Sales': totalSales,
-          'Product Profit': productProfit,
+          'Product Sold': productProfit,
           'Ingredient Cost': totalIngredientCost,
           'Operating Expenses': totalOpExpenses,
           'Supplier Payments': totalSupplierPayments,

@@ -60,6 +60,7 @@
       R.register('/suppliers',         () => safeRender('Suppliers'));
       R.register('/expired-wastes',    () => safeRender('ExpiredWastes'));
       R.register('/report-settings',   () => safeRender('ReportSettings'));
+      R.register('/reward-points',     () => safeRender('RewardPoints'));
       R.register('/coupons',           () => {
         const u = S.getCurrentUser();
         if (u && u.role === 'admin') {
@@ -179,6 +180,7 @@
         const canPaymentMethods = H.hasPermission('payment_methods', user);
         const canTables = H.hasPermission('tables', user);
         const canReportSettings = H.hasPermission('report_settings', user);
+        const canRewardPoints = H.hasPermission('report_settings', user) || H.hasPermission('invoice_settings', user) || user.role === 'admin' || user.role === 'manager';
         const canGallery = H.hasPermission('gallery', user);
 
         setDisplay('nav-invoice-settings', canInvoiceSettings);
@@ -186,9 +188,10 @@
         setDisplay('nav-payment-methods', canPaymentMethods);
         setDisplay('nav-tables', canTables);
         setDisplay('nav-report-settings', canReportSettings);
+        setDisplay('nav-reward-points', canRewardPoints);
         setDisplay('nav-gallery', canGallery);
 
-        const canAnySettings = canInvoiceSettings || canUsers || canPaymentMethods || canTables || canReportSettings || canGallery;
+        const canAnySettings = canInvoiceSettings || canUsers || canPaymentMethods || canTables || canReportSettings || canRewardPoints || canGallery;
         setDisplay('nav-grp-settings', canAnySettings);
       }
 

@@ -27,10 +27,22 @@
                 <button type="button" class="btn btn-sm ing-period-btn" data-period="this_month" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">This Month</button>
                 <button type="button" class="btn btn-sm ing-period-btn" data-period="custom" style="border-radius:7px; font-weight:700; padding:5px 12px; font-size:12px;">Custom</button>
               </div>
+              <div id="ing-date-indicator" style="display:inline-flex; align-items:center; gap:6px; background:#ECFDF5; border:1px solid #A7F3D0; border-radius:8px; padding:4px 10px; font-size:12px; font-weight:700; color:#047857;">
+                <span>📅 Filtered:</span>
+                <span id="ing-active-date-text">Today (${H.formatDate(today)})</span>
+              </div>
             </div>
 
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; justify-content:flex-end;">
-              <div style="flex:1; min-width:180px; max-width:280px;">
+              <div style="width:130px;">
+                <select class="form-select" id="ing-filter-status" style="height:36px; font-size:12.5px;">
+                  <option value="">All Statuses</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Unpaid">Unpaid</option>
+                </select>
+              </div>
+              <div style="flex:1; min-width:160px; max-width:240px;">
                 <input type="text" class="form-input" id="ing-search" placeholder="Supplier / Ingredient / Note..." style="height:36px; font-size:12.5px;">
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
@@ -130,6 +142,16 @@
         return { from: today, to: today };
       };
 
+      const updateIngDateIndicator = (from, to, period) => {
+        const dateEl = document.getElementById('ing-active-date-text');
+        if (!dateEl) return;
+        if (period === 'today') dateEl.textContent = `Today (${H.formatDate(from)})`;
+        else if (period === 'yesterday') dateEl.textContent = `Yesterday (${H.formatDate(from)})`;
+        else if (period === 'this_week') dateEl.textContent = `This Week (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else if (period === 'this_month') dateEl.textContent = `This Month (${H.formatDate(from)} to ${H.formatDate(to)})`;
+        else dateEl.textContent = `${H.formatDate(from)} to ${H.formatDate(to)}`;
+      };
+
       document.querySelectorAll('.ing-period-btn').forEach(btn => {
         btn.onclick = async () => {
           document.querySelectorAll('.ing-period-btn').forEach(b => b.classList.remove('active'));
@@ -146,6 +168,7 @@
             toInput.value = toDate;
             localStorage.setItem('ing_from', fromDate);
             localStorage.setItem('ing_to', toDate);
+            updateIngDateIndicator(fromDate, toDate, p);
             await this.updateList(fromDate, toDate);
           }
         };
@@ -156,12 +179,20 @@
         toDate = toInput.value;
         localStorage.setItem('ing_from', fromDate);
         localStorage.setItem('ing_to', toDate);
+        updateIngDateIndicator(fromDate, toDate, 'custom');
         await this.updateList(fromDate, toDate);
       };
 
       document.getElementById('ing-search').addEventListener('input', () => {
         this.filterTableLocally();
       });
+
+      const ingStatusSelect = document.getElementById('ing-filter-status');
+      if (ingStatusSelect) {
+        ingStatusSelect.addEventListener('change', () => {
+          this.filterTableLocally();
+        });
+      }
 
       await this.updateList(fromDate, toDate);
     },
@@ -206,18 +237,29 @@
       if (!tbody) return;
       const user = S.getCurrentUser();
       const searchVal = (document.getElementById('ing-search')?.value || '').toLowerCase().trim();
+      const statusVal = document.getElementById('ing-filter-status')?.value || '';
 
-      const filtered = this.currentIngredientsList.filter(e => {
+      const filtered = this.currentIngredientsList.filter(item => {
+        const amt = parseFloat(item.amount) || 0;
+        const paid = parseFloat(item.paid_amount) || (item.status === 'Paid' ? amt : 0);
+        const isPaid = (item.status === 'Paid') || (paid >= amt);
+        const isPartial = (item.status === 'Partial') || (paid > 0 && !isPaid);
+        const isUnpaid = (item.status === 'Unpaid') || (!isPaid && !isPartial);
+
+        if (statusVal === 'Paid' && !isPaid) return false;
+        if (statusVal === 'Partial' && !isPartial) return false;
+        if (statusVal === 'Unpaid' && !isUnpaid) return false;
+
         if (!searchVal) return true;
-        const sup = (e.supplier_name || '').toLowerCase();
-        const reason = (e.reason || e.name || '').toLowerCase();
-        const cat = (e.category || '').toLowerCase();
-        const note = (e.note || '').toLowerCase();
+        const sup = (item.supplier_name || '').toLowerCase();
+        const reason = (item.reason || item.name || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        const note = (item.note || '').toLowerCase();
         return sup.includes(searchVal) || reason.includes(searchVal) || cat.includes(searchVal) || note.includes(searchVal);
       });
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding: 24px;">No ingredient expense records found for this period.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding: 24px;">No ingredient expense records found matching the criteria.</td></tr>`;
         return;
       }
 
