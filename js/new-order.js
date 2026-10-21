@@ -33,7 +33,7 @@
       this.selectedTable = 'Table 01';
       this.customerInfo = { id: null, name: '', phone: '', points: 0, customDiscount: 0 };
       this.discount = { type: 'none', value: 0, amount: 0, code: '' };
-      this.taxPercent = 0;
+      this.taxPercent = 5.0;
       this.useRewardPoints = false;
       this.rewardPointsUsed = 0;
       this.rewardPointsDiscount = 0;
@@ -42,10 +42,20 @@
       // Preload payment methods
       await H.loadPaymentMethods();
 
-      // Load configured reward points settings from database
+      // Load configured tax and reward points settings from database
       try {
         const settings = await S.getSettings();
         if (settings) {
+          const isTaxEnabled = settings.order_tax_status !== 'disabled';
+          if (isTaxEnabled && settings.order_tax_percent !== undefined) {
+            this.taxPercent = parseFloat(settings.order_tax_percent);
+            if (isNaN(this.taxPercent)) this.taxPercent = 5.0;
+          } else if (!isTaxEnabled) {
+            this.taxPercent = 0;
+          } else {
+            this.taxPercent = 5.0;
+          }
+
           this.rewardPointsSettings = {
             enabled: settings.reward_points_enabled === '1',
             spendUnit: parseFloat(settings.reward_points_spend_unit) || 100,
@@ -54,7 +64,7 @@
           };
         }
       } catch (e) {
-        console.warn('Could not load reward points settings:', e);
+        console.warn('Could not load settings:', e);
       }
 
       // Load products and categories from backend
@@ -154,6 +164,10 @@
                 <div class="clapos-summary-row">
                   <span>Subtotal</span>
                   <span id="clapos-summary-subtotal" style="font-weight:700; color:#1E293B;">৳0.00</span>
+                </div>
+                <div class="clapos-summary-row" id="clapos-summary-tax-row" style="${this.taxPercent > 0 ? 'display:flex;' : 'display:none;'}">
+                  <span id="clapos-summary-tax-label">Vat / Tax (${this.taxPercent}%)</span>
+                  <span id="clapos-summary-tax" style="font-weight:700; color:#1E293B;">৳0.00</span>
                 </div>
                 <div class="clapos-summary-row" id="clapos-summary-rp-row" style="display:flex; justify-content:space-between; align-items:center; padding:4px 0;">
                   <div>
@@ -348,21 +362,22 @@
             <div class="clapos-card-bottom">
               <span class="clapos-card-price">৳${price.toFixed(2)}</span>
               ${qty > 0 ? `
-                <div class="clapos-qty-pill" onclick="event.stopPropagation();">
-                  <button class="clapos-qty-btn btn-card-dec" data-id="${item.id}">-</button>
+                <div class="clapos-qty-pill">
+                  <button type="button" class="clapos-qty-btn btn-card-dec" data-id="${item.id}">-</button>
                   <span>${qty}</span>
-                  <button class="clapos-qty-btn btn-card-inc" data-id="${item.id}">+</button>
+                  <button type="button" class="clapos-qty-btn btn-card-inc" data-id="${item.id}">+</button>
                 </div>
               ` : `
-                <button class="clapos-card-add-btn btn-card-add" data-id="${item.id}" title="Add to Order">+</button>
+                <button type="button" class="clapos-card-add-btn btn-card-add" data-id="${item.id}" title="Add to Order">+</button>
               `}
             </div>
           </div>
         `;
       }).join('');
 
-      // Bind event delegation on grid container once for super-fast response
-      if (!this._gridDelegated) {
+      // Bind event delegation on current grid container
+      if (!grid.dataset.delegated) {
+        grid.dataset.delegated = 'true';
         grid.addEventListener('click', (e) => {
           const incBtn = e.target.closest('.btn-card-inc');
           if (incBtn) {
@@ -382,12 +397,15 @@
             this.addToCart(addBtn.dataset.id);
             return;
           }
+          if (e.target.closest('.clapos-qty-pill')) {
+            // Clicked quantity counter text or pill background, do not add another
+            return;
+          }
           const card = e.target.closest('.clapos-card');
           if (card) {
             this.addToCart(card.dataset.id);
           }
         });
-        this._gridDelegated = true;
       }
     },
 
@@ -405,10 +423,10 @@
         if (bottom) {
           bottom.innerHTML = `
             <span class="clapos-card-price">৳${price.toFixed(2)}</span>
-            <div class="clapos-qty-pill" onclick="event.stopPropagation();">
-              <button class="clapos-qty-btn btn-card-dec" data-id="${productId}">-</button>
+            <div class="clapos-qty-pill">
+              <button type="button" class="clapos-qty-btn btn-card-dec" data-id="${productId}">-</button>
               <span>${qty}</span>
-              <button class="clapos-qty-btn btn-card-inc" data-id="${productId}">+</button>
+              <button type="button" class="clapos-qty-btn btn-card-inc" data-id="${productId}">+</button>
             </div>
           `;
         }
@@ -544,22 +562,30 @@
       this.rewardPointsUsed = pointsUsed;
       this.rewardPointsDiscount = pointsDiscount;
 
-      // Tax field is removed per user request
-      const grandTotal = Math.max(0, discountedSubtotal - pointsDiscount);
+      // Tax calculation (calculated on net subtotal after discounts & points)
+      const afterPointsSubtotal = Math.max(0, discountedSubtotal - pointsDiscount);
+      const taxAmount = this.taxPercent > 0 ? (afterPointsSubtotal * (this.taxPercent / 100)) : 0;
+      const grandTotal = afterPointsSubtotal + taxAmount;
 
       const subtotalEl = document.getElementById('clapos-summary-subtotal');
+      const taxRowEl = document.getElementById('clapos-summary-tax-row');
+      const taxLabelEl = document.getElementById('clapos-summary-tax-label');
+      const taxEl = document.getElementById('clapos-summary-tax');
       const discountRow = document.getElementById('clapos-summary-discount-row');
       const discountEl = document.getElementById('clapos-summary-discount');
       const totalEl = document.getElementById('clapos-summary-total');
 
-      const rpBadge = document.getElementById('clapos-rp-available-badge');
-      const rpWorth = document.getElementById('clapos-rp-worth-desc');
-      const btnUsePoints = document.getElementById('btn-toggle-use-points');
-      const rpDiscountRow = document.getElementById('clapos-summary-rp-discount-row');
-      const rpDiscountEl = document.getElementById('clapos-summary-rp-discount');
-      const rpLabelEl = document.getElementById('clapos-summary-rp-label');
-
       if (subtotalEl) subtotalEl.textContent = `৳${subtotal.toFixed(2)}`;
+
+      if (taxRowEl && taxEl && taxLabelEl) {
+        if (this.taxPercent > 0) {
+          taxRowEl.style.display = 'flex';
+          taxLabelEl.textContent = `Vat / Tax (${this.taxPercent}%)`;
+          taxEl.textContent = `৳${taxAmount.toFixed(2)}`;
+        } else {
+          taxRowEl.style.display = 'none';
+        }
+      }
 
       if (discountRow && discountEl) {
         if (discountAmount > 0) {
@@ -1209,8 +1235,9 @@
       this.rewardPointsUsed = pointsUsed;
       this.rewardPointsDiscount = pointsDiscount;
 
-      const taxAmount = 0;
-      const grandTotal = Math.max(0, discountedSub - pointsDiscount);
+      const afterPointsSub = Math.max(0, discountedSub - pointsDiscount);
+      const taxAmount = this.taxPercent > 0 ? (afterPointsSub * (this.taxPercent / 100)) : 0;
+      const grandTotal = afterPointsSub + taxAmount;
 
       // Load active payment methods from settings if not cached
       let activeMethods = (H.paymentMethodsList || []).filter(m => m.status === 'active');
@@ -1245,7 +1272,10 @@
             <div style="background:#F0FDF4; border:1.5px solid #BBF7D0; border-radius:14px; padding:16px; text-align:center; margin-bottom:16px;">
               <div style="font-size:12px; font-weight:700; color:#166534; text-transform:uppercase; letter-spacing:0.5px;">Amount To Pay</div>
               <div style="font-size:32px; font-weight:900; color:#059669;">৳${grandTotal.toFixed(2)}</div>
-              ${pointsDiscount > 0 ? `<div style="font-size:12px; font-weight:700; color:#059669; margin-top:5px; background:#dcfce7; display:inline-block; padding:3px 10px; border-radius:12px;">🎁 Points Discount: -৳${pointsDiscount.toFixed(2)} (${pointsUsed} pts)</div>` : ''}
+              <div style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:5px;">
+                ${taxAmount > 0 ? `<div style="font-size:11.5px; font-weight:700; color:#475569; background:#e2e8f0; display:inline-block; padding:2px 8px; border-radius:10px;">Includes ৳${taxAmount.toFixed(2)} Tax (${this.taxPercent}%)</div>` : ''}
+                ${pointsDiscount > 0 ? `<div style="font-size:11.5px; font-weight:700; color:#059669; background:#dcfce7; display:inline-block; padding:2px 8px; border-radius:10px;">🎁 Points Discount: -৳${pointsDiscount.toFixed(2)} (${pointsUsed} pts)</div>` : ''}
+              </div>
             </div>
 
             <!-- Dynamic Payment Methods from Settings -->
@@ -1381,8 +1411,8 @@
           discountType: this.discount.type,
           discountValue: this.discount.value,
           discountAmount: discountAmount,
-          taxPercent: 0,
-          taxAmount: 0,
+          taxPercent: this.taxPercent,
+          taxAmount: taxAmount,
           rewardPointsUsed: pointsUsed,
           rewardPointsDiscount: pointsDiscount,
           rewardPointsEarned: 0,

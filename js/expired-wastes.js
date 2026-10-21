@@ -348,7 +348,10 @@
         btn.onclick = async () => {
           if (!confirm('Are you sure you want to delete this expired/waste record?')) return;
           try {
-            const res = await fetch(`/api/expired-wastes/${btn.dataset.id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/expired-wastes/${btn.dataset.id}`, { 
+              method: 'DELETE',
+              headers: S.getHeaders()
+            });
             if (res.ok) {
               H.showToast('Expired/waste record deleted');
               const from = document.getElementById('ew-filter-from').value;
@@ -376,11 +379,21 @@
         supplierOptions = (suppliers || []).map(s => `<option value="${H.escapeHtml(s.name || s.supplier_name || '')}">`).join('');
       } catch (e) {}
 
-      // Fetch products/items for item name autocomplete
-      let itemOptions = '';
+      // Fetch products/items
+      let products = [];
       try {
-        const products = await S.getAll('products');
-        itemOptions = (products || []).map(p => `<option value="${H.escapeHtml(p.name || '')}">`).join('');
+        products = (await S.getAll('products')) || [];
+      } catch (e) {}
+
+      // Fetch ingredient costs for raw material autocomplete suggestions
+      let rawMaterialOptions = '';
+      try {
+        const ingRes = await fetch('/api/ingredient-costs', { headers: S.getHeaders() });
+        if (ingRes.ok) {
+          const ings = await ingRes.json();
+          const uniqueNames = [...new Set((ings || []).map(i => i.name || i.reason).filter(Boolean))];
+          rawMaterialOptions = uniqueNames.map(r => `<option value="${H.escapeHtml(r)}">`).join('');
+        }
       } catch (e) {}
 
       const initQty = item ? item.quantity : 1;
@@ -389,8 +402,21 @@
       const initComp = item ? item.compensationAmount : 0;
       const initDate = item && item.date ? item.date.slice(0, 10) : H.today();
 
+      // Determine initial values for Food Item vs Raw Material
+      let initFoodItem = '';
+      let initRawMaterial = '';
+      if (item && item.itemName) {
+        const cleanName = item.itemName.trim();
+        const matchedProduct = products.find(p => p.name && p.name.trim().toLowerCase() === cleanName.toLowerCase());
+        if (matchedProduct) {
+          initFoodItem = matchedProduct.name;
+        } else {
+          initRawMaterial = cleanName;
+        }
+      }
+
       const modalHtml = `
-        <div class="modal" id="modal-expired-waste" style="max-width:520px;">
+        <div class="modal" id="modal-expired-waste" style="max-width:540px;">
           <div class="modal-header" style="background:#FEF2F2; border-bottom:1px solid #FEE2E2;">
             <h3 class="modal-title" style="color:#991B1B;">
               ${isEdit ? '✏️ Edit Expired / Waste Item' : '🗑️ Record Expired or Waste Item'}
@@ -399,10 +425,52 @@
           </div>
           <form id="form-expired-waste" style="display:flex; flex-direction:column; gap:14px; padding:20px;">
             
+            <!-- Food Item Option -->
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-weight:700;">Item Name <span style="color:#ef4444;">*</span></label>
-              <input type="text" class="form-input" id="ew-modal-item-name" list="ew-item-suggestions" placeholder="e.g. Fresh Milk, Raw Chicken Breast, Burger Buns" value="${item ? H.escapeHtml(item.itemName) : ''}" required>
-              <datalist id="ew-item-suggestions">${itemOptions}</datalist>
+              <label class="form-label" style="font-weight:700; display:flex; justify-content:space-between; align-items:center;">
+                <span>🍽️ Food Item (Menu Product)</span>
+                <span style="font-size:11px; font-weight:600; color:#64748B;">Option 1</span>
+              </label>
+              <select class="form-select" id="ew-modal-food-item">
+                <option value="">-- Select Food Item from Menu --</option>
+                ${products.map(p => {
+                  const pCost = parseFloat(p.costPrice) || parseFloat(p.sellingPrice) || 0;
+                  const isSel = initFoodItem && initFoodItem.toLowerCase() === (p.name || '').trim().toLowerCase();
+                  return `<option value="${H.escapeHtml(p.name)}" data-cost="${pCost}" ${isSel ? 'selected' : ''}>${H.escapeHtml(p.name)} (৳${pCost.toFixed(2)})</option>`;
+                }).join('')}
+              </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px; margin: -2px 0;">
+              <div style="flex:1; border-top:1px dashed #CBD5E1;"></div>
+              <span style="font-size:11px; font-weight:800; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">OR</span>
+              <div style="flex:1; border-top:1px dashed #CBD5E1;"></div>
+            </div>
+
+            <!-- Raw Material / Ingredient Option -->
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-weight:700; display:flex; justify-content:space-between; align-items:center;">
+                <span>🥩 Raw Material / Ingredient (Type Manually)</span>
+                <span style="font-size:11px; font-weight:600; color:#64748B;">Option 2</span>
+              </label>
+              <input type="text" class="form-input" id="ew-modal-raw-material" list="ew-raw-material-suggestions" placeholder="e.g. Cooking Oil, Raw Chicken, Beef Patty, Milk, Flour..." value="${H.escapeHtml(initRawMaterial)}">
+              <datalist id="ew-raw-material-suggestions">
+                ${rawMaterialOptions}
+                <option value="Cooking Oil">
+                <option value="Raw Chicken Breast">
+                <option value="Minced Beef">
+                <option value="Flour Dough">
+                <option value="Mozzarella Cheese">
+                <option value="Fresh Milk">
+                <option value="Burger Buns">
+                <option value="Lettuce / Tomato">
+                <option value="Mayonnaise / Sauce">
+                <option value="Coffee Beans">
+                <option value="Spices / Seasoning">
+              </datalist>
+              <div style="font-size:11px; color:#64748B; margin-top:3px;">
+                💡 You can select a food item <strong>or</strong> type any raw material name manually. Either one is accepted!
+              </div>
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -462,6 +530,8 @@
 
       H.showModal(modalHtml);
 
+      const foodSelect = document.getElementById('ew-modal-food-item');
+      const rawInput = document.getElementById('ew-modal-raw-material');
       const qtyInput = document.getElementById('ew-modal-qty');
       const costInput = document.getElementById('ew-modal-cost-price');
       const totalDisplay = document.getElementById('ew-modal-total-display');
@@ -476,12 +546,32 @@
       qtyInput.oninput = recalcTotal;
       costInput.oninput = recalcTotal;
 
+      foodSelect.onchange = () => {
+        if (foodSelect.value) {
+          rawInput.value = '';
+          const opt = foodSelect.selectedOptions[0];
+          const cost = opt ? parseFloat(opt.dataset.cost) : 0;
+          if (cost > 0 && (!parseFloat(costInput.value) || parseFloat(costInput.value) === 0)) {
+            costInput.value = cost;
+            recalcTotal();
+          }
+        }
+      };
+
+      rawInput.oninput = () => {
+        if (rawInput.value.trim()) {
+          foodSelect.value = '';
+        }
+      };
+
       document.getElementById('btn-close-ew-modal').onclick = () => H.hideModal();
       document.getElementById('btn-cancel-ew-modal').onclick = () => H.hideModal();
 
       document.getElementById('form-expired-waste').onsubmit = async (e) => {
         e.preventDefault();
-        const itemName = document.getElementById('ew-modal-item-name').value.trim();
+        const foodItem = foodSelect.value.trim();
+        const rawMaterial = rawInput.value.trim();
+        const itemName = rawMaterial || foodItem;
         const quantity = parseFloat(qtyInput.value) || 0;
         const costPrice = parseFloat(costInput.value) || 0;
         const totalCost = quantity * costPrice;
@@ -491,7 +581,7 @@
         const note = document.getElementById('ew-modal-note').value.trim();
 
         if (!itemName) {
-          H.showToast('Please enter an item name', 'error');
+          H.showToast('Please select a food item or type a raw material name', 'error');
           return;
         }
 
@@ -515,7 +605,7 @@
           const method = isEdit ? 'PUT' : 'POST';
           const res = await fetch(url, {
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers: S.getHeaders(),
             body: JSON.stringify(payload)
           });
 
