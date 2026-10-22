@@ -326,6 +326,22 @@
         console.warn('Could not fetch server-side metrics:', err);
       }
 
+      // Cash drawer balance fallback if not in metrics
+      let cashDrawer = m.cashDrawer || { currentBalance: 0, cashSales: 0, cashAdded: 0, cashWithdrawn: 0 };
+      if (!m.cashDrawer && S.getCashDrawerSummary) {
+        try {
+          const cdSum = await S.getCashDrawerSummary();
+          cashDrawer = {
+            currentBalance: cdSum.currentBalance || 0,
+            cashSales: cdSum.todayCashSales || 0,
+            cashAdded: cdSum.todayAdded || 0,
+            cashWithdrawn: cdSum.todayWithdrawn || 0
+          };
+        } catch (e) {
+          console.warn('Failed to fetch cash drawer fallback in dashboard:', e);
+        }
+      }
+
       // Initialize active payment methods with zero if missing from breakdown
       H.paymentMethods.forEach(method => {
         if (paymentBreakdown[method] === undefined) paymentBreakdown[method] = 0;
@@ -345,6 +361,32 @@
             <div class="stat-value" style="font-size:22px; font-weight:800; color:#ffffff; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalSales)}</div>
             <div style="font-size:11px; color:#ffffff; background:rgba(255,255,255,0.2); font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>${orderCount} Completed Invoices</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Current Cash Drawer Balance Card -->
+        <div class="stat-card emerald" id="stat-card-cash-drawer" onclick="window.location.hash='#/cash-drawer'" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" title="Click to open Cash Drawer">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="12" cy="15" r="2"/></svg>
+          </div>
+          <div class="stat-info" style="min-width:0; flex:1;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
+              <span style="overflow:hidden; text-overflow:ellipsis;">Cash Drawer Balance</span>
+              <span style="font-size:9.5px; padding:2px 7px; border-radius:10px; background:#dcfce7; color:#15803d; font-weight:700; display:inline-flex; align-items:center; gap:3px;">
+                <span style="width:5px; height:5px; background:#16a34a; border-radius:50%;"></span> Live
+              </span>
+            </div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(cashDrawer.currentBalance)}</div>
+            <div style="margin-top:8px; padding-top:6px; border-top:1px solid #d1fae5; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Cash Sales (Period):</span>
+                <span style="font-weight:700; color:#059669;">${H.formatCurrency(cashDrawer.cashSales)}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Net In / Out:</span>
+                <span style="font-weight:700; color:#334155;">+${H.formatCurrency(cashDrawer.cashAdded)} / -${H.formatCurrency(cashDrawer.cashWithdrawn)}</span>
+              </div>
             </div>
           </div>
         </div>

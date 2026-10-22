@@ -3426,7 +3426,8 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       paymentsRows,
       hourlyRows,
       topSellingRows,
-      categoryRows
+      categoryRows,
+      drawerRows
     ] = await Promise.all([
       // 1. Sales & Revenue
       dbQuery(
@@ -3543,6 +3544,16 @@ app.get('/api/dashboard/metrics', async (req, res) => {
          GROUP BY categoryName
          ORDER BY totalAmount DESC`,
         [from, to]
+      ),
+      // 11. Cash Drawer (Current Balance & Range Activity)
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(CASE WHEN type IN ('sale', 'add') THEN amount WHEN type = 'withdraw' THEN -amount ELSE 0 END), 0) AS currentBalance,
+           COALESCE(SUM(CASE WHEN type = 'sale' AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashSales,
+           COALESCE(SUM(CASE WHEN type = 'add' AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashAdded,
+           COALESCE(SUM(CASE WHEN type = 'withdraw' AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashWithdrawn
+         FROM cash_drawer_transactions`,
+        [from, to, from, to, from, to]
       )
     ]);
 
@@ -3552,6 +3563,7 @@ app.get('/api/dashboard/metrics', async (req, res) => {
     const exp = expenseRows[0] || {};
     const sup = supplierRows[0] || {};
     const units = unitsRows[0] || {};
+    const drawer = drawerRows[0] || {};
 
     const totalSales = parseFloat(sales.totalSales) || 0;
     const orderCount = parseInt(sales.orderCount) || 0;
@@ -3607,6 +3619,13 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       orderCount: parseInt(r.orderCount) || 0
     }));
 
+    const cashDrawer = {
+      currentBalance: parseFloat(drawer.currentBalance) || 0,
+      cashSales: parseFloat(drawer.rangeCashSales) || 0,
+      cashAdded: parseFloat(drawer.rangeCashAdded) || 0,
+      cashWithdrawn: parseFloat(drawer.rangeCashWithdrawn) || 0
+    };
+
     res.json({
       from,
       to,
@@ -3633,7 +3652,8 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       paymentCount,
       hourlyTraffic,
       topSelling,
-      categorySales
+      categorySales,
+      cashDrawer
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
