@@ -297,6 +297,9 @@
       let paymentCount = {};
 
       let totalTax = 0;
+      let totalDamagedCost = 0;
+      let totalDamagedQty = 0;
+      let damagedCount = 0;
 
       try {
         const mRes = await fetch(`/api/dashboard/metrics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
@@ -314,6 +317,9 @@
           netWasteLoss = m.netWasteLoss || 0;
           wasteQuantity = m.wasteQuantity || 0;
           wasteCount = m.wasteCount || 0;
+          totalDamagedCost = m.totalDamagedCost || 0;
+          totalDamagedQty = m.totalDamagedQty || 0;
+          damagedCount = m.damagedCount || 0;
           displayedExpenseTotal = m.totalExpenses || 0;
           displayedExpensePaid = m.paidExpenses || 0;
           displayedExpenseUnpaid = m.unpaidExpenses || 0;
@@ -327,6 +333,22 @@
         }
       } catch (err) {
         console.warn('Could not fetch server-side metrics:', err);
+      }
+
+      // Damaged products fallback if metrics did not provide it
+      if (m.totalDamagedCost === undefined) {
+        try {
+          const dpRes = await fetch(`/api/damaged-products?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+          if (dpRes.ok) {
+            const dpList = await dpRes.json();
+            const filtered = (dpList || []).filter(dp => H.isDateInRange(dp.date, from, to));
+            totalDamagedCost = filtered.reduce((sum, dp) => sum + (parseFloat(dp.totalCost) || 0), 0);
+            totalDamagedQty = filtered.reduce((sum, dp) => sum + (parseFloat(dp.quantity || dp.qty) || 0), 0);
+            damagedCount = filtered.length;
+          }
+        } catch (e) {
+          console.warn('Failed to fetch damaged products fallback in dashboard:', e);
+        }
       }
 
       // Cash drawer balance fallback if not in metrics
@@ -344,6 +366,10 @@
           console.warn('Failed to fetch cash drawer fallback in dashboard:', e);
         }
       }
+      const drawerBalance = parseFloat(cashDrawer.currentBalance) || 0;
+      const drawerSales = parseFloat(cashDrawer.cashSales) || 0;
+      const drawerAdded = parseFloat(cashDrawer.cashAdded) || 0;
+      const drawerWithdrawn = parseFloat(cashDrawer.cashWithdrawn) || 0;
 
       // Initialize active payment methods with zero if missing from breakdown
       H.paymentMethods.forEach(method => {
@@ -389,26 +415,26 @@
         </div>
 
         <!-- 3. Current Cash Drawer Balance Card -->
-        <div class="stat-card emerald" id="stat-card-cash-drawer" onclick="window.location.hash='#/cash-drawer'" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" title="Click to open Cash Drawer">
+        <div class="stat-card emerald" id="stat-card-cash-drawer" onclick="window.POS && POS.Router ? POS.Router.navigate('/cash-drawer') : window.location.href='/cash-drawer'" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" title="Click to open Cash Drawer">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="12" cy="15" r="2"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.5px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
               <span style="overflow:hidden; text-overflow:ellipsis;">Cash Drawer Balance</span>
-              <span style="font-size:9.5px; padding:2px 7px; border-radius:10px; background:#dcfce7; color:#15803d; font-weight:700; display:inline-flex; align-items:center; gap:3px;">
+              <span style="font-size:9.5px; padding:2px 7px; border-radius:10px; background:#dcfce7; color:#15803d; font-weight:700; display:inline-flex; align-items:center; gap:3px; flex-shrink:0;">
                 <span style="width:5px; height:5px; background:#16a34a; border-radius:50%;"></span> Live
               </span>
             </div>
-            <div class="stat-value" style="font-size:22px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(cashDrawer.currentBalance)}</div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#065f46; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(drawerBalance)}</div>
             <div style="margin-top:8px; padding-top:6px; border-top:1px solid #d1fae5; display:flex; flex-direction:column; gap:4px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
                 <span style="color:#64748b; font-weight:600;">Cash Sales (Period):</span>
-                <span style="font-weight:700; color:#059669;">${H.formatCurrency(cashDrawer.cashSales)}</span>
+                <span style="font-weight:700; color:#059669;">${H.formatCurrency(drawerSales)}</span>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
                 <span style="color:#64748b; font-weight:600;">Net In / Out:</span>
-                <span style="font-weight:700; color:#334155;">+${H.formatCurrency(cashDrawer.cashAdded)} / -${H.formatCurrency(cashDrawer.cashWithdrawn)}</span>
+                <span style="font-weight:700; color:#334155;">+${H.formatCurrency(drawerAdded)} / -${H.formatCurrency(drawerWithdrawn)}</span>
               </div>
             </div>
           </div>
@@ -456,7 +482,31 @@
           </div>
         </div>
 
-        <!-- 6. Expenses Amount Card -->
+        <!-- 6. Damaged Products Card (New) -->
+        <div class="stat-card orange" id="stat-card-damaged-products" onclick="window.POS && POS.Router ? POS.Router.navigate('/damaged-products') : window.location.href='/damaged-products'" style="background:#fff; border:1.5px solid #ea580c; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(234,88,12,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" title="Click to view Damaged Products">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fff7ed; color:#ea580c; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/><path d="m10 7.5 4 3.5-3 2 3 2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="stat-info" style="min-width:0; flex:1;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.5px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
+              <span style="overflow:hidden; text-overflow:ellipsis;">Damaged Products</span>
+              <span style="font-size:9.5px; padding:2px 7px; border-radius:10px; background:#ffedd5; color:#c2410c; font-weight:700; flex-shrink:0;">Loss</span>
+            </div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#c2410c; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalDamagedCost)}</div>
+            <div style="margin-top:8px; padding-top:6px; border-top:1px solid #fed7aa; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Discarded:</span>
+                <span style="font-weight:700; color:#ea580c;">${totalDamagedQty} pcs</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; white-space:nowrap;">
+                <span style="color:#64748b; font-weight:600;">Incident Logs:</span>
+                <span style="font-weight:700; color:#475569;">${damagedCount} logged</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. Expenses Amount Card -->
         <div class="stat-card red" style="background:#fff; border:1.5px solid #ef4444; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(239,68,68,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fef2f2; color:#dc2626; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/><path d="M10 16h-2"/></svg>

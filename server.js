@@ -557,6 +557,52 @@ const initDB = async () => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // Ensure all columns exist on damaged_products table
+  try {
+    const dpCols = (await dbQuery(`SHOW COLUMNS FROM damaged_products`)).map(c => c.Field);
+    if (!dpCols.includes('quantity')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN quantity DECIMAL(10,2) DEFAULT 1`);
+      if (dpCols.includes('qty')) {
+        await dbQuery(`UPDATE damaged_products SET quantity = qty`);
+      }
+    }
+    if (!dpCols.includes('qty')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN qty INT DEFAULT 1`);
+      if (dpCols.includes('quantity')) {
+        await dbQuery(`UPDATE damaged_products SET qty = ROUND(quantity)`);
+      }
+    }
+    if (!dpCols.includes('unitCost')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN unitCost DECIMAL(12,2) DEFAULT 0.00`);
+      if (dpCols.includes('costPrice')) {
+        await dbQuery(`UPDATE damaged_products SET unitCost = costPrice`);
+      }
+    }
+    if (!dpCols.includes('costPrice')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN costPrice DECIMAL(12,2) DEFAULT 0.00`);
+      if (dpCols.includes('unitCost')) {
+        await dbQuery(`UPDATE damaged_products SET costPrice = unitCost`);
+      }
+    }
+    if (!dpCols.includes('damageType')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN damageType VARCHAR(100) DEFAULT 'Defect / Mishap'`);
+    }
+    if (!dpCols.includes('staffName')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN staffName VARCHAR(100) DEFAULT ''`);
+      if (dpCols.includes('createdBy')) {
+        await dbQuery(`UPDATE damaged_products SET staffName = createdBy`);
+      }
+    }
+    if (!dpCols.includes('createdBy')) {
+      await dbQuery(`ALTER TABLE damaged_products ADD COLUMN createdBy VARCHAR(100) DEFAULT ''`);
+      if (dpCols.includes('staffName')) {
+        await dbQuery(`UPDATE damaged_products SET createdBy = staffName`);
+      }
+    }
+  } catch (dpMigErr) {
+    console.warn('Damaged products migration notice:', dpMigErr.message);
+  }
+
   // Create gallery tables
   await dbQuery(`CREATE TABLE IF NOT EXISTS gallery_folders (
     id VARCHAR(50) PRIMARY KEY,
@@ -1663,12 +1709,12 @@ app.get('/api/damaged-products', async (req, res) => {
         COALESCE(productId, '') as productId,
         productName, 
         COALESCE(variationName, '') as variationName,
-        quantity, 
-        unitCost, 
+        COALESCE(quantity, qty, 0) as quantity, 
+        COALESCE(unitCost, costPrice, 0) as unitCost, 
         totalCost, 
         COALESCE(damageType, 'Defect / Mishap') as damageType, 
         COALESCE(note, '') as note, 
-        COALESCE(staffName, '') as staffName, 
+        COALESCE(staffName, createdBy, '') as staffName, 
         DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, 
         created_at 
       FROM damaged_products
@@ -1705,9 +1751,9 @@ app.post('/api/damaged-products', async (req, res) => {
     const formattedDate = date ? formatToMySQLDateTime(date) : new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     await dbQuery(`
-      INSERT INTO damaged_products (id, productId, productName, variationName, quantity, unitCost, totalCost, damageType, note, staffName, date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [finalId, productId || '', productName.trim(), variationName || '', qty, cost, total, damageType || 'Defect / Mishap', note || '', staffName || '', formattedDate]);
+      INSERT INTO damaged_products (id, productId, productName, variationName, quantity, qty, unitCost, costPrice, totalCost, damageType, note, staffName, createdBy, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [finalId, productId || '', productName.trim(), variationName || '', qty, Math.round(qty), cost, cost, total, damageType || 'Defect / Mishap', note || '', staffName || '', staffName || '', formattedDate]);
 
     res.json({ success: true, id: finalId });
   } catch (err) {
@@ -1728,9 +1774,9 @@ app.put('/api/damaged-products/:id', verifyRole(['admin', 'manager', 'cashier'])
 
     let updateSql = `
       UPDATE damaged_products 
-      SET productId = ?, productName = ?, variationName = ?, quantity = ?, unitCost = ?, totalCost = ?, damageType = ?, note = ?, staffName = ?
+      SET productId = ?, productName = ?, variationName = ?, quantity = ?, qty = ?, unitCost = ?, costPrice = ?, totalCost = ?, damageType = ?, note = ?, staffName = ?, createdBy = ?
     `;
-    const params = [productId || '', productName.trim(), variationName || '', qty, cost, total, damageType || 'Defect / Mishap', note || '', staffName || ''];
+    const params = [productId || '', productName.trim(), variationName || '', qty, Math.round(qty), cost, cost, total, damageType || 'Defect / Mishap', note || '', staffName || '', staffName || ''];
     if (formattedDate) {
       updateSql += `, date = ?`;
       params.push(formattedDate);
@@ -3545,7 +3591,8 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       hourlyRows,
       topSellingRows,
       categoryRows,
-      drawerRows
+      drawerRows,
+      damagedRows
     ] = await Promise.all([
       // 1. Sales & Revenue
       dbQuery(
@@ -3667,12 +3714,22 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       // 11. Cash Drawer (Current Balance & Range Activity)
       dbQuery(
         `SELECT 
-           COALESCE(SUM(CASE WHEN type IN ('sale', 'add') THEN amount WHEN type = 'withdraw' THEN -amount ELSE 0 END), 0) AS currentBalance,
-           COALESCE(SUM(CASE WHEN type = 'sale' AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashSales,
-           COALESCE(SUM(CASE WHEN type = 'add' AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashAdded,
-           COALESCE(SUM(CASE WHEN type = 'withdraw' AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashWithdrawn
+           COALESCE(SUM(CASE WHEN type IN ('cash_sale', 'add_cash', 'sale', 'add') THEN amount WHEN type IN ('withdraw_cash', 'withdraw') THEN -amount ELSE 0 END), 0) AS currentBalance,
+           COALESCE(SUM(CASE WHEN type IN ('cash_sale', 'sale') AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashSales,
+           COALESCE(SUM(CASE WHEN type IN ('add_cash', 'add') AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashAdded,
+           COALESCE(SUM(CASE WHEN type IN ('withdraw_cash', 'withdraw') AND DATE(date) >= ? AND DATE(date) <= ? THEN amount ELSE 0 END), 0) AS rangeCashWithdrawn
          FROM cash_drawer_transactions`,
         [from, to, from, to, from, to]
+      ),
+      // 12. Damaged Products
+      dbQuery(
+        `SELECT 
+           COALESCE(SUM(totalCost), 0) AS totalDamagedCost, 
+           COALESCE(SUM(COALESCE(quantity, qty, 0)), 0) AS totalDamagedQty, 
+           COUNT(*) AS damagedCount 
+         FROM damaged_products 
+         WHERE DATE(date) >= ? AND DATE(date) <= ?`,
+        [from, to]
       )
     ]);
 
@@ -3683,6 +3740,7 @@ app.get('/api/dashboard/metrics', async (req, res) => {
     const sup = supplierRows[0] || {};
     const units = unitsRows[0] || {};
     const drawer = drawerRows[0] || {};
+    const damaged = damagedRows[0] || {};
 
     const totalSales = parseFloat(sales.totalSales) || 0;
     const totalTax = parseFloat(sales.totalTax) || 0;
@@ -3698,6 +3756,10 @@ app.get('/api/dashboard/metrics', async (req, res) => {
     const netWasteLoss = Math.max(0, totalWasteCost - totalCompensation);
     const wasteQuantity = parseFloat(waste.totalQuantity) || 0;
     const wasteCount = parseInt(waste.count) || 0;
+
+    const totalDamagedCost = parseFloat(damaged.totalDamagedCost) || 0;
+    const totalDamagedQty = parseFloat(damaged.totalDamagedQty) || 0;
+    const damagedCount = parseInt(damaged.damagedCount) || 0;
 
     const totalExpenses = parseFloat(exp.totalAmount) || 0;
     const paidExpenses = parseFloat(exp.paidAmount) || 0;
@@ -3761,6 +3823,9 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       netWasteLoss,
       wasteQuantity,
       wasteCount,
+      totalDamagedCost,
+      totalDamagedQty,
+      damagedCount,
       totalExpenses,
       paidExpenses,
       unpaidExpenses,
