@@ -6,7 +6,8 @@
       group: 'Sales & Order Operations',
       items: [
         { key: 'pos', label: 'POS / New Order', desc: 'Create restaurant orders and process transactions' },
-        { key: 'sales_list', label: 'Sales List', desc: 'View past orders, token numbers, and invoices' }
+        { key: 'sales_list', label: 'Sales List', desc: 'View past orders, token numbers, and invoices' },
+        { key: 'cash_drawer', label: 'Cash Drawer', desc: 'Monitor cash balance, cash sales, add and withdraw cash' }
       ]
     },
     {
@@ -40,9 +41,9 @@
   ];
 
   const ROLE_DEFAULTS = {
-    cashier: ['pos', 'sales_list', 'products', 'gallery'],
+    cashier: ['pos', 'sales_list', 'cash_drawer', 'products', 'gallery'],
     manager: [
-      'dashboard', 'pos', 'sales_list', 'products', 'ingredient_costs',
+      'dashboard', 'pos', 'sales_list', 'cash_drawer', 'products', 'ingredient_costs',
       'expenses', 'suppliers', 'customers', 'invoice_settings',
       'payment_methods', 'gallery', 'report_settings', 'reports'
     ],

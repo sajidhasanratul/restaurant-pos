@@ -83,6 +83,7 @@
           if (p === '/dashboard') return 'dashboard';
           if (p === '/new-order' || p.startsWith('/edit-order/')) return 'pos';
           if (p === '/sales-list') return 'sales_list';
+          if (p === '/cash-drawer') return 'cash_drawer';
           if (p === '/products') return 'products';
           if (p === '/expenses') return 'expenses';
           if (p === '/ingredient-costs') return 'ingredient_costs';
@@ -136,6 +137,11 @@
       if (handler) {
         try {
           this.current = path;
+          if (path === '/new-order') {
+            if (window.POS && window.POS.App && typeof window.POS.App.collapseSidebar === 'function') {
+              window.POS.App.collapseSidebar();
+            }
+          }
           const mainContent = document.getElementById('main-content');
           if (mainContent) mainContent.scrollTop = 0;
           handler(params);

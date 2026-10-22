@@ -42,6 +42,7 @@
       R.register('/new-order',         () => safeRender('NewOrder'));
       R.register('/edit-order/:id',    (p) => safeRender('EditOrder', p.id));
       R.register('/sales-list',        () => safeRender('SalesList'));
+      R.register('/cash-drawer',       () => safeRender('CashDrawer'));
       R.register('/sales-return',      () => R.navigate('/sales-list'));
       R.register('/return-list',       () => R.navigate('/sales-list'));
       R.register('/custom-item-price', () => R.navigate('/sales-list'));
@@ -84,6 +85,36 @@
     },
 
     /* ── Sidebar behaviour ─────────────────────────── */
+    collapseSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const wrapper = document.getElementById('main-wrapper');
+      const overlay = document.getElementById('sidebar-overlay');
+      if (sidebar) {
+        if (window.innerWidth <= 1024) {
+          sidebar.classList.remove('mobile-open');
+          if (overlay) overlay.classList.remove('active');
+        } else {
+          sidebar.classList.add('collapsed');
+          if (wrapper) wrapper.classList.add('expanded');
+        }
+      }
+    },
+
+    expandSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const wrapper = document.getElementById('main-wrapper');
+      const overlay = document.getElementById('sidebar-overlay');
+      if (sidebar) {
+        if (window.innerWidth <= 1024) {
+          sidebar.classList.add('mobile-open');
+          if (overlay) overlay.classList.add('active');
+        } else {
+          sidebar.classList.remove('collapsed');
+          if (wrapper) wrapper.classList.remove('expanded');
+        }
+      }
+    },
+
     _setupSidebar() {
       const S = POS.Store;
       const toggle  = document.getElementById('menu-toggle');
@@ -155,6 +186,7 @@
 
         // Direct nav items
         setDisplay('nav-grp-sales-list', H.hasPermission('sales_list', user) || H.hasPermission('sales', user));
+        setDisplay('nav-grp-cash-drawer', H.hasPermission('cash_drawer', user) || H.hasPermission('pos', user) || H.hasPermission('sales_list', user) || user.role === 'admin' || user.role === 'manager' || user.role === 'cashier');
         setDisplay('nav-grp-items', H.hasPermission('products', user) || H.hasPermission('inventory', user));
         // Operation Expenses sub-items
         const canIngredientCosts = H.hasPermission('ingredient_costs', user) || H.hasPermission('expenses', user);

@@ -25,6 +25,24 @@
       const S = POS.Store;
       const H = POS.Helpers;
 
+      // Automatically collapse sidebar on opening New Order to maximize POS workspace
+      if (window.POS && window.POS.App && typeof window.POS.App.collapseSidebar === 'function') {
+        window.POS.App.collapseSidebar();
+      } else {
+        const sidebar = document.getElementById('sidebar');
+        const wrapper = document.getElementById('main-wrapper');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (sidebar) {
+          if (window.innerWidth <= 1024) {
+            sidebar.classList.remove('mobile-open');
+            if (overlay) overlay.classList.remove('active');
+          } else {
+            sidebar.classList.add('collapsed');
+            if (wrapper) wrapper.classList.add('expanded');
+          }
+        }
+      }
+
       // Reset state for new order
       this.cart = [];
       this.selectedCategory = 'all';

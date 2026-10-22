@@ -295,6 +295,51 @@ const initDB = async () => {
     lastFour VARCHAR(10) DEFAULT NULL
   )`);
 
+  await dbQuery(`CREATE TABLE IF NOT EXISTS cash_drawer_transactions (
+    id VARCHAR(50) PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    date DATETIME NOT NULL,
+    note TEXT,
+    orderId VARCHAR(50) DEFAULT NULL,
+    invoiceId VARCHAR(50) DEFAULT NULL,
+    userName VARCHAR(100) DEFAULT NULL,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  try {
+    const cdtIndexes = await dbQuery(`SHOW INDEX FROM cash_drawer_transactions`);
+    const cdtIndexNames = new Set((cdtIndexes || []).map(i => i.Key_name));
+    if (!cdtIndexNames.has('idx_cdt_date')) await dbQuery(`CREATE INDEX idx_cdt_date ON cash_drawer_transactions(date)`);
+    if (!cdtIndexNames.has('idx_cdt_type')) await dbQuery(`CREATE INDEX idx_cdt_type ON cash_drawer_transactions(type)`);
+    if (!cdtIndexNames.has('idx_cdt_orderId')) await dbQuery(`CREATE INDEX idx_cdt_orderId ON cash_drawer_transactions(orderId)`);
+  } catch (e) { /* ignore */ }
+
+  // Initial sync of existing Cash payments from completed orders into cash_drawer_transactions
+  try {
+    await dbQuery(`
+      INSERT INTO cash_drawer_transactions (id, type, amount, date, note, orderId, invoiceId, userName)
+      SELECT 
+        CONCAT('cd_ord_', p.id) AS id,
+        'cash_sale' AS type,
+        p.amount AS amount,
+        o.date AS date,
+        CONCAT('Order Invoice #', o.invoiceId) AS note,
+        o.id AS orderId,
+        o.invoiceId AS invoiceId,
+        'System' AS userName
+      FROM payments p
+      INNER JOIN orders o ON p.orderId = o.id
+      WHERE LOWER(p.method) = 'cash' 
+        AND (o.status IS NULL OR o.status NOT IN ('cancelled', 'void'))
+        AND NOT EXISTS (
+          SELECT 1 FROM cash_drawer_transactions cdt WHERE cdt.id = CONCAT('cd_ord_', p.id)
+        )
+    `);
+  } catch (syncErr) {
+    console.warn('Initial cash drawer sync notice:', syncErr.message);
+  }
+
   await dbQuery(`CREATE TABLE IF NOT EXISTS counters (
     key_name VARCHAR(50) PRIMARY KEY,
     val INT DEFAULT 0
@@ -933,7 +978,7 @@ initDB().catch(console.error);
 
 // ── Authentication Middleware & Module Permissions ───
 const ALL_MODULES = [
-  'pos', 'sales_list',
+  'pos', 'sales_list', 'cash_drawer',
   'products', 'tables',
   'dashboard', 'expenses', 'ingredient_costs', 'suppliers', 'reports',
   'gallery', 'customers', 'coupons', 'invoice_settings',
@@ -944,14 +989,14 @@ const getDefaultPermissions = (role) => {
   if (role === 'admin') return ['*'];
   if (role === 'manager') {
     return [
-      'dashboard', 'pos', 'sales_list',
+      'dashboard', 'pos', 'sales_list', 'cash_drawer',
       'products', 'tables',
       'expenses', 'ingredient_costs', 'suppliers', 'customers', 'invoice_settings',
       'payment_methods', 'gallery', 'report_settings'
     ];
   }
   if (role === 'cashier') {
-    return ['pos', 'sales_list', 'products', 'gallery'];
+    return ['pos', 'sales_list', 'cash_drawer', 'products', 'gallery'];
   }
   return [];
 };
@@ -1794,6 +1839,178 @@ app.delete('/api/payment-methods/:id', verifyRole(['admin', 'manager']), async (
     const id = req.params.id;
     await dbQuery(`DELETE FROM payment_methods WHERE id = ?`, [id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Cash Drawer Management Endpoints ──────────────────────────────
+app.get('/api/cash-drawer/summary', async (req, res) => {
+  try {
+    const balanceRows = await dbQuery(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN type IN ('cash_sale', 'add_cash') THEN amount WHEN type = 'withdraw_cash' THEN -amount ELSE 0 END), 0) AS currentBalance,
+        COALESCE(SUM(CASE WHEN type IN ('cash_sale', 'add_cash') THEN amount ELSE 0 END), 0) AS totalIn,
+        COALESCE(SUM(CASE WHEN type = 'withdraw_cash' THEN amount ELSE 0 END), 0) AS totalOut,
+        COALESCE(SUM(CASE WHEN type = 'cash_sale' THEN amount ELSE 0 END), 0) AS totalCashSales,
+        COALESCE(SUM(CASE WHEN type = 'add_cash' THEN amount ELSE 0 END), 0) AS totalAdded,
+        COUNT(*) AS totalTransactions
+      FROM cash_drawer_transactions
+    `);
+
+    // Today's summary (midnight to midnight)
+    const todayStr = formatToMySQLDateTime(new Date()).substring(0, 10);
+    const todayRows = await dbQuery(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'cash_sale' THEN amount ELSE 0 END), 0) AS todayCashSales,
+        COALESCE(SUM(CASE WHEN type = 'add_cash' THEN amount ELSE 0 END), 0) AS todayAdded,
+        COALESCE(SUM(CASE WHEN type = 'withdraw_cash' THEN amount ELSE 0 END), 0) AS todayWithdrawn,
+        COUNT(CASE WHEN type = 'cash_sale' THEN 1 END) AS todayCashOrdersCount
+      FROM cash_drawer_transactions
+      WHERE DATE(date) = ?
+    `, [todayStr]);
+
+    const b = balanceRows[0] || {};
+    const t = todayRows[0] || {};
+
+    res.json({
+      currentBalance: parseFloat(b.currentBalance) || 0,
+      totalIn: parseFloat(b.totalIn) || 0,
+      totalOut: parseFloat(b.totalOut) || 0,
+      totalCashSales: parseFloat(b.totalCashSales) || 0,
+      totalAdded: parseFloat(b.totalAdded) || 0,
+      totalTransactions: parseInt(b.totalTransactions) || 0,
+      todayCashSales: parseFloat(t.todayCashSales) || 0,
+      todayAdded: parseFloat(t.todayAdded) || 0,
+      todayWithdrawn: parseFloat(t.todayWithdrawn) || 0,
+      todayCashOrdersCount: parseInt(t.todayCashOrdersCount) || 0
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/cash-drawer/transactions', async (req, res) => {
+  try {
+    const { from, to, type, search, limit } = req.query;
+    let sql = `SELECT id, type, amount, DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') AS date, note, orderId, invoiceId, userName, DATE_FORMAT(createdAt, '%Y-%m-%d %H:%i:%s') AS createdAt FROM cash_drawer_transactions WHERE 1=1`;
+    const params = [];
+
+    if (from) {
+      sql += ` AND DATE(date) >= ?`;
+      params.push(from);
+    }
+    if (to) {
+      sql += ` AND DATE(date) <= ?`;
+      params.push(to);
+    }
+    if (type && type !== 'all') {
+      sql += ` AND type = ?`;
+      params.push(type);
+    }
+    if (search && search.trim()) {
+      sql += ` AND (note LIKE ? OR invoiceId LIKE ? OR userName LIKE ?)`;
+      const s = `%${search.trim()}%`;
+      params.push(s, s, s);
+    }
+
+    sql += ` ORDER BY date DESC, createdAt DESC`;
+    if (limit && parseInt(limit) > 0) {
+      sql += ` LIMIT ${parseInt(limit)}`;
+    } else {
+      sql += ` LIMIT 500`;
+    }
+
+    const rows = await dbQuery(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/cash-drawer/add', async (req, res) => {
+  try {
+    const { amount, note, date } = req.body;
+    const numAmount = parseFloat(amount);
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: 'Please enter a valid cash amount greater than zero.' });
+    }
+
+    const id = 'cd_add_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const formattedDate = formatToMySQLDateTime(date || new Date());
+    const operatorName = req.headers['x-user-name'] || 'Staff';
+    const noteText = (note && note.trim()) ? note.trim() : 'Manual Cash Added';
+
+    await dbQuery(
+      `INSERT INTO cash_drawer_transactions (id, type, amount, date, note, userName) VALUES (?, 'add_cash', ?, ?, ?, ?)`,
+      [id, numAmount, formattedDate, noteText, operatorName]
+    );
+
+    const balRows = await dbQuery(
+      `SELECT COALESCE(SUM(CASE WHEN type IN ('cash_sale', 'add_cash') THEN amount WHEN type = 'withdraw_cash' THEN -amount ELSE 0 END), 0) AS currentBalance FROM cash_drawer_transactions`
+    );
+    const currentBalAfterAdd = parseFloat(balRows[0]?.currentBalance) || 0;
+
+    res.json({
+      success: true,
+      transactionId: id,
+      amount: numAmount,
+      currentBalance: currentBalAfterAdd,
+      message: `Successfully added ৳${numAmount.toFixed(2)} to Cash Drawer.`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/cash-drawer/withdraw', async (req, res) => {
+  try {
+    const { amount, note, date, withdrawAll } = req.body;
+    
+    // Query current balance
+    const balRows = await dbQuery(
+      `SELECT COALESCE(SUM(CASE WHEN type IN ('cash_sale', 'add_cash') THEN amount WHEN type = 'withdraw_cash' THEN -amount ELSE 0 END), 0) AS currentBalance FROM cash_drawer_transactions`
+    );
+    const currentBalance = parseFloat(balRows[0]?.currentBalance) || 0;
+
+    let numAmount = parseFloat(amount);
+    if (withdrawAll) {
+      numAmount = currentBalance;
+    }
+
+    if (numAmount <= 0 || isNaN(numAmount)) {
+      return res.status(400).json({ error: 'Please specify a valid cash withdrawal amount greater than zero.' });
+    }
+
+    if (currentBalance <= 0) {
+      return res.status(400).json({ error: 'Cash drawer balance is currently ৳0.00. Cannot withdraw cash.' });
+    }
+
+    if (numAmount > currentBalance) {
+      return res.status(400).json({ 
+        error: `Withdrawal amount (৳${numAmount.toFixed(2)}) exceeds current cash drawer balance (৳${currentBalance.toFixed(2)}).` 
+      });
+    }
+
+    const id = 'cd_wd_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    const formattedDate = formatToMySQLDateTime(date || new Date());
+    const operatorName = req.headers['x-user-name'] || 'Staff';
+    const noteText = (note && note.trim()) ? note.trim() : (withdrawAll ? 'Full Drawer Withdrawal' : 'Cash Withdrawal');
+
+    await dbQuery(
+      `INSERT INTO cash_drawer_transactions (id, type, amount, date, note, userName) VALUES (?, 'withdraw_cash', ?, ?, ?, ?)`,
+      [id, numAmount, formattedDate, noteText, operatorName]
+    );
+
+    const newBalance = currentBalance - numAmount;
+
+    res.json({
+      success: true,
+      transactionId: id,
+      withdrawnAmount: numAmount,
+      currentBalance: Math.max(0, newBalance),
+      message: `Successfully withdrew ৳${numAmount.toFixed(2)} from Cash Drawer.`
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3670,6 +3887,7 @@ app.delete('/api/orders/:id', verifyRole(['admin']), async (req, res) => {
     await connection.execute(`DELETE FROM payments WHERE orderId = ?`, [oid]);
     await connection.execute(`DELETE FROM orderItems WHERE orderId = ?`, [oid]);
     await connection.execute(`DELETE FROM orders WHERE id = ?`, [oid]);
+    await connection.execute(`DELETE FROM cash_drawer_transactions WHERE orderId = ?`, [oid]);
 
     await connection.commit();
     res.json({ success: true });
@@ -3769,6 +3987,25 @@ app.post('/api/orders', async (req, res) => {
     for (const p of payments) {
       await connection.execute(`INSERT INTO payments (id, orderId, method, amount, lastFour) VALUES (?, ?, ?, ?, ?)`,
         [p.id, order.id, p.method, p.amount, p.lastFour || p.lastfour || null]);
+
+      if (p.method && p.method.toLowerCase() === 'cash' && parseFloat(p.amount) > 0) {
+        const cdtId = 'cd_ord_' + p.id;
+        const operatorName = req.headers['x-user-name'] || 'Cashier';
+        await connection.execute(
+          `INSERT INTO cash_drawer_transactions (id, type, amount, date, note, orderId, invoiceId, userName)
+           VALUES (?, 'cash_sale', ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE amount = VALUES(amount), date = VALUES(date)`,
+          [
+            cdtId,
+            parseFloat(p.amount),
+            formattedDate,
+            `Order #${nextToken} • Invoice #${order.invoiceId}`,
+            order.id,
+            order.invoiceId,
+            operatorName
+          ]
+        );
+      }
     }
 
     await connection.execute(`UPDATE counters SET val = val + 1 WHERE key_name = 'invoice'`);
@@ -3807,6 +4044,7 @@ app.put('/api/orders/:id', verifyRole(['admin', 'manager']), async (req, res) =>
     await connection.execute(`DELETE FROM orders WHERE id = ?`, [oid]);
     await connection.execute(`DELETE FROM orderItems WHERE orderId = ?`, [oid]);
     await connection.execute(`DELETE FROM payments WHERE orderId = ?`, [oid]);
+    await connection.execute(`DELETE FROM cash_drawer_transactions WHERE orderId = ?`, [oid]);
 
     // 3. Insert new records
     const formattedDate = formatToMySQLDateTime(order.date);
@@ -3836,6 +4074,25 @@ app.put('/api/orders/:id', verifyRole(['admin', 'manager']), async (req, res) =>
     for (const p of payments) {
       await connection.execute(`INSERT INTO payments (id, orderId, method, amount, lastFour) VALUES (?, ?, ?, ?, ?)`,
         [p.id, oid, p.method, p.amount, p.lastFour || p.lastfour || null]);
+
+      if (p.method && p.method.toLowerCase() === 'cash' && parseFloat(p.amount) > 0 && order.status !== 'cancelled' && order.status !== 'void') {
+        const cdtId = 'cd_ord_' + p.id;
+        const operatorName = req.headers['x-user-name'] || 'Cashier';
+        await connection.execute(
+          `INSERT INTO cash_drawer_transactions (id, type, amount, date, note, orderId, invoiceId, userName)
+           VALUES (?, 'cash_sale', ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE amount = VALUES(amount), date = VALUES(date)`,
+          [
+            cdtId,
+            parseFloat(p.amount),
+            formattedDate,
+            `Order Invoice #${order.invoiceId}`,
+            oid,
+            order.invoiceId,
+            operatorName
+          ]
+        );
+      }
     }
 
     await connection.commit();

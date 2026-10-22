@@ -295,6 +295,66 @@
 
     async clearAll() {
       // Replaced by backup import payload empty list resets
+    },
+
+    /* ── Cash Drawer ────────────────────────────────── */
+    async getCashDrawerSummary() {
+      try {
+        const res = await fetch(`${API_BASE}/api/cash-drawer/summary`, {
+          headers: this.getHeaders()
+        });
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        console.error('Error fetching cash drawer summary:', err);
+        return { currentBalance: 0, totalIn: 0, totalOut: 0, totalCashSales: 0, totalAdded: 0, totalTransactions: 0 };
+      }
+    },
+
+    async getCashDrawerTransactions(params = {}) {
+      try {
+        const q = new URLSearchParams(params).toString();
+        const res = await fetch(`${API_BASE}/api/cash-drawer/transactions${q ? '?' + q : ''}`, {
+          headers: this.getHeaders()
+        });
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        console.error('Error fetching cash drawer transactions:', err);
+        return [];
+      }
+    },
+
+    async addCashDrawer(data) {
+      try {
+        const res = await fetch(`${API_BASE}/api/cash-drawer/add`, {
+          method: 'POST',
+          headers: { ...this.getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to add cash');
+        return result;
+      } catch (err) {
+        console.error('Error adding cash to drawer:', err);
+        throw err;
+      }
+    },
+
+    async withdrawCashDrawer(data) {
+      try {
+        const res = await fetch(`${API_BASE}/api/cash-drawer/withdraw`, {
+          method: 'POST',
+          headers: { ...this.getHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to withdraw cash');
+        return result;
+      } catch (err) {
+        console.error('Error withdrawing cash from drawer:', err);
+        throw err;
+      }
     }
   };
 
