@@ -1013,13 +1013,29 @@
         return s + Math.max(0, cost - comp);
       }, 0);
 
+      // 5. Damaged Products
+      const damagedProducts = await Store.query('damaged-products', dp => H.isDateInRange(dp.date, from, to));
+      const totalDamagedCost = damagedProducts.reduce((s, dp) => s + (parseFloat(dp.totalCost) || 0), 0);
+
+      // 6. Collected Tax
+      const totalCollectedTax = orders.reduce((s, o) => s + (parseFloat(o.taxAmount) || 0), 0);
+
       // Report Settings
       const settings = (await Store.getSettings()) || {};
       const isSupplierAsExpense = settings.supplier_as_expense === '1';
       const isIngredientAsExpense = settings.ingredient_as_expense === '1';
       const isWasteAsExpense = settings.waste_as_expense === '1';
+      const isDamagedAsExpense = settings.damaged_as_expense === '1';
+      const isTaxAsExpense = settings.tax_as_expense === '1';
 
-      let totalExpenses = totalOpExpenses;
+      // Turned on expenses from report.settings
+      let turnedOnExpenses = 0;
+      if (isSupplierAsExpense) turnedOnExpenses += totalSupplierPayments;
+      if (isIngredientAsExpense) turnedOnExpenses += totalIngredientCost;
+      if (isWasteAsExpense) turnedOnExpenses += totalWasteCost;
+      if (isDamagedAsExpense) turnedOnExpenses += totalDamagedCost;
+      if (isTaxAsExpense) turnedOnExpenses += totalCollectedTax;
+
       let combinedExpensesList = expenses.map(e => ({
         date: e.date,
         name: e.reason || e.name || 'Operational Expense',
@@ -1028,7 +1044,6 @@
       }));
 
       if (isSupplierAsExpense) {
-        totalExpenses += totalSupplierPayments;
         supplierPayments.forEach(sp => {
           combinedExpensesList.push({
             date: sp.date,
@@ -1040,7 +1055,6 @@
       }
 
       if (isIngredientAsExpense) {
-        totalExpenses += totalIngredientCost;
         ingredientCosts.forEach(ic => {
           combinedExpensesList.push({
             date: ic.date,
@@ -1052,7 +1066,6 @@
       }
 
       if (isWasteAsExpense) {
-        totalExpenses += totalWasteCost;
         expiredWastes.forEach(ew => {
           const cost = parseFloat(ew.totalCost) || ((parseFloat(ew.costPrice) || 0) * (parseFloat(ew.quantity) || 0));
           const comp = parseFloat(ew.compensationAmount) || 0;
@@ -1066,13 +1079,34 @@
         });
       }
 
+      if (isDamagedAsExpense) {
+        damagedProducts.forEach(dp => {
+          combinedExpensesList.push({
+            date: dp.date,
+            name: `${dp.productName || 'Damaged Product'} (${dp.quantity || 1} units - ${dp.damageType || 'Defect'})`,
+            category: 'Damaged Product',
+            amount: parseFloat(dp.totalCost) || 0
+          });
+        });
+      }
+
+      if (isTaxAsExpense && totalCollectedTax > 0) {
+        combinedExpensesList.push({
+          date: to,
+          name: 'Collected Sales Tax (Tax Liability)',
+          category: 'Collected Tax',
+          amount: totalCollectedTax
+        });
+      }
+
       combinedExpensesList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-      const overallNetProfit = productProfit - totalExpenses;
+      // Formula: Profit = Total Sales - expenses - turned on expense from report.settings
+      const overallNetProfit = totalSales - totalOpExpenses - turnedOnExpenses;
       const netProfitColor = overallNetProfit >= 0 ? 'text-success' : 'text-danger';
 
       container.innerHTML = `
-        <!-- Primary Financial Cards Grid: Total Sales, Product Sold, Expenses, Ingredient Cost (if enabled), Suppliers Payments (if enabled), Expired & Waste (if enabled), Overall Net Profit -->
+        <!-- Primary Financial Cards Grid -->
         <div class="stats-grid fade-in mb-3" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:14px;">
           <!-- 1. Total Sales -->
           <div class="stat-card purple" style="padding: 15px;">
@@ -1084,13 +1118,15 @@
             </div>
           </div>
 
-          <!-- 2. Product Sold (renamed from Product Profit) -->
-          <div class="stat-card green" style="padding: 15px;">
-            <div class="stat-icon">📈</div>
+          <!-- 2. Collected Tax (New Card) -->
+          <div class="stat-card sky" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #0284C7; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#f0f9ff; display:flex; align-items:center; justify-content:center; color:#0284c7;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+            </div>
             <div class="stat-info">
-              <div class="stat-label">Product Sold</div>
-              <div class="stat-value" style="font-size:18px;">${H.formatCurrency(productProfit)}</div>
-              <div class="stat-sub">From Catalog Sales</div>
+              <div class="stat-label" style="font-weight:700;">Collected Tax</div>
+              <div class="stat-value" style="font-size:18px; font-weight:800; color:#0284c7; margin-top:2px;">${H.formatCurrency(totalCollectedTax)}</div>
+              <div class="stat-sub">${isTaxAsExpense ? 'Deducted as Expense (ON)' : 'Tax Invoiced in range'}</div>
             </div>
           </div>
 
@@ -1140,13 +1176,25 @@
             </div>
           ` : ''}
 
-          <!-- 7. Overall Net Profit -->
+          <!-- 7. Damaged Products (Only shown if enabled in Report Settings) -->
+          ${isDamagedAsExpense ? `
+            <div class="stat-card" style="padding: 15px; background:#fff; border:1px solid #E2E8F0; border-left:4px solid #DC2626; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+              <div class="stat-icon" style="font-size:22px; width:44px; height:44px; border-radius:10px; background:#fef2f2; display:flex; align-items:center; justify-content:center; color:#DC2626;">📦</div>
+              <div class="stat-info">
+                <div class="stat-label" style="font-weight:700;">Damaged Products</div>
+                <div class="stat-value text-danger" style="font-size:18px; font-weight:800; margin-top:2px;">${H.formatCurrency(totalDamagedCost)}</div>
+                <div class="stat-sub">${damagedProducts.length} damaged entries</div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 8. Overall Net Profit -->
           <div class="stat-card blue" style="padding: 15px;">
             <div class="stat-icon">⚖️</div>
             <div class="stat-info">
               <div class="stat-label">Overall Net Profit</div>
               <div class="stat-value ${netProfitColor}" style="font-size:18px; font-weight:800;">${H.formatCurrency(overallNetProfit)}</div>
-              <div class="stat-sub">Product Sold minus Outflows</div>
+              <div class="stat-sub">Sales - Expenses - Turned-on Rules</div>
             </div>
           </div>
         </div>

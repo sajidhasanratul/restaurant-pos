@@ -83,6 +83,42 @@
                 </div>
               </div>
 
+              <!-- Setting 4: Add Damaged Product as Expense -->
+              <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding:20px 0; border-bottom:1px solid #f1f5f9;">
+                <div style="flex:1;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:18px;">📦</span>
+                    <h4 style="margin:0; font-size:15px; font-weight:700; color:#1e293b;">Add Damaged Product as Expense</h4>
+                    <span id="badge-damaged-expense-status"></span>
+                  </div>
+                  <p style="margin:6px 0 0; font-size:13px; color:#475569; line-height:1.5;">
+                    Add damaged items, kitchen mishaps, and broken products as an Expense. If the button is ON, damaged product loss will count as an Expense in the Report and Dashboard.
+                  </p>
+                  <div id="damaged-expense-info" style="margin-top:10px; font-size:12px; padding:8px 12px; border-radius:6px;"></div>
+                </div>
+                <div style="flex-shrink:0;">
+                  <button class="btn" id="btn-toggle-damaged-expense" style="min-width:110px; font-weight:700;"></button>
+                </div>
+              </div>
+
+              <!-- Setting 5: Add Collected Tax as Expense / Liability -->
+              <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding:20px 0; border-bottom:1px solid #f1f5f9;">
+                <div style="flex:1;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:18px;">🧾</span>
+                    <h4 style="margin:0; font-size:15px; font-weight:700; color:#1e293b;">Add Collected Tax as Expense</h4>
+                    <span id="badge-tax-expense-status"></span>
+                  </div>
+                  <p style="margin:6px 0 0; font-size:13px; color:#475569; line-height:1.5;">
+                    Deduct collected sales tax / VAT from profit as a tax liability. If the button is ON, collected tax will count as an Expense deduction in Analytical Reports.
+                  </p>
+                  <div id="tax-expense-info" style="margin-top:10px; font-size:12px; padding:8px 12px; border-radius:6px;"></div>
+                </div>
+                <div style="flex-shrink:0;">
+                  <button class="btn" id="btn-toggle-tax-expense" style="min-width:110px; font-weight:700;"></button>
+                </div>
+              </div>
+
               <!-- Information Guide Box -->
               <div style="margin-top:20px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; padding:14px 16px;">
                 <h5 style="margin:0 0 6px; font-size:13px; font-weight:700; color:#334155;">💡 How this affects your business metrics:</h5>
@@ -90,6 +126,8 @@
                   <li><strong>Suppliers Payment:</strong> When ON, supplier dues settlements are counted towards total expenses and deducted from net profit.</li>
                   <li><strong>Ingredient Cost:</strong> When ON, raw kitchen inventory and ingredient purchases are counted towards total expenses.</li>
                   <li><strong>Expired & Waste:</strong> When ON, losses from damaged, spoiled, or expired items are deducted as expenses from overall profit.</li>
+                  <li><strong>Damaged Product:</strong> When ON, inventory write-offs from damaged food/products are counted as expenses.</li>
+                  <li><strong>Collected Tax:</strong> When ON, collected sales tax is counted as an expense/liability deduction from total sales.</li>
                   <li><strong>When OFF:</strong> Costs remain isolated in their dedicated ledgers without inflating general operational expenses.</li>
                 </ul>
               </div>
@@ -165,6 +203,8 @@
       bindToggle('supplier_as_expense', 'badge-supplier-expense-status', 'btn-toggle-supplier-expense', 'supplier-expense-info', 'Supplier Payments');
       bindToggle('ingredient_as_expense', 'badge-ingredient-expense-status', 'btn-toggle-ingredient-expense', 'ingredient-expense-info', 'Ingredient Cost');
       bindToggle('waste_as_expense', 'badge-waste-expense-status', 'btn-toggle-waste-expense', 'waste-expense-info', 'Expired & Waste');
+      bindToggle('damaged_as_expense', 'badge-damaged-expense-status', 'btn-toggle-damaged-expense', 'damaged-expense-info', 'Damaged Product');
+      bindToggle('tax_as_expense', 'badge-tax-expense-status', 'btn-toggle-tax-expense', 'tax-expense-info', 'Collected Tax');
     }
   };
 

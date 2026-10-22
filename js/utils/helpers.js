@@ -1258,7 +1258,9 @@
         'report_settings': ['report-settings'],
         'report-settings': ['report_settings'],
         'expired_wastes': ['expired-wastes', 'expenses'],
-        'expired-wastes': ['expired_wastes', 'expenses']
+        'expired-wastes': ['expired_wastes', 'expenses'],
+        'damaged_products': ['damaged-products', 'expenses'],
+        'damaged-products': ['damaged_products', 'expenses']
       };
 
       const mapped = aliases[perm];

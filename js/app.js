@@ -60,6 +60,7 @@
       R.register('/ingredient-costs',  () => safeRender('IngredientCosts'));
       R.register('/suppliers',         () => safeRender('Suppliers'));
       R.register('/expired-wastes',    () => safeRender('ExpiredWastes'));
+      R.register('/damaged-products',  () => safeRender('DamagedProducts'));
       R.register('/report-settings',   () => safeRender('ReportSettings'));
       R.register('/reward-points',     () => safeRender('RewardPoints'));
       R.register('/coupons',           () => {
@@ -193,13 +194,15 @@
         const canExpenses = H.hasPermission('expenses', user);
         const canSuppliers = H.hasPermission('suppliers', user);
         const canExpiredWastes = H.hasPermission('expired_wastes', user) || H.hasPermission('expenses', user);
+        const canDamagedProducts = H.hasPermission('damaged_products', user) || H.hasPermission('expenses', user);
 
         setDisplay('nav-sub-ingredient-costs', canIngredientCosts);
         setDisplay('nav-sub-expenses', canExpenses);
         setDisplay('nav-sub-suppliers', canSuppliers);
         setDisplay('nav-sub-expired-wastes', canExpiredWastes);
+        setDisplay('nav-sub-damaged-products', canDamagedProducts);
 
-        const canAnyOpExpenses = canIngredientCosts || canExpenses || canSuppliers || canExpiredWastes;
+        const canAnyOpExpenses = canIngredientCosts || canExpenses || canSuppliers || canExpiredWastes || canDamagedProducts;
         setDisplay('nav-grp-operation-expenses', canAnyOpExpenses);
 
         setDisplay('nav-grp-reports', H.hasPermission('reports', user));

@@ -23,6 +23,8 @@
         { key: 'ingredient_costs', label: 'Ingredient Costs', desc: 'Record raw kitchen ingredients, meats, and produce' },
         { key: 'expenses', label: 'Restaurant Expenses', desc: 'Record utilities, rent, and operational costs' },
         { key: 'suppliers', label: 'Suppliers & Payments', desc: 'Manage food vendors and payment records' },
+        { key: 'expired_wastes', label: 'Expired & Waste', desc: 'Track spoiled food and supplier compensation' },
+        { key: 'damaged_products', label: 'Damaged Products', desc: 'Log spoiled, dropped, or transit-damaged items and write-offs' },
         { key: 'reports', label: 'Analytical Reports', desc: 'Access sales reports and profit analytics' }
       ]
     },
@@ -44,7 +46,7 @@
     cashier: ['pos', 'sales_list', 'cash_drawer', 'products', 'gallery'],
     manager: [
       'dashboard', 'pos', 'sales_list', 'cash_drawer', 'products', 'ingredient_costs',
-      'expenses', 'suppliers', 'customers', 'invoice_settings',
+      'expenses', 'suppliers', 'expired_wastes', 'damaged_products', 'customers', 'invoice_settings',
       'payment_methods', 'gallery', 'report_settings', 'reports'
     ],
     admin: ['*']

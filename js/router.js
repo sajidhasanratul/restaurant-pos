@@ -89,6 +89,7 @@
           if (p === '/ingredient-costs') return 'ingredient_costs';
           if (p === '/suppliers') return 'suppliers';
           if (p === '/expired-wastes') return 'expired_wastes';
+          if (p === '/damaged-products') return 'damaged_products';
           if (p.startsWith('/reports')) return 'reports';
           if (p === '/coupons') return 'coupons';
           if (p === '/customers') return 'customers';

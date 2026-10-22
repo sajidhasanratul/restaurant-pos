@@ -81,7 +81,7 @@
                 </div>
                 <div>
                   <div class="chart-title-text">Sales by Category</div>
-                  <div class="chart-subtitle-text">Revenue distribution across product catalog categories</div>
+                  <div class="chart-subtitle-text">Pieces sold across product catalog categories</div>
                 </div>
               </div>
               <div id="cat-summary-badge" class="chart-header-badge">
@@ -94,8 +94,8 @@
                 <div class="category-chart-canvas-wrap">
                   <canvas id="categoryPieChart"></canvas>
                   <div class="chart-donut-center" id="categoryChartCenterText">
-                    <div class="chart-donut-label">Category Sales</div>
-                    <div class="chart-donut-val" id="catCenterTotal">৳0</div>
+                    <div class="chart-donut-label">Pieces Sold</div>
+                    <div class="chart-donut-val" id="catCenterTotal">0 pcs</div>
                   </div>
                 </div>
                 <div id="categoryLegendList" class="category-legend-scroll">
@@ -296,11 +296,14 @@
       let paymentBreakdown = {};
       let paymentCount = {};
 
+      let totalTax = 0;
+
       try {
         const mRes = await fetch(`/api/dashboard/metrics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
         if (mRes.ok) {
           m = await mRes.json();
           totalSales = m.totalSales || 0;
+          totalTax = m.totalTax || 0;
           orderCount = m.orderCount || 0;
           aov = m.aov || 0;
           totalIngredientCost = m.totalIngredientCost || 0;
@@ -348,16 +351,19 @@
         if (paymentCount[method] === undefined) paymentCount[method] = 0;
       });
 
-      // ── 1. Render Executive KPI Cards (High-Contrast Metrics) ─────
+      // ── 1. Render Executive KPI Cards (High-Contrast Metrics & Professional SVGs) ─────
       const statsGrid = document.getElementById('dashboard-stats');
       statsGrid.innerHTML = `
-        <!-- Total Revenue (Primary Hero Card) -->
+        <!-- 1. Total Sales Amount (Primary Hero Card) -->
         <div class="stat-card purple" style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border:none; border-radius:12px; padding:18px 16px; box-shadow:0 4px 14px rgba(99,102,241,0.25); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,0.2); color:#ffffff; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
-            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#ede9fe; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Gross Revenue</div>
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#ede9fe; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              Total Sales Amount
+              <span style="display:block; font-size:10px; text-transform:none; letter-spacing:0; opacity:0.85; font-weight:500; margin-top:1px;">(+ including tax)</span>
+            </div>
             <div class="stat-value" style="font-size:22px; font-weight:800; color:#ffffff; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalSales)}</div>
             <div style="font-size:11px; color:#ffffff; background:rgba(255,255,255,0.2); font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
               <span>${orderCount} Completed Invoices</span>
@@ -365,7 +371,24 @@
           </div>
         </div>
 
-        <!-- Current Cash Drawer Balance Card -->
+        <!-- 2. Collected Tax Card (New) -->
+        <div class="stat-card sky" style="background:#fff; border:1.5px solid #0284c7; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(2,132,199,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#f0f9ff; color:#0284c7; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+          </div>
+          <div class="stat-info" style="min-width:0; flex:1;">
+            <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
+              <span style="overflow:hidden; text-overflow:ellipsis;">Collected Tax</span>
+              <span style="font-size:9.5px; padding:2px 7px; border-radius:10px; background:#e0f2fe; color:#0369a1; font-weight:700;">VAT / Govt</span>
+            </div>
+            <div class="stat-value" style="font-size:22px; font-weight:800; color:#0284c7; margin-top:2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${H.formatCurrency(totalTax)}</div>
+            <div style="font-size:11px; color:#0369a1; background:#e0f2fe; border:1px solid #bae6fd; font-weight:700; padding:2px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; margin-top:6px; white-space:nowrap;">
+              <span>Sales Tax In Range</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Current Cash Drawer Balance Card -->
         <div class="stat-card emerald" id="stat-card-cash-drawer" onclick="window.location.hash='#/cash-drawer'" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease;" title="Click to open Cash Drawer">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="12" cy="15" r="2"/></svg>
@@ -391,10 +414,10 @@
           </div>
         </div>
 
-        <!-- Ingredient Cost Card -->
+        <!-- 4. Ingredient Cost Card -->
         <div class="stat-card green" style="background:#fff; border:1.5px solid #10b981; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(16,185,129,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
-          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; font-size:22px;">
-            🥗
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#ecfdf5; color:#059669; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Ingredient Cost</div>
@@ -412,10 +435,10 @@
           </div>
         </div>
 
-        <!-- Expired & Waste Card -->
+        <!-- 5. Expired & Waste Card -->
         <div class="stat-card rose" style="background:#fff; border:1.5px solid #f43f5e; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(244,63,94,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
-          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fff1f2; color:#e11d48; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; font-size:22px;">
-            🗑️
+          <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fff1f2; color:#e11d48; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Expired & Waste</div>
@@ -433,10 +456,10 @@
           </div>
         </div>
 
-        <!-- Expenses Amount Card -->
+        <!-- 6. Expenses Amount Card -->
         <div class="stat-card red" style="background:#fff; border:1.5px solid #ef4444; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(239,68,68,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fef2f2; color:#dc2626; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/><path d="M10 16h-2"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; gap:4px; white-space:nowrap;">
@@ -456,10 +479,10 @@
           </div>
         </div>
 
-        <!-- Supplier Payments Card -->
+        <!-- 7. Supplier Payments Card -->
         <div class="stat-card amber" style="background:#fff; border:1.5px solid #f59e0b; border-radius:12px; padding:18px 16px; box-shadow:0 2px 8px rgba(245,158,11,0.08); display:flex; align-items:flex-start; gap:14px; min-width:0; box-sizing:border-box;">
           <div class="stat-icon" style="width:46px; height:46px; border-radius:12px; background:#fffbeb; color:#d97706; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
           </div>
           <div class="stat-info" style="min-width:0; flex:1;">
             <div class="stat-label" style="font-size:11px; font-weight:700; text-transform:uppercase; color:#334155; letter-spacing:0.8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Supplier Payments</div>
@@ -598,17 +621,17 @@
         '#64748b'  // Slate
       ];
 
-      let totalCatAmount = 0;
-      catData.forEach(c => totalCatAmount += (parseFloat(c.totalAmount) || 0));
+      let totalCatPieces = 0;
+      catData.forEach(c => totalCatPieces += (parseInt(c.totalQty) || 0));
 
       const catBadge = document.getElementById('cat-summary-badge');
       if (catBadge) {
-        catBadge.innerHTML = `<span style="width:7px; height:7px; background:#7c3aed; border-radius:50%; display:inline-block;"></span> <span>${catData.length} ${catData.length === 1 ? 'Category' : 'Categories'} • ${H.formatCurrency(totalCatAmount)}</span>`;
+        catBadge.innerHTML = `<span style="width:7px; height:7px; background:#7c3aed; border-radius:50%; display:inline-block;"></span> <span>${catData.length} ${catData.length === 1 ? 'Category' : 'Categories'} • ${totalCatPieces} pcs sold</span>`;
       }
 
       const catCenterVal = document.getElementById('catCenterTotal');
       if (catCenterVal) {
-        catCenterVal.textContent = H.formatCurrency(totalCatAmount);
+        catCenterVal.textContent = `${totalCatPieces} pcs`;
       }
 
       const catLegendList = document.getElementById('categoryLegendList');
@@ -624,8 +647,8 @@
         } else {
           catLegendList.innerHTML = catData.map((cat, idx) => {
             const color = modernCatPalette[idx % modernCatPalette.length];
-            const amt = parseFloat(cat.totalAmount) || 0;
-            const pct = totalCatAmount > 0 ? ((amt / totalCatAmount) * 100).toFixed(1) : '0.0';
+            const qty = parseInt(cat.totalQty) || 0;
+            const pct = totalCatPieces > 0 ? ((qty / totalCatPieces) * 100).toFixed(1) : '0.0';
             return `
               <div class="cat-legend-row">
                 <div class="cat-legend-left">
@@ -633,7 +656,7 @@
                   <span class="cat-name" title="${H.esc(cat.categoryName)}">${H.esc(cat.categoryName)}</span>
                 </div>
                 <div class="cat-legend-right">
-                  <span class="cat-amount">${H.formatCurrency(amt)}</span>
+                  <span class="cat-amount" style="font-weight:700; color:#1e293b;">${qty} <span style="font-size:11px; font-weight:600; color:#64748b;">pcs</span></span>
                   <span class="cat-pct-badge">${pct}%</span>
                 </div>
               </div>
@@ -643,7 +666,7 @@
       }
 
       const catLabels = catData.length ? catData.map(c => c.categoryName) : ['No Sales'];
-      const catChartData = catData.length ? catData.map(c => parseFloat(c.totalAmount) || 0) : [1];
+      const catChartData = catData.length ? catData.map(c => parseInt(c.totalQty) || 0) : [1];
       const catColors = catData.length 
         ? catData.map((_, i) => modernCatPalette[i % modernCatPalette.length]) 
         : ['#e2e8f0'];
@@ -683,8 +706,8 @@
                 callbacks: {
                   label: (context) => {
                     const val = context.raw || 0;
-                    const pct = totalCatAmount > 0 ? ((val / totalCatAmount) * 100).toFixed(1) : '0.0';
-                    return ` Sales: ${H.formatCurrency(val)} (${pct}%)`;
+                    const pct = totalCatPieces > 0 ? ((val / totalCatPieces) * 100).toFixed(1) : '0.0';
+                    return ` Pieces Sold: ${val} pcs (${pct}%)`;
                   }
                 }
               }

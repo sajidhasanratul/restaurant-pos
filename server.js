@@ -541,6 +541,22 @@ const initDB = async () => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // Create damaged_products table
+  await dbQuery(`CREATE TABLE IF NOT EXISTS damaged_products (
+    id VARCHAR(50) PRIMARY KEY,
+    productId VARCHAR(50) DEFAULT '',
+    productName VARCHAR(255) NOT NULL,
+    variationName VARCHAR(100) DEFAULT '',
+    quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+    unitCost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    totalCost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    damageType VARCHAR(100) DEFAULT 'Handling / Mishap',
+    note TEXT,
+    staffName VARCHAR(100) DEFAULT '',
+    date DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   // Create gallery tables
   await dbQuery(`CREATE TABLE IF NOT EXISTS gallery_folders (
     id VARCHAR(50) PRIMARY KEY,
@@ -567,7 +583,8 @@ const initDB = async () => {
       ['folder_ingredient_costs', 'Ingredient Costs'],
       ['folder_suppliers', 'Suppliers'],
       ['folder_store_invoices', 'Store & Invoices'],
-      ['folder_expired_wastes', 'Expired & Waste']
+      ['folder_expired_wastes', 'Expired & Waste'],
+      ['folder_damaged_products', 'Damaged Products']
     ];
     for (const [fid, fname] of requiredFolders) {
       await dbQuery(`INSERT IGNORE INTO gallery_folders (id, name) VALUES (?, ?)`, [fid, fname]);
@@ -1630,6 +1647,107 @@ app.put('/api/expired-wastes/:id', verifyRole(['admin', 'manager', 'cashier']), 
 app.delete('/api/expired-wastes/:id', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
   try {
     await dbQuery(`DELETE FROM expired_wastes WHERE id = ?`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Damaged Products Endpoints ────────────────────────────────
+app.get('/api/damaged-products', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    let sql = `
+      SELECT 
+        id, 
+        COALESCE(productId, '') as productId,
+        productName, 
+        COALESCE(variationName, '') as variationName,
+        quantity, 
+        unitCost, 
+        totalCost, 
+        COALESCE(damageType, 'Defect / Mishap') as damageType, 
+        COALESCE(note, '') as note, 
+        COALESCE(staffName, '') as staffName, 
+        DATE_FORMAT(date, '%Y-%m-%d %H:%i:%s') as date, 
+        created_at 
+      FROM damaged_products
+    `;
+    const params = [];
+    if (from && to) {
+      sql += ` WHERE DATE(date) >= ? AND DATE(date) <= ?`;
+      params.push(from, to);
+    } else if (from) {
+      sql += ` WHERE DATE(date) >= ?`;
+      params.push(from);
+    } else if (to) {
+      sql += ` WHERE DATE(date) <= ?`;
+      params.push(to);
+    }
+    sql += ` ORDER BY date DESC`;
+    const rows = await dbQuery(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/damaged-products', async (req, res) => {
+  try {
+    const { id, productId, productName, variationName, quantity, unitCost, damageType, note, staffName, date } = req.body;
+    if (!productName || !productName.trim()) {
+      return res.status(400).json({ error: 'Product name is required' });
+    }
+    const finalId = id || ('dp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
+    const qty = parseFloat(quantity) || 0;
+    const cost = parseFloat(unitCost) || 0;
+    const total = qty * cost;
+    const formattedDate = date ? formatToMySQLDateTime(date) : new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    await dbQuery(`
+      INSERT INTO damaged_products (id, productId, productName, variationName, quantity, unitCost, totalCost, damageType, note, staffName, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [finalId, productId || '', productName.trim(), variationName || '', qty, cost, total, damageType || 'Defect / Mishap', note || '', staffName || '', formattedDate]);
+
+    res.json({ success: true, id: finalId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/damaged-products/:id', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
+  try {
+    const { productId, productName, variationName, quantity, unitCost, damageType, note, staffName, date } = req.body;
+    if (!productName || !productName.trim()) {
+      return res.status(400).json({ error: 'Product name is required' });
+    }
+    const qty = parseFloat(quantity) || 0;
+    const cost = parseFloat(unitCost) || 0;
+    const total = qty * cost;
+    const formattedDate = date ? formatToMySQLDateTime(date) : null;
+
+    let updateSql = `
+      UPDATE damaged_products 
+      SET productId = ?, productName = ?, variationName = ?, quantity = ?, unitCost = ?, totalCost = ?, damageType = ?, note = ?, staffName = ?
+    `;
+    const params = [productId || '', productName.trim(), variationName || '', qty, cost, total, damageType || 'Defect / Mishap', note || '', staffName || ''];
+    if (formattedDate) {
+      updateSql += `, date = ?`;
+      params.push(formattedDate);
+    }
+    updateSql += ` WHERE id = ?`;
+    params.push(req.params.id);
+
+    await dbQuery(updateSql, params);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/damaged-products/:id', verifyRole(['admin', 'manager', 'cashier']), async (req, res) => {
+  try {
+    await dbQuery(`DELETE FROM damaged_products WHERE id = ?`, [req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3433,6 +3551,7 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       dbQuery(
         `SELECT 
            COALESCE(SUM(grandTotal), 0) AS totalSales, 
+           COALESCE(SUM(taxAmount), 0) AS totalTax,
            COUNT(*) AS orderCount, 
            COALESCE(AVG(grandTotal), 0) AS aov 
          FROM orders 
@@ -3566,6 +3685,7 @@ app.get('/api/dashboard/metrics', async (req, res) => {
     const drawer = drawerRows[0] || {};
 
     const totalSales = parseFloat(sales.totalSales) || 0;
+    const totalTax = parseFloat(sales.totalTax) || 0;
     const orderCount = parseInt(sales.orderCount) || 0;
     const aov = parseFloat(sales.aov) || 0;
 
@@ -3630,6 +3750,7 @@ app.get('/api/dashboard/metrics', async (req, res) => {
       from,
       to,
       totalSales,
+      totalTax,
       orderCount,
       aov,
       totalIngredientCost,
